@@ -1,0 +1,12 @@
+.DS_Store
+.vscode
+.idea
+.settings
+.project
+.classpath
+.gradle
+*.iml
+*.jar
+*.log
+build/
+out/

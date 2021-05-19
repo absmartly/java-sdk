@@ -1,0 +1,80 @@
+plugins {
+	id "java-library"
+}
+
+
+description = """ABSmartly Java SDK"""
+
+
+def httpClientVersion = "5.1"
+
+dependencies {
+	implementation group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+
+	implementation group: "org.apache.httpcomponents.client5", name: "httpclient5", version: httpClientVersion
+	implementation group: "org.apache.httpcomponents.client5", name: "httpclient5-fluent", version: httpClientVersion
+
+	implementation group: "com.github.spotbugs", name: "spotbugs-annotations", version: "4.2.1"
+
+	implementation group: "com.fasterxml.jackson.core", name: "jackson-databind", version: jacksonVersion
+	implementation group: "com.fasterxml.jackson.datatype", name: "jackson-datatype-jsr310", version: jacksonVersion
+	implementation group: "com.fasterxml.jackson.module", name: "jackson-module-afterburner", version: jacksonVersion
+
+	testImplementation group: "org.junit.jupiter", name: "junit-jupiter-api", version: junitVersion
+	testImplementation group: "org.junit.jupiter", name: "junit-jupiter-params", version: junitVersion
+	testRuntimeOnly group: "org.junit.jupiter", name: "junit-jupiter-engine", version: junitVersion
+	testImplementation group: "org.mockito", name: "mockito-core", version: mockitoVersion
+	testImplementation group: "org.mockito", name: "mockito-inline", version: mockitoVersion
+	testImplementation group: "org.mockito", name: "mockito-junit-jupiter", version: mockitoVersion
+}
+
+check.dependsOn jacocoTestCoverageVerification
+
+jacocoTestReport {
+	afterEvaluate {
+		getClassDirectories().setFrom(classDirectories.files.collect {
+			fileTree(dir: it, exclude: [
+				"com/absmartly/core-api/json/**/*"
+			])
+		})
+	}
+}
+
+jacocoTestCoverageVerification {
+	violationRules {
+		rule {
+			limit {
+				counter = "CLASS"
+				value = "COVEREDRATIO"
+				minimum = 1.0
+			}
+
+			limit {
+				counter = "METHOD"
+				value = "COVEREDRATIO"
+				minimum = 0.90
+			}
+
+			limit {
+				counter = "INSTRUCTION"
+				value = "COVEREDRATIO"
+				minimum = 0.88
+			}
+		}
+	}
+
+	afterEvaluate {
+		getClassDirectories().setFrom(classDirectories.files.collect {
+			fileTree(dir: it, exclude: [
+				"com/absmartly/core-api/json/**/*"
+			])
+		})
+	}
+}
+
+
+test {
+	useJUnitPlatform()
+}
+
+publishToSonatype.dependsOn check

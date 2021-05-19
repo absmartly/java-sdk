@@ -1,0 +1,18 @@
+apply plugin: "com.diffplug.spotless"
+
+spotless {
+	// the rootProject and lib projects don't have any java
+	if (project != rootProject) {
+		java {
+			importOrder "java", "javax", "org", "com", "com.absmartly"
+			eclipse().configFile rootProject.file("gradle/spotless.eclipseformat.xml")
+			trimTrailingWhitespace()
+			removeUnusedImports()
+		}
+	}
+
+	groovyGradle {
+		target "*.gradle"
+		greclipse().configFile rootProject.files("gradle/spotless.eclipseformat.xml", "gradle/spotless.groovyformat.prefs")
+	}
+}

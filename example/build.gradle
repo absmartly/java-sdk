@@ -1,0 +1,12 @@
+plugins {
+	id "application"
+}
+
+
+mainClassName = "com.absmartly.sdk.Example"
+description = """ABSmartly Java SDK Example"""
+
+
+dependencies {
+	implementation group: "com.absmartly.sdk", name: "core-api", version: "1.0.1"
+}

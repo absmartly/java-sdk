@@ -1,0 +1,131 @@
+plugins {
+	id "java"
+	id "groovy"
+	id "jacoco"
+
+	id "com.diffplug.spotless" version "5.8.2"
+	id "com.github.spotbugs" version "4.6.0"
+	id "com.adarshr.test-logger" version "2.1.1"
+	id "org.barfuin.gradle.jacocolog" version "1.2.3"
+	id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
+}
+
+
+ext {
+	GROUP_ID = "com.absmartly.sdk"
+	VERSION = "1.0.2"
+
+	slf4jVersion = "1.7.30"
+
+	javaVersion = "1.8"
+	jacksonVersion = "2.12.1"
+
+	junitVersion = "5.7.0"
+	mockitoVersion = "3.6.28"
+
+	SpotBugsTask = com.github.spotbugs.snom.SpotBugsTask
+}
+
+
+allprojects {
+	group = GROUP_ID
+
+	apply from: rootProject.file("gradle/repositories.gradle")
+	apply from: rootProject.file("gradle/spotless.gradle")
+	apply from: rootProject.file("gradle/spotbugs.gradle")
+	apply from: rootProject.file("gradle/test-logger.gradle")
+	apply from: rootProject.file("gradle/jacoco.gradle")
+	apply from: rootProject.file("gradle/coverage-logger.gradle")
+
+	sourceCompatibility = javaVersion
+	targetCompatibility = javaVersion
+
+	compileJava.dependsOn "spotlessApply"
+	compileTestJava.dependsOn "spotlessApply"
+}
+
+
+configure(subprojects.findAll {
+	[
+		"core-api"
+	].contains(it.name)
+}) {
+	apply plugin: "signing"
+	apply plugin: "maven-publish"
+
+	task sourcesJar(type: Jar, dependsOn: classes) {
+		archiveClassifier.set('sources')
+		from sourceSets.main.allSource
+	}
+
+	task javadocJar(type: Jar, dependsOn: javadoc) {
+		archiveClassifier.set('javadoc')
+		from javadoc.destinationDir
+	}
+
+	afterEvaluate {
+		publishing {
+			publications {
+				release(MavenPublication) {
+					from components.java
+					artifact sourcesJar
+					artifact javadocJar
+
+					artifactId = project.name
+					version = VERSION
+					groupId = GROUP_ID
+
+					pom {
+						name = "A/B Smartly Java SDK"
+						description = "A/B Smartly Java SDK"
+						url = "https://www.absmartly.com"
+						packaging = "jar"
+
+						licenses {
+							license {
+								name = "The Apache License, Version 2.0"
+								url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+							}
+						}
+
+						developers {
+							developer {
+								id = "absmartly"
+								name = "A/B Smartly"
+								email = "dev@absmartly.com"
+							}
+						}
+
+						scm {
+							connection = "scm:git:git://github.com/absmartly/java-sdk.git"
+							developerConnection = "scm:git:ssh://github.com/absmartly/java-sdk.git"
+							url = "https://github.com/absmartly/java-sdk"
+						}
+					}
+				}
+			}
+		}
+
+		signing {
+			useGpgCmd()
+
+			sign publishing.publications.release
+		}
+	}
+}
+
+configure(rootProject) {
+	apply plugin: "io.github.gradle-nexus.publish-plugin"
+
+	nexusPublishing {
+		repositories {
+			Sonatype {
+				nexusUrl = uri("https://s01.oss.sonatype.org/service/local/")
+				snapshotRepositoryUrl = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
+
+				username = findProperty("ossrh.username")
+				password = findProperty("ossrh.password")
+			}
+		}
+	}
+}

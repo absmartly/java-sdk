@@ -1,0 +1,15 @@
+rootProject.name = "java-sdk"
+
+def includeDir(dir, parentName) {
+	if (new File(dir, "build.gradle").exists()) {
+		include "${parentName}:${dir.name}"
+
+		dir.eachDir {
+			includeDir(it, "${parentName}:${dir.name}")
+		}
+	}
+}
+
+rootDir.eachDir {
+	includeDir(it, "")
+}
