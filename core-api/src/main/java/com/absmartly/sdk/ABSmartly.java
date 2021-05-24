@@ -76,6 +76,10 @@ public class ABSmartly implements Closeable {
 				contextDataProvider_, contextEventHandler_, variableParser_);
 	}
 
+	public CompletableFuture<ContextData> getContextData() {
+		return contextDataProvider_.getContextData();
+	}
+
 	@Override
 	public void close() throws IOException {
 		if (httpClient_ != null) {

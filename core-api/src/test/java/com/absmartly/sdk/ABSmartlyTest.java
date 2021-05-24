@@ -180,6 +180,27 @@ class ABSmartlyTest {
 	}
 
 	@Test
+	void getContextData() {
+		final CompletableFuture<ContextData> dataFuture = mock(CompletableFuture.class);
+		final ContextDataProvider dataProvider = mock(ContextDataProvider.class);
+		when(dataProvider.getContextData()).thenReturn(dataFuture);
+
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setEnvironment("development")
+				.setContextDataProvider(dataProvider);
+
+		final ABSmartly absmartly = ABSmartly.create(config);
+
+		final CompletableFuture<ContextData> contextDataFuture = absmartly.getContextData();
+		verify(dataProvider, times(1)).getContextData();
+
+		assertSame(dataFuture, contextDataFuture);
+	}
+
+	@Test
 	void createContextWithCustomImpls() {
 		final CompletableFuture<ContextData> dataFuture = mock(CompletableFuture.class);
 		final ContextDataProvider dataProvider = mock(ContextDataProvider.class);
