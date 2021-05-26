@@ -48,7 +48,7 @@ class DefaultHTTPClientTest {
 			//noinspection ResultOfMethodCallIgnored
 			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
 
-			final DefaultHTTPClient httpClient = new DefaultHTTPClient(DefaultHTTPClientConfig.create());
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
 			verify(asyncHTTPClientBuilder, times(1)).disableCookieManagement();
 			verify(asyncHTTPClientBuilder, times(1)).evictExpiredConnections();
@@ -86,7 +86,7 @@ class DefaultHTTPClientTest {
 			//noinspection ResultOfMethodCallIgnored
 			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
 
-			final DefaultHTTPClient httpClient = new DefaultHTTPClient(DefaultHTTPClientConfig.create());
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
 			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
 				assertRequestEquals("GET", null, null, null, invocation.getArgument(0));
@@ -110,13 +110,13 @@ class DefaultHTTPClientTest {
 	}
 
 	@Test
-	void getExceptionallyConnection() throws ExecutionException, InterruptedException {
+	void getExceptionallyConnection() {
 		try (final MockedStatic<HttpAsyncClientBuilder> builderStatic = Mockito
 				.mockStatic(HttpAsyncClientBuilder.class)) {
 			//noinspection ResultOfMethodCallIgnored
 			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
 
-			final DefaultHTTPClient httpClient = new DefaultHTTPClient(DefaultHTTPClientConfig.create());
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
 			final Exception failure = new Exception("FAILED");
 			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
@@ -143,7 +143,7 @@ class DefaultHTTPClientTest {
 			//noinspection ResultOfMethodCallIgnored
 			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
 
-			final DefaultHTTPClient httpClient = new DefaultHTTPClient(DefaultHTTPClientConfig.create());
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
 			final Map<String, Object> requestHeaders = TestUtils.mapOf(
 					"X-Application", "website",
@@ -179,7 +179,7 @@ class DefaultHTTPClientTest {
 			//noinspection ResultOfMethodCallIgnored
 			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
 
-			final DefaultHTTPClient httpClient = new DefaultHTTPClient(DefaultHTTPClientConfig.create());
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
 			final Map<String, Object> requestHeaders = TestUtils.mapOf(
 					"X-Application", "website",

@@ -7,8 +7,8 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
-import org.apache.hc.client5.http.async.methods.SimpleHttpRequests;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
+import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClientBuilder;
@@ -21,7 +21,11 @@ import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 
 public class DefaultHTTPClient implements HTTPClient {
-	public DefaultHTTPClient(DefaultHTTPClientConfig config) {
+	public static DefaultHTTPClient create(DefaultHTTPClientConfig config) {
+		return new DefaultHTTPClient(config);
+	}
+
+	private DefaultHTTPClient(DefaultHTTPClientConfig config) {
 		final PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManagerBuilder
 				.create()
 				.setMaxConnTotal(200)
@@ -79,7 +83,7 @@ public class DefaultHTTPClient implements HTTPClient {
 
 	@Override
 	public CompletableFuture<Response> get(@Nonnull String url, @Nullable Map<String, Object> headers) {
-		final SimpleHttpRequest get = SimpleHttpRequests.get(url);
+		final SimpleHttpRequest get = SimpleRequestBuilder.get(url).build();
 
 		return request(get, headers);
 	}
@@ -87,7 +91,7 @@ public class DefaultHTTPClient implements HTTPClient {
 	@Override
 	public CompletableFuture<Response> put(@Nonnull String url, @Nullable Map<String, Object> headers,
 			@Nonnull byte[] body) {
-		final SimpleHttpRequest put = SimpleHttpRequests.put(url);
+		final SimpleHttpRequest put = SimpleRequestBuilder.put(url).build();
 
 		put.setBody(body, ContentType.APPLICATION_JSON);
 		return request(put, headers);
@@ -96,7 +100,7 @@ public class DefaultHTTPClient implements HTTPClient {
 	@Override
 	public CompletableFuture<Response> post(@Nonnull String url, @Nullable Map<String, Object> headers,
 			@Nonnull byte[] body) {
-		final SimpleHttpRequest post = SimpleHttpRequests.post(url);
+		final SimpleHttpRequest post = SimpleRequestBuilder.post(url).build();
 
 		post.setBody(body, ContentType.APPLICATION_JSON);
 		return request(post, headers);

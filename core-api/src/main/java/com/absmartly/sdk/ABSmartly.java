@@ -22,6 +22,7 @@ public class ABSmartly implements Closeable {
 		contextEventHandler_ = config.getContextEventHandler();
 		variableParser_ = config.getVariableParser();
 		scheduler_ = config.getScheduler();
+		httpClientConfig_ = config.getDefaultHTTPClientConfig();
 
 		final String endpoint = config.getEndpoint();
 		if ((endpoint == null) || endpoint.isEmpty()) {
@@ -44,11 +45,11 @@ public class ABSmartly implements Closeable {
 		}
 
 		if ((contextDataProvider_ == null) || (contextEventHandler_ == null)) {
-			if (clientConfig_ == null) {
-				clientConfig_ = DefaultHTTPClientConfig.create();
+			if (httpClientConfig_ == null) {
+				httpClientConfig_ = DefaultHTTPClientConfig.create();
 			}
 
-			httpClient_ = new DefaultHTTPClient(clientConfig_);
+			httpClient_ = DefaultHTTPClient.create(httpClientConfig_);
 
 			if (contextDataProvider_ == null) {
 				contextDataProvider_ = new DefaultContextDataProvider(endpoint, httpClient_,
@@ -104,5 +105,5 @@ public class ABSmartly implements Closeable {
 	private ContextEventHandler contextEventHandler_;
 	private VariableParser variableParser_;
 	private ScheduledExecutorService scheduler_;
-	private DefaultHTTPClientConfig clientConfig_;
+	private DefaultHTTPClientConfig httpClientConfig_;
 }

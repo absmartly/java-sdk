@@ -125,6 +125,32 @@ class ABSmartlyTest {
 	}
 
 	@Test
+	void createContextWithCustomDefaultHTTPConfig() {
+		final DefaultHTTPClientConfig defaultHTTPClientConfig = mock(DefaultHTTPClientConfig.class);
+
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setEnvironment("development")
+				.setDefaultHTTPClientConfig(defaultHTTPClientConfig);
+
+		try (final MockedStatic<DefaultHTTPClient> clientStatic = mockStatic(DefaultHTTPClient.class)) {
+			final DefaultHTTPClient clientMock = mock(DefaultHTTPClient.class);
+			clientStatic.when(() -> DefaultHTTPClient.create(any()))
+					.thenReturn(clientMock);
+
+			final ABSmartly absmartly = ABSmartly.create(config);
+
+			final ArgumentCaptor<DefaultHTTPClientConfig> configCaptor = ArgumentCaptor
+					.forClass(DefaultHTTPClientConfig.class);
+
+			clientStatic.verify(times(1), () -> DefaultHTTPClient.create(configCaptor.capture()));
+			assertSame(defaultHTTPClientConfig, configCaptor.getValue());
+		}
+	}
+
+	@Test
 	void createContextWith() {
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setEndpoint("https://localhost/v1")
