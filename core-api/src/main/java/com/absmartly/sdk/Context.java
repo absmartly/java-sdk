@@ -200,27 +200,44 @@ public class Context implements Closeable {
 		return getAssignment(experimentName).variant;
 	}
 
-	public Object getVariable(@Nonnull String key) {
+	public Map<String, String> getVariableKeys() {
 		checkReady(true);
 
-		final Assignment assignment = getVariableAssignment(key);
-		if (assignment != null) {
-			if (!assignment.exposed.get()) {
-				queueExposure(assignment);
-			}
-			return assignment.variables.get(key);
-		}
-		return null;
+		final Map<String, String> variableKeys = new HashMap<>(indexVariables_.size());
+		indexVariables_.forEach((k, v) -> variableKeys.put(k, v.data.name));
+		return variableKeys;
 	}
 
-	public Object peekVariable(@Nonnull String key) {
+	public Object getVariableValue(@Nonnull String key, Object defaultValue) {
 		checkReady(true);
 
 		final Assignment assignment = getVariableAssignment(key);
 		if (assignment != null) {
-			return assignment.variables.get(key);
+			if (assignment.variables != null) {
+				if (!assignment.exposed.get()) {
+					queueExposure(assignment);
+				}
+
+				if (assignment.variables.containsKey(key)) {
+					return assignment.variables.get(key);
+				}
+			}
 		}
-		return null;
+		return defaultValue;
+	}
+
+	public Object peekVariableValue(@Nonnull String key, Object defaultValue) {
+		checkReady(true);
+
+		final Assignment assignment = getVariableAssignment(key);
+		if (assignment != null) {
+			if (assignment.variables != null) {
+				if (assignment.variables.containsKey(key)) {
+					return assignment.variables.get(key);
+				}
+			}
+		}
+		return defaultValue;
 	}
 
 	public void track(@Nonnull String goalName, Map<String, Object> properties) {

@@ -83,6 +83,15 @@ public class ABSmartlyConfig {
 		return this;
 	}
 
+	public DefaultHTTPClientConfig getDefaultHTTPClientConfig() {
+		return defaultHTTPClientConfig_;
+	}
+
+	public ABSmartlyConfig setDefaultHTTPClientConfig(@Nonnull DefaultHTTPClientConfig defaultHTTPClientConfig) {
+		defaultHTTPClientConfig_ = defaultHTTPClientConfig;
+		return this;
+	}
+
 	private String endpoint_;
 	private String apiKey_;
 	private String environment_;
@@ -92,4 +101,5 @@ public class ABSmartlyConfig {
 	private ContextEventHandler contextEventHandler_;
 	private VariableParser variableParser_;
 	private ScheduledExecutorService scheduler_;
+	private DefaultHTTPClientConfig defaultHTTPClientConfig_;
 }

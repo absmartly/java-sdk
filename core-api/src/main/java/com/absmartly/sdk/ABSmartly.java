@@ -44,7 +44,11 @@ public class ABSmartly implements Closeable {
 		}
 
 		if ((contextDataProvider_ == null) || (contextEventHandler_ == null)) {
-			httpClient_ = new DefaultHTTPClient(DefaultHTTPClientConfig.create());
+			if (clientConfig_ == null) {
+				clientConfig_ = DefaultHTTPClientConfig.create();
+			}
+
+			httpClient_ = new DefaultHTTPClient(clientConfig_);
 
 			if (contextDataProvider_ == null) {
 				contextDataProvider_ = new DefaultContextDataProvider(endpoint, httpClient_,

@@ -246,7 +246,13 @@ class ContextTest {
 		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
 		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
 		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariable("banner.border")).getMessage());
+				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
 	}
 
 	@Test
@@ -291,7 +297,13 @@ class ContextTest {
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
 		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariable("banner.border")).getMessage());
+				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
 	}
 
 	@Test
@@ -335,7 +347,13 @@ class ContextTest {
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
 		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariable("banner.border")).getMessage());
+				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
 	}
 
 	@Test
@@ -518,7 +536,7 @@ class ContextTest {
 	}
 
 	@Test
-	void peekVariable() {
+	void peekVariableValue() {
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units);
 
@@ -527,11 +545,13 @@ class ContextTest {
 		final Set<String> experiments = Arrays.stream(data.experiments).map(x -> x.name).collect(Collectors.toSet());
 
 		variableExperiments.forEach((variable, experimentName) -> {
-			final Object actual = context.peekVariable(variable);
-			if (experiments.contains(experimentName)) {
+			final Object actual = context.peekVariableValue(variable, 17);
+			final boolean eligible = !experimentName.equals("exp_test_not_eligible");
+
+			if (eligible && experiments.contains(experimentName)) {
 				assertEquals(expectedVariables.get(variable), actual);
 			} else {
-				assertNull(actual);
+				assertEquals(17, actual);
 			}
 		});
 
@@ -539,7 +559,7 @@ class ContextTest {
 	}
 
 	@Test
-	void getVariable() {
+	void getVariableValue() {
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units);
 
@@ -548,15 +568,29 @@ class ContextTest {
 		final Set<String> experiments = Arrays.stream(data.experiments).map(x -> x.name).collect(Collectors.toSet());
 
 		variableExperiments.forEach((variable, experimentName) -> {
-			final Object actual = context.getVariable(variable);
-			if (experiments.contains(experimentName)) {
+			final Object actual = context.getVariableValue(variable, 17);
+			final boolean eligible = !experimentName.equals("exp_test_not_eligible");
+
+			if (eligible && experiments.contains(experimentName)) {
 				assertEquals(expectedVariables.get(variable), actual);
 			} else {
-				assertNull(actual);
+				assertEquals(17, actual);
 			}
 		});
 
 		assertEquals(experiments.size(), context.getPendingCount());
+	}
+
+	@Test
+	void getVariableKeys() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units);
+
+		final Context context = Context.create(clock, config, scheduler, refreshDataFutureReady, dataProvider,
+				eventHandler,
+				variableParser);
+
+		assertEquals(variableExperiments, context.getVariableKeys());
 	}
 
 	@Test

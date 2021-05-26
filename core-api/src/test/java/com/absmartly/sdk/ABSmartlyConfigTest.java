@@ -62,11 +62,19 @@ class ABSmartlyConfigTest {
 	}
 
 	@Test
+	void setDefaultHTTPClientConfig() {
+		final DefaultHTTPClientConfig defaultHTTPClientConfig = mock(DefaultHTTPClientConfig.class);
+		final ABSmartlyConfig config = ABSmartlyConfig.create().setDefaultHTTPClientConfig(defaultHTTPClientConfig);
+		assertSame(defaultHTTPClientConfig, config.getDefaultHTTPClientConfig());
+	}
+
+	@Test
 	void setAll() {
 		final ContextEventHandler handler = mock(ContextEventHandler.class);
 		final ContextDataProvider provider = mock(ContextDataProvider.class);
 		final VariableParser parser = mock(VariableParser.class);
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+		final DefaultHTTPClientConfig defaultHTTPClientConfig = mock(DefaultHTTPClientConfig.class);
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setEndpoint("https://test.endpoint.com")
 				.setAPIKey("api-key-test")
@@ -75,7 +83,8 @@ class ABSmartlyConfigTest {
 				.setVariableParser(parser)
 				.setContextDataProvider(provider)
 				.setContextEventHandler(handler)
-				.setScheduler(scheduler);
+				.setScheduler(scheduler)
+				.setDefaultHTTPClientConfig(defaultHTTPClientConfig);
 		assertEquals("https://test.endpoint.com", config.getEndpoint());
 		assertEquals("api-key-test", config.getAPIKey());
 		assertEquals("test", config.getEnvironment());
@@ -84,5 +93,6 @@ class ABSmartlyConfigTest {
 		assertSame(handler, config.getContextEventHandler());
 		assertSame(parser, config.getVariableParser());
 		assertSame(scheduler, config.getScheduler());
+		assertSame(defaultHTTPClientConfig, config.getDefaultHTTPClientConfig());
 	}
 }
