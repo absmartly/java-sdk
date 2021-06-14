@@ -1,125 +1,46 @@
 package com.absmartly.sdk;
 
+import com.absmartly.sdk.json.PublishEvent;
+import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-
-import org.junit.jupiter.api.Test;
-
-import com.absmartly.sdk.json.PublishEvent;
-
 class DefaultContextEventHandlerTest {
 	@Test
-	void publish() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final ContextEventHandler handler = new DefaultContextEventHandler("https://api.absmartly.io/v1",
-				"test-api-key", "website", "dev", httpClient, ser);
-
-		final Map<String, Object> expectedHeaders = TestUtils.mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "java-sdk");
+	void publish() throws ExecutionException, InterruptedException {
+		final Context context = mock(Context.class);
+		final Client client = mock(Client.class);
+		final ContextEventHandler eventHandler = new DefaultContextEventHandler(client);
 
 		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
+		when(client.publish(event)).thenReturn(CompletableFuture.completedFuture(null));
 
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put("https://api.absmartly.io/v1/context", expectedHeaders, bytes))
-				.thenReturn(CompletableFuture.completedFuture(new HTTPClient.Response() {
-					@Override
-					public int getStatusCode() {
-						return 200;
-					}
+		final CompletableFuture<Void> dataFuture = eventHandler.publish(context, event);
+		final Void actual = dataFuture.get();
 
-					@Override
-					public String getStatusMessage() {
-						return "OK";
-					}
-
-					@Override
-					public String getContentType() {
-						return "application/json; charset=utf8";
-					}
-
-					@Override
-					public byte[] getContent() {
-						return new byte[]{0};
-					}
-				}));
-
-		final CompletableFuture<Void> publishFuture = handler.publish(event);
-		publishFuture.join();
-
-		verify(ser, times(1)).serialize(event);
-		verify(httpClient, times(1)).put(any(), any(), any());
-		verify(httpClient, times(1)).put("https://api.absmartly.io/v1/context", expectedHeaders, bytes);
+		assertNull(actual);
 	}
 
 	@Test
-	void publishExceptionallyHTTP() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final ContextEventHandler handler = new DefaultContextEventHandler("https://api.absmartly.io/v1",
-				"test-api-key", "website", "dev", httpClient, ser);
-
-		final Map<String, Object> expectedHeaders = TestUtils.mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "java-sdk");
+	void publishExceptionally() {
+		final Context context = mock(Context.class);
+		final Client client = mock(Client.class);
+		final ContextEventHandler eventHandler = new DefaultContextEventHandler(client);
 
 		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
-
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put("https://api.absmartly.io/v1/context", expectedHeaders, bytes))
-				.thenReturn(CompletableFuture.completedFuture(
-						new DefaultHTTPClient.DefaultResponse(500, "Internal Server Error", null, null)));
-
-		final CompletableFuture<Void> publishFuture = handler.publish(event);
-		final CompletionException actual = assertThrows(CompletionException.class, publishFuture::join);
-		assertTrue(actual.getCause() instanceof Exception);
-		assertEquals("Internal Server Error", actual.getCause().getMessage());
-
-		verify(ser, times(1)).serialize(event);
-		verify(httpClient, times(1)).put("https://api.absmartly.io/v1/context", expectedHeaders, bytes);
-	}
-
-	@Test
-	void publishExceptionallyConnection() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final ContextEventHandler handler = new DefaultContextEventHandler("https://api.absmartly.io/v1",
-				"test-api-key", "website", "dev", httpClient, ser);
-
-		final Map<String, Object> expectedHeaders = TestUtils.mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "java-sdk");
-
-		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
-
 		final Exception failure = new Exception("FAILED");
-		final CompletableFuture<HTTPClient.Response> responseFuture = TestUtils.failedFuture(failure);
+		final CompletableFuture<Void> failedFuture = TestUtils.failedFuture(failure);
+		when(client.publish(event)).thenReturn(failedFuture);
 
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put("https://api.absmartly.io/v1/context", expectedHeaders, bytes)).thenReturn(responseFuture);
-
-		final CompletableFuture<Void> publishFuture = handler.publish(event);
+		final CompletableFuture<Void> publishFuture = eventHandler.publish(context, event);
 		final CompletionException actual = assertThrows(CompletionException.class, publishFuture::join);
 		assertSame(actual.getCause(), failure);
 
-		verify(ser, times(1)).serialize(event);
-		verify(httpClient, times(1)).put("https://api.absmartly.io/v1/context", expectedHeaders, bytes);
+		verify(client, times(1)).publish(event);
 	}
 }

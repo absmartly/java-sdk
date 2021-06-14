@@ -1,5 +1,8 @@
 package com.absmartly.sdk;
 
+import com.absmartly.sdk.json.ContextData;
+
+import javax.annotation.Nonnull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Clock;
@@ -7,10 +10,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
-import javax.annotation.Nonnull;
-
-import com.absmartly.sdk.json.ContextData;
 
 public class ABSmartly implements Closeable {
 	public static ABSmartly create(@Nonnull ABSmartlyConfig config) {
@@ -22,43 +21,19 @@ public class ABSmartly implements Closeable {
 		contextEventHandler_ = config.getContextEventHandler();
 		variableParser_ = config.getVariableParser();
 		scheduler_ = config.getScheduler();
-		httpClientConfig_ = config.getDefaultHTTPClientConfig();
-
-		final String endpoint = config.getEndpoint();
-		if ((endpoint == null) || endpoint.isEmpty()) {
-			throw new IllegalArgumentException("Missing Endpoint configuration");
-		}
-
-		final String apiKey = config.getAPIKey();
-		if ((apiKey == null) || apiKey.isEmpty()) {
-			throw new IllegalArgumentException("Missing APIKey configuration");
-		}
-
-		final String application = config.getApplication();
-		if ((application == null) || application.isEmpty()) {
-			throw new IllegalArgumentException("Missing Application configuration");
-		}
-
-		final String environment = config.getEnvironment();
-		if ((environment == null) || environment.isEmpty()) {
-			throw new IllegalArgumentException("Missing Environment configuration");
-		}
 
 		if ((contextDataProvider_ == null) || (contextEventHandler_ == null)) {
-			if (httpClientConfig_ == null) {
-				httpClientConfig_ = DefaultHTTPClientConfig.create();
+			client_ = config.getClient();
+			if (client_ == null) {
+				throw new IllegalArgumentException("Missing Client instance");
 			}
 
-			httpClient_ = DefaultHTTPClient.create(httpClientConfig_);
-
 			if (contextDataProvider_ == null) {
-				contextDataProvider_ = new DefaultContextDataProvider(endpoint, httpClient_,
-						new DefaultContextDataDeserializer());
+				contextDataProvider_ = new DefaultContextDataProvider(client_);
 			}
 
 			if (contextEventHandler_ == null) {
-				contextEventHandler_ = new DefaultContextEventHandler(endpoint, apiKey, application, environment,
-						httpClient_, new DefaultContextEventSerializer());
+				contextEventHandler_ = new DefaultContextEventHandler(client_);
 			}
 		}
 
@@ -87,9 +62,9 @@ public class ABSmartly implements Closeable {
 
 	@Override
 	public void close() throws IOException {
-		if (httpClient_ != null) {
-			httpClient_.close();
-			httpClient_ = null;
+		if (client_ != null) {
+			client_.close();
+			client_ = null;
 		}
 
 		if (scheduler_ != null) {
@@ -100,10 +75,9 @@ public class ABSmartly implements Closeable {
 		}
 	}
 
-	private HTTPClient httpClient_;
+	private Client client_;
 	private ContextDataProvider contextDataProvider_;
 	private ContextEventHandler contextEventHandler_;
 	private VariableParser variableParser_;
 	private ScheduledExecutorService scheduler_;
-	private DefaultHTTPClientConfig httpClientConfig_;
 }

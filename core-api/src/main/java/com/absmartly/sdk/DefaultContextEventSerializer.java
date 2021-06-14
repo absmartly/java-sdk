@@ -28,7 +28,7 @@ public class DefaultContextEventSerializer implements ContextEventSerializer {
 	}
 
 	@Override
-	public byte[] serialize(@Nonnull PublishEvent event) {
+	public byte[] serialize(@Nonnull final PublishEvent event) {
 		try {
 			return writer_.writeValueAsBytes(event);
 		} catch (JsonProcessingException e) {

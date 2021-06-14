@@ -28,8 +28,8 @@ public class DefaultVariableParser implements VariableParser {
 				.readerFor(TypeFactory.defaultInstance().constructMapType(HashMap.class, String.class, Object.class));
 	}
 
-	public Map<String, Object> parse(@Nonnull String experimentName, @Nonnull String variantName,
-			@Nonnull String config) {
+	public Map<String, Object> parse(@Nonnull final Context context, @Nonnull final String experimentName,
+			@Nonnull final String variantName, @Nonnull final String config) {
 		try {
 			return reader_.readValue(config);
 		} catch (IOException e) {

@@ -12,17 +12,17 @@ public class ContextConfig {
 
 	private ContextConfig() {}
 
-	public ContextConfig setUnit(@Nonnull String unitType, @Nonnull String uid) {
+	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
 		units_.put(unitType, uid);
 		return this;
 	}
 
-	public ContextConfig setUnits(@Nonnull Map<String, String> units) {
+	public ContextConfig setUnits(@Nonnull final Map<String, String> units) {
 		units_.putAll(units);
 		return this;
 	}
 
-	public String getUnit(@Nonnull String unitType) {
+	public String getUnit(@Nonnull final String unitType) {
 		return units_.get(unitType);
 	}
 
@@ -30,7 +30,7 @@ public class ContextConfig {
 		return units_;
 	}
 
-	public ContextConfig setAttribute(@Nonnull String name, @Nonnull Object value) {
+	public ContextConfig setAttribute(@Nonnull final String name, @Nonnull final Object value) {
 		if (attributes_ == null) {
 			attributes_ = new HashMap<>();
 		}
@@ -38,7 +38,7 @@ public class ContextConfig {
 		return this;
 	}
 
-	public ContextConfig setAttributes(@Nonnull Map<String, Object> attributes) {
+	public ContextConfig setAttributes(@Nonnull final Map<String, Object> attributes) {
 		if (attributes_ == null) {
 			attributes_ = new HashMap<>(attributes.size());
 		}
@@ -46,7 +46,7 @@ public class ContextConfig {
 		return this;
 	}
 
-	public Object getAttribute(@Nonnull String name) {
+	public Object getAttribute(@Nonnull final String name) {
 		return this.attributes_.get(name);
 	}
 
@@ -54,7 +54,7 @@ public class ContextConfig {
 		return this.attributes_;
 	}
 
-	public ContextConfig setOverride(@Nonnull String experimentName, int variant) {
+	public ContextConfig setOverride(@Nonnull final String experimentName, int variant) {
 		if (overrides_ == null) {
 			overrides_ = new HashMap<>();
 		}
@@ -62,7 +62,7 @@ public class ContextConfig {
 		return this;
 	}
 
-	public ContextConfig setOverrides(@Nonnull Map<String, Integer> overrides) {
+	public ContextConfig setOverrides(@Nonnull final Map<String, Integer> overrides) {
 		if (overrides_ == null) {
 			overrides_ = new HashMap<>(overrides.size());
 		}
@@ -70,7 +70,7 @@ public class ContextConfig {
 		return this;
 	}
 
-	public Object getOverride(@Nonnull String experimentName) {
+	public Object getOverride(@Nonnull final String experimentName) {
 		return this.overrides_.get(experimentName);
 	}
 

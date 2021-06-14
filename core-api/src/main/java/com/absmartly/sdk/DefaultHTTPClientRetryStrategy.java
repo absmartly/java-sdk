@@ -14,23 +14,24 @@ import org.apache.hc.core5.util.TimeValue;
 public class DefaultHTTPClientRetryStrategy implements HttpRequestRetryStrategy {
 	private final static int MIN_RETRY_INTERVAL = 5;
 
-	public DefaultHTTPClientRetryStrategy(int maxRetries, long maxRetryIntervalMs) {
+	public DefaultHTTPClientRetryStrategy(final int maxRetries, final long maxRetryIntervalMs) {
 		this.maxRetries_ = maxRetries;
 		this.retryIntervalUs_ = Math.max(0, (2_000 * (maxRetryIntervalMs - MIN_RETRY_INTERVAL)) / (1L << maxRetries));
 	}
 
 	@Override
-	public boolean retryRequest(HttpRequest request, IOException exception, int execCount, HttpContext context) {
+	public boolean retryRequest(final HttpRequest request, final IOException exception, final int execCount,
+			final HttpContext context) {
 		return execCount <= maxRetries_;
 	}
 
 	@Override
-	public boolean retryRequest(HttpResponse response, int execCount, HttpContext context) {
+	public boolean retryRequest(final HttpResponse response, final int execCount, final HttpContext context) {
 		return (execCount <= maxRetries_) && retryableCodes_.contains(response.getCode());
 	}
 
 	@Override
-	public TimeValue getRetryInterval(HttpResponse response, int execCount, HttpContext context) {
+	public TimeValue getRetryInterval(final HttpResponse response, final int execCount, final HttpContext context) {
 		return TimeValue.ofMilliseconds(MIN_RETRY_INTERVAL + (((1L << (execCount - 1)) * retryIntervalUs_) / 1_000));
 	}
 

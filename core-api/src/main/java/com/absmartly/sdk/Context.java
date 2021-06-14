@@ -1,5 +1,11 @@
 package com.absmartly.sdk;
 
+import com.absmartly.sdk.internal.VariantAssigner;
+import com.absmartly.sdk.internal.hashing.Hashing;
+import com.absmartly.sdk.json.*;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -10,18 +16,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
-import com.absmartly.sdk.internal.VariantAssigner;
-import com.absmartly.sdk.internal.hashing.Hashing;
-import com.absmartly.sdk.json.*;
-
 public class Context implements Closeable {
-	public static Context create(@Nonnull Clock clock, @Nonnull ContextConfig config,
-			@Nonnull ScheduledExecutorService scheduler,
-			@Nonnull CompletableFuture<ContextData> dataFuture, @Nonnull ContextDataProvider dataProvider,
-			@Nonnull ContextEventHandler eventHandler, @Nonnull VariableParser variableParser) {
+	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
+			@Nonnull final ScheduledExecutorService scheduler,
+			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
+			@Nonnull final ContextEventHandler eventHandler, @Nonnull final VariableParser variableParser) {
 		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, variableParser);
 	}
 
@@ -126,7 +125,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	public void setOverride(@Nonnull String experimentName, int variant) {
+	public void setOverride(@Nonnull final String experimentName, final int variant) {
 		checkNotClosed();
 
 		final Integer previous = overrides_.put(experimentName, variant);
@@ -140,25 +139,25 @@ public class Context implements Closeable {
 		}
 	}
 
-	public Integer getOverride(@Nonnull String experimentName) {
+	public Integer getOverride(@Nonnull final String experimentName) {
 		return overrides_.get(experimentName);
 	}
 
-	public void setOverrides(@Nonnull Map<String, Integer> overrides) {
+	public void setOverrides(@Nonnull final Map<String, Integer> overrides) {
 		overrides.forEach(this::setOverride);
 	}
 
-	public void setAttribute(@Nonnull String name, @Nullable Object value) {
+	public void setAttribute(@Nonnull final String name, @Nullable final Object value) {
 		checkNotClosed();
 
 		attributes_.put(name, new Attribute(name, value, clock_.millis()));
 	}
 
-	public void setAttributes(@Nonnull Map<String, Object> attributes) {
+	public void setAttributes(@Nonnull final Map<String, Object> attributes) {
 		attributes.forEach(this::setAttribute);
 	}
 
-	public int getTreatment(@Nonnull String experimentName) {
+	public int getTreatment(@Nonnull final String experimentName) {
 		checkReady(true);
 
 		final Assignment assignment = getAssignment(experimentName);
@@ -169,7 +168,7 @@ public class Context implements Closeable {
 		return assignment.variant;
 	}
 
-	private void queueExposure(Assignment assignment) {
+	private void queueExposure(final Assignment assignment) {
 		if (assignment.exposed.compareAndSet(false, true)) {
 			final Exposure exposure = new Exposure();
 			exposure.id = assignment.id;
@@ -194,7 +193,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	public int peekTreatment(@Nonnull String experimentName) {
+	public int peekTreatment(@Nonnull final String experimentName) {
 		checkReady(true);
 
 		return getAssignment(experimentName).variant;
@@ -208,7 +207,7 @@ public class Context implements Closeable {
 		return variableKeys;
 	}
 
-	public Object getVariableValue(@Nonnull String key, Object defaultValue) {
+	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
 		checkReady(true);
 
 		final Assignment assignment = getVariableAssignment(key);
@@ -226,7 +225,7 @@ public class Context implements Closeable {
 		return defaultValue;
 	}
 
-	public Object peekVariableValue(@Nonnull String key, Object defaultValue) {
+	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
 		checkReady(true);
 
 		final Assignment assignment = getVariableAssignment(key);
@@ -240,7 +239,7 @@ public class Context implements Closeable {
 		return defaultValue;
 	}
 
-	public void track(@Nonnull String goalName, Map<String, Object> properties) {
+	public void track(@Nonnull final String goalName, final Map<String, Object> properties) {
 		checkNotClosed();
 
 		final GoalAchievement achievement = new GoalAchievement();
@@ -382,7 +381,7 @@ public class Context implements Closeable {
 					event.exposures = exposures;
 					event.goals = achievements;
 
-					return eventHandler_.publish(event);
+					return eventHandler_.publish(this, event);
 				}
 			}
 		} else {
@@ -407,7 +406,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	private void checkReady(boolean expectNotClosed) {
+	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
 			throw new IllegalStateException("ABSmartly Context is not yet ready.");
 		} else if (expectNotClosed) {
@@ -440,7 +439,7 @@ public class Context implements Closeable {
 		final AtomicBoolean exposed = new AtomicBoolean(false);
 	}
 
-	private Assignment getAssignment(String experimentName) {
+	private Assignment getAssignment(final String experimentName) {
 		return assignmentCache_.computeIfAbsent(experimentName, k -> {
 			final Integer override = overrides_.get(experimentName);
 			final ExperimentVariables experiment = getExperiment(experimentName);
@@ -500,7 +499,7 @@ public class Context implements Closeable {
 		});
 	}
 
-	private Assignment getVariableAssignment(String key) {
+	private Assignment getVariableAssignment(final String key) {
 		final ExperimentVariables experiment = getVariableExperiment(key);
 
 		if (experiment != null) {
@@ -509,7 +508,7 @@ public class Context implements Closeable {
 		return null;
 	}
 
-	private ExperimentVariables getExperiment(String experimentName) {
+	private ExperimentVariables getExperiment(final String experimentName) {
 		try {
 			dataLock_.readLock().lock();
 			return index_.get(experimentName);
@@ -518,7 +517,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	private ExperimentVariables getVariableExperiment(String key) {
+	private ExperimentVariables getVariableExperiment(final String key) {
 		try {
 			dataLock_.readLock().lock();
 			return indexVariables_.get(key);
@@ -527,11 +526,11 @@ public class Context implements Closeable {
 		}
 	}
 
-	private byte[] getUnitHash(String unitType, String unitUID) {
+	private byte[] getUnitHash(final String unitType, final String unitUID) {
 		return hashedUnits_.computeIfAbsent(unitType, k -> Hashing.hashUnit(unitUID));
 	}
 
-	private VariantAssigner getVariantAssigner(String unitType, byte[] unitHash) {
+	private VariantAssigner getVariantAssigner(final String unitType, final byte[] unitHash) {
 		return assigners_.computeIfAbsent(unitType, k -> new VariantAssigner(unitHash));
 	}
 
@@ -569,7 +568,7 @@ public class Context implements Closeable {
 		ArrayList<Map<String, Object>> variables;
 	}
 
-	private void setData(ContextData data) {
+	private void setData(final ContextData data) {
 		try {
 			final Map<String, ExperimentVariables> index = new HashMap<>();
 			final Map<String, ExperimentVariables> indexVariables = new HashMap<>();
@@ -581,7 +580,7 @@ public class Context implements Closeable {
 
 				for (final ExperimentVariant variant : experiment.variants) {
 					if ((variant.config != null) && !variant.config.isEmpty()) {
-						final Map<String, Object> variables = variableParser_.parse(experiment.name, variant.name,
+						final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
 								variant.config);
 						for (final String key : variables.keySet()) {
 							indexVariables.put(key, experimentVariables);
@@ -627,7 +626,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	private void setDataFailed(Throwable exception) {
+	private void setDataFailed(final Throwable exception) {
 		try {
 			dataLock_.writeLock().lock();
 			index_ = new HashMap<>();

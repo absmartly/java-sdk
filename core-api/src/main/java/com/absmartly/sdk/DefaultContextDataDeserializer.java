@@ -1,19 +1,16 @@
 package com.absmartly.sdk;
 
-import java.io.IOException;
-
-import javax.annotation.Nonnull;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.absmartly.sdk.json.ContextData;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.absmartly.sdk.json.ContextData;
+import javax.annotation.Nonnull;
+import java.io.IOException;
 
 public class DefaultContextDataDeserializer implements ContextDataDeserializer {
 	private static final Logger log = LoggerFactory.getLogger(DefaultContextDataDeserializer.class);
@@ -26,7 +23,7 @@ public class DefaultContextDataDeserializer implements ContextDataDeserializer {
 		this.reader_ = objectMapper.readerFor(ContextData.class);
 	}
 
-	public ContextData deserialize(@Nonnull byte[] bytes, int offset, int length) {
+	public ContextData deserialize(@Nonnull final byte[] bytes, final int offset, final int length) {
 		try {
 			return reader_.readValue(bytes, offset, length);
 		} catch (IOException e) {

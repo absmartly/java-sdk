@@ -18,9 +18,12 @@ public interface HTTPClient extends Closeable {
 		byte[] getContent();
 	}
 
-	CompletableFuture<Response> get(@Nonnull String url, @Nullable Map<String, Object> headers);
+	CompletableFuture<Response> get(@Nonnull final String url, @Nullable final Map<String, String> query,
+			@Nullable final Map<String, String> headers);
 
-	CompletableFuture<Response> put(@Nonnull String url, @Nullable Map<String, Object> headers, @Nonnull byte[] body);
+	CompletableFuture<Response> put(@Nonnull final String url, @Nullable final Map<String, String> query,
+			@Nullable final Map<String, String> headers, @Nonnull final byte[] body);
 
-	CompletableFuture<Response> post(@Nonnull String url, @Nullable Map<String, Object> headers, @Nonnull byte[] body);
+	CompletableFuture<Response> post(@Nonnull final String url, @Nullable final Map<String, String> query,
+			@Nullable final Map<String, String> headers, @Nonnull final byte[] body);
 }

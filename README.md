@@ -42,14 +42,17 @@ import com.absmartly.sdk.*;
 
 public class Example {
     static public void main(String[] args) {
-        final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
+        final ClientConfig clientConfig = ClientConfig.create()
                 .setEndpoint("https://your-company.absmartly.io/v1")
                 .setAPIKey("YOUR-API-KEY")
                 .setApplication("website") // created in the ABSmartly web console
                 .setEnvironment("development");  // created in the ABSmartly web console
 
-        final ABSmartlyConfig absmartly = ABSmartly.create(sdkConfig);
-        // ...
+        final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
+				.setClient(Client.create(clientConfig));
+
+		final ABSmartly sdk = ABSmartly.create(sdkConfig);
+		// ...
     }
 }
 ```
@@ -59,7 +62,7 @@ public class Example {
 // define a new context request
     final ContextConfig contextConfig = ContextConfig.create()
         .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8"); // a unique id identifying the user
-    
+
     final Context context = sdk.createContext(contextConfig)
         .waitUntilReady();
 ```
@@ -69,7 +72,7 @@ public class Example {
 // define a new context request
     final ContextConfig contextConfig = ContextConfig.create()
         .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8"); // a unique id identifying the user
-    
+
     final Context context = sdk.createContext(contextConfig)
         .waitUntilReadyAsync()
         .thenAccept(ctx -> System.out.printf("context ready!"));
@@ -82,10 +85,10 @@ We can avoid repeating the round-trip on the client-side by re-using data previo
 ```java
     final ContextConfig contextConfig = ContextConfig.create()
         .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8"); // a unique id identifying the user
-    
+
     final Context context = sdk.createContext(contextConfig)
         .waitUntilReady();
-    
+
     final ContextConfig anotherContextConfig = ContextConfig.create()
         .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8"); // a unique id identifying the other user
     
@@ -97,7 +100,7 @@ We can avoid repeating the round-trip on the client-side by re-using data previo
 The `setAttribute()` and `setAttributes()` methods can be called before the context is ready.
 ```java
     context.setAttribute('user_agent', req.getHeader("User-Agent"));
-            
+
     context.setAttributes(Map.of(
         "customer_age", "new_customer"
     ));

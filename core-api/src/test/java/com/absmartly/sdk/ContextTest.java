@@ -268,9 +268,9 @@ class ContextTest {
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
-		when(eventHandler.publish(any())).thenReturn(publishFuture);
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
 
-		final CompletableFuture<Void> closeFuture = context.closeAsync();
+		context.closeAsync();
 
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
@@ -318,7 +318,7 @@ class ContextTest {
 
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 
-		when(eventHandler.publish(any())).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.close();
 
@@ -393,11 +393,11 @@ class ContextTest {
 		context.waitUntilReady();
 
 		verify(scheduler, times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS));
-		verify(eventHandler, times(0)).publish(any());
+		verify(eventHandler, times(0)).publish(any(), any());
 
 		runnable.get().run();
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -464,9 +464,7 @@ class ContextTest {
 
 		context.setOverrides(overrides);
 
-		overrides.forEach((experimentName, variant) -> {
-			assertEquals(variant, context.getTreatment(experimentName));
-		});
+		overrides.forEach((experimentName, variant) -> assertEquals(variant, context.getTreatment(experimentName)));
 		assertEquals(overrides.size(), context.getPendingCount());
 
 		// overriding again with the same variant shouldn't clear assignment cache
@@ -642,12 +640,12 @@ class ContextTest {
 				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false),
 		};
 
-		when(eventHandler.publish(any())).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any());
-		verify(eventHandler, times(1)).publish(expected);
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
 
 		context.close();
 	}
@@ -674,11 +672,11 @@ class ContextTest {
 		context.getTreatment("exp_test_abc");
 
 		verify(scheduler, times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS));
-		verify(eventHandler, times(0)).publish(any());
+		verify(eventHandler, times(0)).publish(any(), any());
 
 		runnable.get().run();
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -711,12 +709,12 @@ class ContextTest {
 				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false),
 		};
 
-		when(eventHandler.publish(any())).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any());
-		verify(eventHandler, times(1)).publish(expected);
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
 
 		context.close();
 	}
@@ -739,11 +737,11 @@ class ContextTest {
 
 		assertEquals(1 + data.experiments.length, context.getPendingCount());
 
-		when(eventHandler.publish(any())).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 
 		assertEquals(0, context.getPendingCount());
 
@@ -784,12 +782,12 @@ class ContextTest {
 				new GoalAchievement("goal3", clock.millis(), null),
 		};
 
-		when(eventHandler.publish(any())).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any());
-		verify(eventHandler, times(1)).publish(expected);
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
 
 		context.close();
 	}
@@ -816,11 +814,11 @@ class ContextTest {
 		context.track("goal2", TestUtils.mapOf("value", 999.0));
 
 		verify(scheduler, times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS));
-		verify(eventHandler, times(0)).publish(any());
+		verify(eventHandler, times(0)).publish(any(), any());
 
 		runnable.get().run();
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -848,7 +846,7 @@ class ContextTest {
 
 		context.publish();
 
-		verify(eventHandler, times(0)).publish(any());
+		verify(eventHandler, times(0)).publish(any(), any());
 	}
 
 	@Test
@@ -891,7 +889,7 @@ class ContextTest {
 				new Attribute("attr1", "value1", clock.millis()),
 		};
 
-		when(eventHandler.publish(expected)).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
 
 		final CompletableFuture<Void> future = context.publishAsync();
 		assertEquals(0, context.getPendingCount());
@@ -901,8 +899,8 @@ class ContextTest {
 		assertEquals(0, context.getPendingCount());
 		assertEquals(2, context.getOverride("exp_test_abc"));
 
-		verify(eventHandler, times(1)).publish(any());
-		verify(eventHandler, times(1)).publish(expected);
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
 
 		Mockito.clearInvocations(eventHandler);
 
@@ -926,7 +924,7 @@ class ContextTest {
 				new Attribute("attr1", "value1", clock.millis()),
 		};
 
-		when(eventHandler.publish(expectedNext)).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(context, expectedNext)).thenReturn(CompletableFuture.completedFuture(null));
 
 		final CompletableFuture<Void> futureNext = context.publishAsync();
 		assertEquals(0, context.getPendingCount());
@@ -934,8 +932,8 @@ class ContextTest {
 		futureNext.join();
 		assertEquals(0, context.getPendingCount());
 
-		verify(eventHandler, times(1)).publish(any());
-		verify(eventHandler, times(1)).publish(expectedNext);
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expectedNext);
 	}
 
 	@Test
@@ -953,11 +951,11 @@ class ContextTest {
 
 		assertEquals(2, context.getPendingCount());
 
-		when(eventHandler.publish(any())).thenReturn(CompletableFuture.completedFuture(null));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.publish();
 
-		verify(eventHandler, times(0)).publish(any());
+		verify(eventHandler, times(0)).publish(any(), any());
 	}
 
 	@Test
@@ -975,12 +973,12 @@ class ContextTest {
 		assertEquals(1, context.getPendingCount());
 
 		final Exception failure = new Exception("FAILED");
-		when(eventHandler.publish(any())).thenReturn(TestUtils.failedFuture(failure));
+		when(eventHandler.publish(any(), any())).thenReturn(TestUtils.failedFuture(failure));
 
 		final CompletionException actual = assertThrows(CompletionException.class, context::publish);
 		assertSame(failure, actual.getCause());
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -995,7 +993,7 @@ class ContextTest {
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
-		when(eventHandler.publish(any())).thenReturn(publishFuture);
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
 
 		final CompletableFuture<Void> closingFuture = context.closeAsync();
 		final CompletableFuture<Void> closingFutureNext = context.closeAsync();
@@ -1011,7 +1009,7 @@ class ContextTest {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -1026,7 +1024,7 @@ class ContextTest {
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
-		when(eventHandler.publish(any())).thenReturn(publishFuture);
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
 
 		assertFalse(context.isClosing());
 		assertFalse(context.isClosed());
@@ -1040,7 +1038,7 @@ class ContextTest {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 
 		context.close();
 	}
@@ -1057,7 +1055,7 @@ class ContextTest {
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
-		when(eventHandler.publish(any())).thenReturn(publishFuture);
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
 
 		final Exception failure = new Exception("FAILED");
 		final Thread publisher = new Thread(() -> publishFuture.completeExceptionally(failure));
@@ -1068,7 +1066,7 @@ class ContextTest {
 
 		publisher.join();
 
-		verify(eventHandler, times(1)).publish(any());
+		verify(eventHandler, times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -1147,9 +1145,7 @@ class ContextTest {
 				variableParser);
 		assertTrue(context.isReady());
 
-		Arrays.stream(data.experiments).forEach(experiment -> {
-			context.getTreatment(experiment.name);
-		});
+		Arrays.stream(data.experiments).forEach(experiment -> context.getTreatment(experiment.name));
 		context.getTreatment("not_found");
 
 		assertEquals(data.experiments.length + 1, context.getPendingCount());
@@ -1163,9 +1159,7 @@ class ContextTest {
 		refreshDataFuture.complete(refreshData);
 		refreshFuture.join();
 
-		Arrays.stream(refreshData.experiments).forEach(experiment -> {
-			context.getTreatment(experiment.name);
-		});
+		Arrays.stream(refreshData.experiments).forEach(experiment -> context.getTreatment(experiment.name));
 		context.getTreatment("not_found");
 
 		assertEquals(refreshData.experiments.length + 1, context.getPendingCount());
@@ -1291,9 +1285,8 @@ class ContextTest {
 
 		verify(dataProvider, times(1)).getContextData();
 
-		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName)).forEach(experiment -> {
-			experiment.trafficSplit = new double[]{0.0, 1.0};
-		});
+		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName))
+				.forEach(experiment -> experiment.trafficSplit = new double[]{0.0, 1.0});
 
 		refreshDataFuture.complete(refreshData);
 		refreshFuture.join();

@@ -1,7 +1,11 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import com.absmartly.sdk.json.ContextData;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedConstruction;
+import org.mockito.MockedStatic;
 
 import java.io.IOException;
 import java.time.Clock;
@@ -9,21 +13,21 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.MockedConstruction;
-import org.mockito.MockedStatic;
-
-import com.absmartly.sdk.json.ContextData;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class ABSmartlyTest {
+	Client client;
+
+	@BeforeEach
+	void setUp() {
+		client = mock(Client.class);
+	}
+
 	@Test
 	void create() {
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("development");
+				.setClient(client);
 
 		final ABSmartly absmartly = ABSmartly.create(config);
 		assertNotNull(absmartly);
@@ -32,49 +36,16 @@ class ABSmartlyTest {
 	@Test
 	void createThrowsWithInvalidConfig() {
 		assertThrows(IllegalArgumentException.class, () -> {
-			final ABSmartlyConfig config = ABSmartlyConfig.create()
-					.setAPIKey("test-api-key")
-					.setApplication("website")
-					.setEnvironment("development");
+			final ABSmartlyConfig config = ABSmartlyConfig.create();
 
 			final ABSmartly absmartly = ABSmartly.create(config);
-		}, "Missing Endpoint configuration");
-
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ABSmartlyConfig config = ABSmartlyConfig.create()
-					.setEndpoint("https://localhost/v1")
-					.setApplication("website")
-					.setEnvironment("development");
-
-			final ABSmartly absmartly = ABSmartly.create(config);
-		}, "Missing APIKey configuration");
-
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ABSmartlyConfig config = ABSmartlyConfig.create()
-					.setEndpoint("https://localhost/v1")
-					.setAPIKey("test-api-key")
-					.setEnvironment("development");
-
-			final ABSmartly absmartly = ABSmartly.create(config);
-		}, "Missing Application configuration");
-
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ABSmartlyConfig config = ABSmartlyConfig.create()
-					.setEndpoint("https://localhost/v1")
-					.setAPIKey("test-api-key")
-					.setApplication("website");
-
-			final ABSmartly absmartly = ABSmartly.create(config);
-		}, "Missing Environment configuration");
+		}, "Missing Client instance configuration");
 	}
 
 	@Test
 	void createContext() {
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("development");
+				.setClient(client);
 
 		final CompletableFuture<ContextData> dataFuture = (CompletableFuture<ContextData>) mock(
 				CompletableFuture.class);
@@ -125,38 +96,9 @@ class ABSmartlyTest {
 	}
 
 	@Test
-	void createContextWithCustomDefaultHTTPConfig() {
-		final DefaultHTTPClientConfig defaultHTTPClientConfig = mock(DefaultHTTPClientConfig.class);
-
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("development")
-				.setDefaultHTTPClientConfig(defaultHTTPClientConfig);
-
-		try (final MockedStatic<DefaultHTTPClient> clientStatic = mockStatic(DefaultHTTPClient.class)) {
-			final DefaultHTTPClient clientMock = mock(DefaultHTTPClient.class);
-			clientStatic.when(() -> DefaultHTTPClient.create(any()))
-					.thenReturn(clientMock);
-
-			final ABSmartly absmartly = ABSmartly.create(config);
-
-			final ArgumentCaptor<DefaultHTTPClientConfig> configCaptor = ArgumentCaptor
-					.forClass(DefaultHTTPClientConfig.class);
-
-			clientStatic.verify(times(1), () -> DefaultHTTPClient.create(configCaptor.capture()));
-			assertSame(defaultHTTPClientConfig, configCaptor.getValue());
-		}
-	}
-
-	@Test
 	void createContextWith() {
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("development");
+				.setClient(client);
 
 		final ContextData data = new ContextData();
 		try (final MockedConstruction<DefaultContextDataProvider> dataProviderCtor = mockConstruction(
@@ -212,10 +154,7 @@ class ABSmartlyTest {
 		when(dataProvider.getContextData()).thenReturn(dataFuture);
 
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("development")
+				.setClient(client)
 				.setContextDataProvider(dataProvider);
 
 		final ABSmartly absmartly = ABSmartly.create(config);
@@ -237,10 +176,7 @@ class ABSmartlyTest {
 		final VariableParser variableParser = mock(VariableParser.class);
 
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("development")
+				.setClient(client)
 				.setContextDataProvider(dataProvider)
 				.setContextEventHandler(eventHandler)
 				.setScheduler(scheduler)
@@ -290,10 +226,7 @@ class ABSmartlyTest {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
 
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("development")
+				.setClient(client)
 				.setScheduler(scheduler);
 
 		final ABSmartly absmartly = ABSmartly.create(config);

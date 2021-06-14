@@ -11,7 +11,7 @@ public class DefaultHTTPClientConfig {
 		return connectTimeout_;
 	}
 
-	public DefaultHTTPClientConfig setConnectTimeout(long connectTimeoutMs) {
+	public DefaultHTTPClientConfig setConnectTimeout(final long connectTimeoutMs) {
 		connectTimeout_ = connectTimeoutMs;
 		return this;
 	}
@@ -20,7 +20,7 @@ public class DefaultHTTPClientConfig {
 		return connectionKeepAlive_;
 	}
 
-	public DefaultHTTPClientConfig setConnectionKeepAlive(long connectionKeepAliveMs) {
+	public DefaultHTTPClientConfig setConnectionKeepAlive(final long connectionKeepAliveMs) {
 		connectionKeepAlive_ = connectionKeepAliveMs;
 		return this;
 	}
@@ -29,7 +29,7 @@ public class DefaultHTTPClientConfig {
 		return connectionRequestTimeout_;
 	}
 
-	public DefaultHTTPClientConfig setConnectionRequestTimeout(long connectionRequestTimeoutMs) {
+	public DefaultHTTPClientConfig setConnectionRequestTimeout(final long connectionRequestTimeoutMs) {
 		connectionRequestTimeout_ = connectionRequestTimeoutMs;
 		return this;
 	}
@@ -38,7 +38,7 @@ public class DefaultHTTPClientConfig {
 		return maxRetries_;
 	}
 
-	public DefaultHTTPClientConfig setMaxRetries(int maxRetries) {
+	public DefaultHTTPClientConfig setMaxRetries(final int maxRetries) {
 		maxRetries_ = maxRetries;
 		return this;
 	}
@@ -47,7 +47,7 @@ public class DefaultHTTPClientConfig {
 		return retryInterval_;
 	}
 
-	public DefaultHTTPClientConfig setRetryInterval(long retryIntervalMs) {
+	public DefaultHTTPClientConfig setRetryInterval(final long retryIntervalMs) {
 		retryInterval_ = retryIntervalMs;
 		return this;
 	}

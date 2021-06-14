@@ -1,6 +1,5 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 
@@ -9,30 +8,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import org.junit.jupiter.api.Test;
 
 class ABSmartlyConfigTest {
-	@Test
-	void setEndpoint() {
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setEndpoint("https://test.endpoint.com");
-		assertEquals("https://test.endpoint.com", config.getEndpoint());
-	}
-
-	@Test
-	void setAPIKey() {
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setAPIKey("api-key-test");
-		assertEquals("api-key-test", config.getAPIKey());
-	}
-
-	@Test
-	void setEnvironment() {
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setEnvironment("test");
-		assertEquals("test", config.getEnvironment());
-	}
-
-	@Test
-	void setApplication() {
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setApplication("website");
-		assertEquals("website", config.getApplication());
-	}
-
 	@Test
 	void setContextDataProvider() {
 		final ContextDataProvider provider = mock(ContextDataProvider.class);
@@ -62,13 +37,6 @@ class ABSmartlyConfigTest {
 	}
 
 	@Test
-	void setDefaultHTTPClientConfig() {
-		final DefaultHTTPClientConfig defaultHTTPClientConfig = mock(DefaultHTTPClientConfig.class);
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setDefaultHTTPClientConfig(defaultHTTPClientConfig);
-		assertSame(defaultHTTPClientConfig, config.getDefaultHTTPClientConfig());
-	}
-
-	@Test
 	void setAll() {
 		final ContextEventHandler handler = mock(ContextEventHandler.class);
 		final ContextDataProvider provider = mock(ContextDataProvider.class);
@@ -76,23 +44,13 @@ class ABSmartlyConfigTest {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
 		final DefaultHTTPClientConfig defaultHTTPClientConfig = mock(DefaultHTTPClientConfig.class);
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
-				.setEndpoint("https://test.endpoint.com")
-				.setAPIKey("api-key-test")
-				.setEnvironment("test")
-				.setApplication("website")
 				.setVariableParser(parser)
 				.setContextDataProvider(provider)
 				.setContextEventHandler(handler)
-				.setScheduler(scheduler)
-				.setDefaultHTTPClientConfig(defaultHTTPClientConfig);
-		assertEquals("https://test.endpoint.com", config.getEndpoint());
-		assertEquals("api-key-test", config.getAPIKey());
-		assertEquals("test", config.getEnvironment());
-		assertEquals("website", config.getApplication());
+				.setScheduler(scheduler);
 		assertSame(provider, config.getContextDataProvider());
 		assertSame(handler, config.getContextEventHandler());
 		assertSame(parser, config.getVariableParser());
 		assertSame(scheduler, config.getScheduler());
-		assertSame(defaultHTTPClientConfig, config.getDefaultHTTPClientConfig());
 	}
 }

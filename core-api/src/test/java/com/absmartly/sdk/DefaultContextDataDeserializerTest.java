@@ -13,7 +13,7 @@ import com.absmartly.sdk.json.ExperimentVariant;
 
 class DefaultContextDataDeserializerTest {
 	@Test
-	void deserialize() throws IOException {
+	void deserialize() {
 		final byte[] bytes = TestUtils.getResourceBytes("context.json");
 
 		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();

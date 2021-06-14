@@ -1,11 +1,5 @@
 package com.absmartly.sdk;
 
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
@@ -20,12 +14,17 @@ import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 public class DefaultHTTPClient implements HTTPClient {
-	public static DefaultHTTPClient create(DefaultHTTPClientConfig config) {
+	public static DefaultHTTPClient create(final DefaultHTTPClientConfig config) {
 		return new DefaultHTTPClient(config);
 	}
 
-	private DefaultHTTPClient(DefaultHTTPClientConfig config) {
+	private DefaultHTTPClient(final DefaultHTTPClientConfig config) {
 		final PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManagerBuilder
 				.create()
 				.setMaxConnTotal(200)
@@ -52,7 +51,8 @@ public class DefaultHTTPClient implements HTTPClient {
 	}
 
 	static class DefaultResponse implements HTTPClient.Response {
-		public DefaultResponse(int statusCode, String statusMessage, String contentType, byte[] content) {
+		public DefaultResponse(final int statusCode, final String statusMessage, final String contentType,
+				final byte[] content) {
 			this.statusCode = statusCode;
 			this.statusMessage = statusMessage;
 			this.contentType = contentType;
@@ -82,37 +82,26 @@ public class DefaultHTTPClient implements HTTPClient {
 	}
 
 	@Override
-	public CompletableFuture<Response> get(@Nonnull String url, @Nullable Map<String, Object> headers) {
-		final SimpleHttpRequest get = SimpleRequestBuilder.get(url).build();
-
-		return request(get, headers);
+	public CompletableFuture<Response> get(@Nonnull final String url, @Nullable final Map<String, String> query,
+			@Nullable final Map<String, String> headers) {
+		return request(buildRequest(SimpleRequestBuilder.get(url), query, headers, null));
 	}
 
 	@Override
-	public CompletableFuture<Response> put(@Nonnull String url, @Nullable Map<String, Object> headers,
+	public CompletableFuture<Response> put(@Nonnull final String url, @Nullable final Map<String, String> query,
+			@Nullable final Map<String, String> headers,
 			@Nonnull byte[] body) {
-		final SimpleHttpRequest put = SimpleRequestBuilder.put(url).build();
-
-		put.setBody(body, ContentType.APPLICATION_JSON);
-		return request(put, headers);
+		return request(buildRequest(SimpleRequestBuilder.put(url), query, headers, body));
 	}
 
 	@Override
-	public CompletableFuture<Response> post(@Nonnull String url, @Nullable Map<String, Object> headers,
-			@Nonnull byte[] body) {
-		final SimpleHttpRequest post = SimpleRequestBuilder.post(url).build();
-
-		post.setBody(body, ContentType.APPLICATION_JSON);
-		return request(post, headers);
+	public CompletableFuture<Response> post(@Nonnull final String url, @Nullable final Map<String, String> query,
+			@Nullable final Map<String, String> headers, @Nonnull final byte[] body) {
+		return request(buildRequest(SimpleRequestBuilder.post(url), query, headers, body));
 	}
 
-	private CompletableFuture<Response> request(SimpleHttpRequest request,
-			@Nullable Map<String, Object> additionalHeaders) {
+	private CompletableFuture<Response> request(final SimpleHttpRequest request) {
 		final CompletableFuture<Response> future = new CompletableFuture<>();
-
-		if (additionalHeaders != null) {
-			additionalHeaders.forEach(request::setHeader);
-		}
 
 		httpClient_.execute(request, new FutureCallback<SimpleHttpResponse>() {
 			@Override
@@ -138,6 +127,23 @@ public class DefaultHTTPClient implements HTTPClient {
 		});
 
 		return future;
+	}
+
+	private SimpleHttpRequest buildRequest(final SimpleRequestBuilder request, final Map<String, String> query,
+			final Map<String, String> headers, final byte[] body) {
+		if (query != null) {
+			query.forEach(request::addParameter);
+		}
+
+		if (headers != null) {
+			headers.forEach(request::setHeader);
+		}
+
+		if (body != null) {
+			request.setBody(body, ContentType.APPLICATION_JSON);
+		}
+
+		return request.build();
 	}
 
 	@Override

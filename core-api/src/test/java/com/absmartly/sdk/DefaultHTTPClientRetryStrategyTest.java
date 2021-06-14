@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Set;
 
 import org.apache.hc.client5.http.ConnectTimeoutException;
-import org.apache.hc.client5.http.async.methods.SimpleHttpRequests;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
+import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
 import org.apache.hc.core5.http.HttpRequest;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.protocol.BasicHttpContext;
@@ -19,7 +19,7 @@ class DefaultHTTPClientRetryStrategyTest {
 	@Test
 	void retryRequest() {
 		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, 1_000);
-		final HttpRequest request = SimpleHttpRequests.get("http://localhost/v1/context");
+		final HttpRequest request = SimpleRequestBuilder.get("http://localhost/v1/context").build();
 		final HttpContext context = new BasicHttpContext();
 
 		int i = 1;
