@@ -9,7 +9,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 
 import com.absmartly.sdk.json.PublishEvent;
 
@@ -19,7 +18,6 @@ public class DefaultContextEventSerializer implements ContextEventSerializer {
 	public DefaultContextEventSerializer() {
 		final ObjectMapper objectMapper = new ObjectMapper();
 		objectMapper.registerModule(new JavaTimeModule());
-		objectMapper.registerModule(new AfterburnerModule());
 		this.writer_ = objectMapper.writerFor(PublishEvent.class);
 	}
 

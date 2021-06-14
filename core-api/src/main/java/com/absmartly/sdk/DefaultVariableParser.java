@@ -14,7 +14,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 
 public class DefaultVariableParser implements VariableParser {
 	private static final Logger log = LoggerFactory.getLogger(DefaultVariableParser.class);
@@ -23,7 +22,6 @@ public class DefaultVariableParser implements VariableParser {
 		final ObjectMapper objectMapper = new ObjectMapper();
 		objectMapper.enable(MapperFeature.USE_STATIC_TYPING);
 		objectMapper.registerModule(new JavaTimeModule());
-		objectMapper.registerModule(new AfterburnerModule());
 		this.reader_ = objectMapper
 				.readerFor(TypeFactory.defaultInstance().constructMapType(HashMap.class, String.class, Object.class));
 	}

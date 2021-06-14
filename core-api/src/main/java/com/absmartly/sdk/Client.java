@@ -1,14 +1,15 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
-
-import javax.annotation.Nonnull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+
+import javax.annotation.Nonnull;
+
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.PublishEvent;
 
 public class Client implements Closeable {
 	static public Client create(@Nonnull final ClientConfig config) {

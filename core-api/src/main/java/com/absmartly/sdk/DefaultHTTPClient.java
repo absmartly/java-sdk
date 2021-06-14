@@ -1,5 +1,11 @@
 package com.absmartly.sdk;
 
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
@@ -13,11 +19,6 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 public class DefaultHTTPClient implements HTTPClient {
 	public static DefaultHTTPClient create(final DefaultHTTPClientConfig config) {

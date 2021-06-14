@@ -1,14 +1,15 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.json.PublishEvent;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import org.junit.jupiter.api.Test;
+
+import com.absmartly.sdk.json.PublishEvent;
 
 class DefaultContextEventHandlerTest {
 	@Test

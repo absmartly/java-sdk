@@ -1,5 +1,15 @@
 package com.absmartly.sdk;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
@@ -13,16 +23,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 class DefaultHTTPClientTest {
 	CloseableHttpAsyncClient asyncHTTPClient;
@@ -75,7 +75,8 @@ class DefaultHTTPClientTest {
 		if (headers != null) {
 			assertEquals(headers.size(), request.getHeaders().length);
 
-			headers.forEach((key, value) -> assertDoesNotThrow(() -> assertEquals(value, request.getHeader(key).getValue())));
+			headers.forEach(
+					(key, value) -> assertDoesNotThrow(() -> assertEquals(value, request.getHeader(key).getValue())));
 		} else {
 			assertEquals(0, request.getHeaders().length);
 		}
@@ -84,7 +85,7 @@ class DefaultHTTPClientTest {
 
 		assertDoesNotThrow(() -> {
 			final String queryString = request.getUri().getQuery();
-			if ((queryString != null) && !queryString.isBlank()) {
+			if ((queryString != null) && !queryString.isEmpty()) {
 				final String[] parameters = queryString.split("&");
 				for (final String parameter : parameters) {
 					final String[] keyValue = parameter.split("=");
@@ -98,7 +99,7 @@ class DefaultHTTPClientTest {
 					case 0:
 						break;
 					default:
-						actualQueryMap.put(keyValue[0], parameter.substring(keyValue[0].length()+1));
+						actualQueryMap.put(keyValue[0], parameter.substring(keyValue[0].length() + 1));
 					}
 				}
 			}
@@ -124,8 +125,8 @@ class DefaultHTTPClientTest {
 
 			final Map<String, String> requestQuery = TestUtils.mapOf("application", "website", "environment", "dev");
 			final Map<String, String> requestHeaders = TestUtils.mapOf(
-				"X-Application", "website",
-				"X-Environment", "dev");
+					"X-Application", "website",
+					"X-Environment", "dev");
 
 			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
 				assertRequestEquals("GET", null, null, requestQuery, requestHeaders, invocation.getArgument(0));
@@ -224,8 +225,8 @@ class DefaultHTTPClientTest {
 
 			final Map<String, String> requestQuery = TestUtils.mapOf("application", "website", "environment", "dev");
 			final Map<String, String> requestHeaders = TestUtils.mapOf(
-				"X-Application", "website",
-				"X-Environment", "dev");
+					"X-Application", "website",
+					"X-Environment", "dev");
 
 			final byte[] requestBody = new byte[]{10, 13};
 

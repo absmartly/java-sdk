@@ -9,4 +9,6 @@ description = """ABSmartly Java SDK Example"""
 
 dependencies {
 	implementation group: "com.absmartly.sdk", name: "core-api", version: "1.0.6"
+
+	//implementation project(":core-api")
 }

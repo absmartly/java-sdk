@@ -1,11 +1,5 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.internal.VariantAssigner;
-import com.absmartly.sdk.internal.hashing.Hashing;
-import com.absmartly.sdk.json.*;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -15,6 +9,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
+import com.absmartly.sdk.internal.VariantAssigner;
+import com.absmartly.sdk.internal.hashing.Hashing;
+import com.absmartly.sdk.json.*;
 
 public class Context implements Closeable {
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
