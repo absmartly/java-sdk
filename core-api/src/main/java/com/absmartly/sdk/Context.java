@@ -320,6 +320,9 @@ public class Context implements Closeable {
 					});
 
 					return closingFuture_;
+				} else {
+					closed_.set(true);
+					closing_.set(false);
 				}
 			}
 
