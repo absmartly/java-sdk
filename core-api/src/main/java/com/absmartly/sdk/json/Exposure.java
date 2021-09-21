@@ -17,11 +17,12 @@ public class Exposure {
 	public boolean eligible;
 	public boolean overridden;
 	public boolean fullOn;
+	public boolean custom;
 
 	public Exposure() {}
 
 	public Exposure(int id, String name, String unit, int variant, long exposedAt, boolean assigned, boolean eligible,
-			boolean overridden, boolean fullOn) {
+			boolean overridden, boolean fullOn, boolean custom) {
 		this.id = id;
 		this.name = name;
 		this.unit = unit;
@@ -31,6 +32,7 @@ public class Exposure {
 		this.eligible = eligible;
 		this.overridden = overridden;
 		this.fullOn = fullOn;
+		this.custom = custom;
 	}
 
 	@Override
@@ -42,13 +44,13 @@ public class Exposure {
 		Exposure exposure = (Exposure) o;
 		return id == exposure.id && variant == exposure.variant && exposedAt == exposure.exposedAt
 				&& assigned == exposure.assigned && eligible == exposure.eligible && overridden == exposure.overridden
-				&& fullOn == exposure.fullOn && Objects.equals(name, exposure.name)
+				&& fullOn == exposure.fullOn && custom == exposure.custom && Objects.equals(name, exposure.name)
 				&& Objects.equals(unit, exposure.unit);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(id, name, unit, variant, exposedAt, assigned, eligible, overridden, fullOn);
+		return Objects.hash(id, name, unit, variant, exposedAt, assigned, eligible, overridden, fullOn, custom);
 	}
 
 	@Override
@@ -63,6 +65,7 @@ public class Exposure {
 				", eligible=" + eligible +
 				", overridden=" + overridden +
 				", fullOn=" + fullOn +
+				", custom=" + custom +
 				'}';
 	}
 }

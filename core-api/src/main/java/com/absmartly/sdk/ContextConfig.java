@@ -78,6 +78,30 @@ public class ContextConfig {
 		return this.overrides_;
 	}
 
+	public ContextConfig setCustomAssignment(@Nonnull final String experimentName, int variant) {
+		if (cassigmnents_ == null) {
+			cassigmnents_ = new HashMap<>();
+		}
+		cassigmnents_.put(experimentName, variant);
+		return this;
+	}
+
+	public ContextConfig setCustomAssignments(@Nonnull final Map<String, Integer> customAssignments) {
+		if (cassigmnents_ == null) {
+			cassigmnents_ = new HashMap<>(customAssignments.size());
+		}
+		cassigmnents_.putAll(customAssignments);
+		return this;
+	}
+
+	public Object getCustomAssignment(@Nonnull final String experimentName) {
+		return this.cassigmnents_.get(experimentName);
+	}
+
+	public Map<String, Integer> getCustomAssignments() {
+		return this.cassigmnents_;
+	}
+
 	public ContextConfig setPublishDelay(long delayMs) {
 		this.publishDelay_ = delayMs;
 		return this;
@@ -90,6 +114,7 @@ public class ContextConfig {
 	private final Map<String, String> units_ = new HashMap<>();
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
+	private Map<String, Integer> cassigmnents_;
 
 	private long publishDelay_ = 100;
 }

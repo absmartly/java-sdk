@@ -48,6 +48,9 @@ public class Context implements Closeable {
 		final Map<String, Integer> overrides = config.getOverrides();
 		overrides_ = (overrides != null) ? new ConcurrentHashMap<>(overrides) : new ConcurrentHashMap<>();
 
+		final Map<String, Integer> cassignments = config.getCustomAssignments();
+		cassignments_ = (cassignments != null) ? new ConcurrentHashMap<>(cassignments) : new ConcurrentHashMap<>();
+
 		if (dataFuture.isDone()) {
 			dataFuture.thenAccept(this::setData)
 					.exceptionally(exception -> {
@@ -148,6 +151,28 @@ public class Context implements Closeable {
 		overrides.forEach(this::setOverride);
 	}
 
+	public void setCustomAssignment(@Nonnull final String experimentName, final int variant) {
+		checkNotClosed();
+
+		final Integer previous = cassignments_.put(experimentName, variant);
+		if ((previous == null) || (previous != variant)) {
+			final Assignment assignment = assignmentCache_.get(experimentName);
+			if (assignment != null) {
+				if (!assignment.custom || (assignment.variant != variant)) {
+					assignmentCache_.remove(experimentName, assignment);
+				}
+			}
+		}
+	}
+
+	public Integer getCustomAssignment(@Nonnull final String experimentName) {
+		return cassignments_.get(experimentName);
+	}
+
+	public void setCustomAssignments(@Nonnull final Map<String, Integer> customAssignments) {
+		customAssignments.forEach(this::setCustomAssignment);
+	}
+
 	public void setAttribute(@Nonnull final String name, @Nullable final Object value) {
 		checkNotClosed();
 
@@ -181,6 +206,7 @@ public class Context implements Closeable {
 			exposure.eligible = assignment.eligible;
 			exposure.overridden = assignment.overridden;
 			exposure.fullOn = assignment.fullOn;
+			exposure.custom = assignment.custom;
 
 			try {
 				eventLock_.lock();
@@ -438,6 +464,7 @@ public class Context implements Closeable {
 		boolean overridden;
 		boolean eligible;
 		boolean fullOn;
+		boolean custom;
 		Map<String, Object> variables = Collections.emptyMap();
 
 		final AtomicBoolean exposed = new AtomicBoolean(false);
@@ -445,6 +472,7 @@ public class Context implements Closeable {
 
 	private Assignment getAssignment(final String experimentName) {
 		return assignmentCache_.computeIfAbsent(experimentName, k -> {
+			final Integer custom = cassignments_.get(experimentName);
 			final Integer override = overrides_.get(experimentName);
 			final ExperimentVariables experiment = getExperiment(experimentName);
 
@@ -454,6 +482,7 @@ public class Context implements Closeable {
 
 			if (override != null) {
 				if (experiment != null) {
+					assignment.id = experiment.data.id;
 					assignment.unitType = experiment.data.unitType;
 					assignment.assigned = units_.containsKey(experiment.data.unitType);
 				}
@@ -473,8 +502,13 @@ public class Context implements Closeable {
 									experiment.data.trafficSeedHi,
 									experiment.data.trafficSeedLo) == 1;
 							if (eligible) {
-								assignment.variant = assigner.assign(experiment.data.split, experiment.data.seedHi,
-										experiment.data.seedLo);
+								if (custom != null) {
+									assignment.variant = custom;
+									assignment.custom = true;
+								} else {
+									assignment.variant = assigner.assign(experiment.data.split, experiment.data.seedHi,
+											experiment.data.seedLo);
+								}
 							} else {
 								assignment.eligible = false;
 								assignment.variant = 0;
@@ -666,6 +700,7 @@ public class Context implements Closeable {
 
 	private final ConcurrentMap<String, Attribute> attributes_ = new ConcurrentHashMap<>();
 	private final ConcurrentMap<String, Integer> overrides_;
+	private final ConcurrentMap<String, Integer> cassignments_;
 
 	private final AtomicInteger pendingCount_ = new AtomicInteger(0);
 	private final AtomicBoolean closing_ = new AtomicBoolean(false);

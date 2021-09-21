@@ -117,6 +117,22 @@ class ContextTest {
 	}
 
 	@Test
+	void constructorSetsCustomAssignments() {
+		final Map<String, Integer> cassignments = TestUtils.mapOf(
+				"exp_test", 2,
+				"exp_test_1", 1);
+
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setCustomAssignments(cassignments);
+
+		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
+				variableParser);
+		cassignments.forEach(
+				(experimentName, variant) -> assertEquals(variant, context.getCustomAssignment(experimentName)));
+	}
+
+	@Test
 	void becomesReadyWithCompletedFuture() {
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units);
@@ -288,6 +304,13 @@ class ContextTest {
 				assertThrows(IllegalStateException.class, () -> context.setOverrides(TestUtils.mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
+						.getMessage());
+		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class,
+						() -> context.setCustomAssignments(TestUtils.mapOf("exp_test_ab", 2)))
+								.getMessage());
+		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
@@ -337,6 +360,13 @@ class ContextTest {
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setOverrides(TestUtils.mapOf("exp_test_ab", 2)))
 						.getMessage());
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
+						.getMessage());
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class,
+						() -> context.setCustomAssignments(TestUtils.mapOf("exp_test_ab", 2)))
+								.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
 		assertEquals(closedMessage,
@@ -515,6 +545,116 @@ class ContextTest {
 	}
 
 	@Test
+	void setCustomAssignment() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setAttributes(attributes);
+
+		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
+				variableParser);
+
+		context.setCustomAssignment("exp_test", 2);
+
+		assertEquals(2, context.getCustomAssignment("exp_test"));
+
+		context.setCustomAssignment("exp_test", 3);
+		assertEquals(3, context.getCustomAssignment("exp_test"));
+
+		context.setCustomAssignment("exp_test_2", 1);
+		assertEquals(1, context.getCustomAssignment("exp_test_2"));
+
+		final Map<String, Integer> cassignments = TestUtils.mapOf(
+				"exp_test_new", 3,
+				"exp_test_new_2", 5);
+
+		context.setCustomAssignments(cassignments);
+
+		assertEquals(3, context.getCustomAssignment("exp_test"));
+		assertEquals(1, context.getCustomAssignment("exp_test_2"));
+		cassignments.forEach(
+				(experimentName, variant) -> assertEquals(variant, context.getCustomAssignment(experimentName)));
+
+		assertNull(context.getCustomAssignment("exp_test_not_found"));
+	}
+
+	@Test
+	void setCustomAssignmentDoesNotOverrideFullOnOrNotEligibleAssignments() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setAttributes(attributes);
+
+		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
+				variableParser);
+
+		context.setCustomAssignment("exp_test_not_eligible", 3);
+		context.setCustomAssignment("exp_test_fullon", 3);
+
+		assertEquals(0, context.getTreatment("exp_test_not_eligible"));
+		assertEquals(2, context.getTreatment("exp_test_fullon"));
+	}
+
+	@Test
+	void setCustomAssignmentClearsAssignmentCache() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setAttributes(attributes);
+
+		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
+				variableParser);
+
+		final Map<String, Integer> cassignments = TestUtils.mapOf(
+				"exp_test_ab", 2,
+				"exp_test_abc", 3);
+
+		cassignments.forEach((experimentName, variant) -> assertEquals(expectedVariants.get(experimentName),
+				context.getTreatment(experimentName)));
+		assertEquals(cassignments.size(), context.getPendingCount());
+
+		context.setCustomAssignments(cassignments);
+
+		cassignments.forEach((experimentName, variant) -> assertEquals(variant, context.getTreatment(experimentName)));
+		assertEquals(2 * cassignments.size(), context.getPendingCount());
+
+		// overriding again with the same variant shouldn't clear assignment cache
+		cassignments.forEach((experimentName, variant) -> {
+			context.setCustomAssignment(experimentName, variant);
+			assertEquals(variant, context.getTreatment(experimentName));
+		});
+		assertEquals(2 * cassignments.size(), context.getPendingCount());
+
+		// overriding with the different variant should clear assignment cache
+		cassignments.forEach((experimentName, variant) -> {
+			context.setCustomAssignment(experimentName, variant + 11);
+			assertEquals(variant + 11, context.getTreatment(experimentName));
+		});
+
+		assertEquals(cassignments.size() * 3, context.getPendingCount());
+	}
+
+	@Test
+	void setCustomAssignmentsBeforeReady() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units);
+
+		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
+				variableParser);
+		assertFalse(context.isReady());
+
+		context.setCustomAssignment("exp_test", 2);
+		context.setCustomAssignments(TestUtils.mapOf(
+				"exp_test_new", 3,
+				"exp_test_new_2", 5));
+
+		dataFuture.complete(data);
+
+		context.waitUntilReady();
+
+		assertEquals(2, context.getCustomAssignment("exp_test"));
+		assertEquals(3, context.getCustomAssignment("exp_test_new"));
+		assertEquals(5, context.getCustomAssignment("exp_test_new_2"));
+	}
+
+	@Test
 	void peekTreatment() {
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units);
@@ -633,11 +773,12 @@ class ContextTest {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false),
-				new Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false),
-				new Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false),
-				new Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true),
-				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
+				new Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false),
+				new Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false,
+						false),
+				new Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false),
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -702,11 +843,11 @@ class ContextTest {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(0, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false),
-				new Exposure(0, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false),
-				new Exposure(0, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false),
-				new Exposure(0, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false),
-				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false),
+				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false),
+				new Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false),
+				new Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false),
+				new Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false),
+				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -850,24 +991,26 @@ class ContextTest {
 	}
 
 	@Test
-	void publishResetsInternalQueuesAndKeepAttributesAndOverrides() {
+	void publishResetsInternalQueuesAndKeepsAttributesOverridesAndCustomAssignments() {
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units)
 				.setAttributes(TestUtils.mapOf(
 						"attr1", "value1",
 						"attr2", "value2"))
-				.setOverride("exp_test_abc", 2);
+				.setCustomAssignment("exp_test_abc", 3)
+				.setOverride("not_found", 3);
 
 		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
 				variableParser);
+
 		assertEquals(0, context.getPendingCount());
-		assertEquals(2, context.getOverride("exp_test_abc"));
 
 		assertEquals(1, context.getTreatment("exp_test_ab"));
-		assertEquals(2, context.getTreatment("exp_test_abc"));
+		assertEquals(3, context.getTreatment("exp_test_abc"));
+		assertEquals(3, context.getTreatment("not_found"));
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 
-		assertEquals(3, context.getPendingCount());
+		assertEquals(4, context.getPendingCount());
 
 		final PublishEvent expected = new PublishEvent();
 		expected.hashed = true;
@@ -875,8 +1018,9 @@ class ContextTest {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false),
-				new Exposure(0, "exp_test_abc", "session_id", 2, clock.millis(), true, true, true, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
+				new Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true),
+				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false),
 		};
 
 		expected.goals = new GoalAchievement[]{
@@ -893,11 +1037,13 @@ class ContextTest {
 
 		final CompletableFuture<Void> future = context.publishAsync();
 		assertEquals(0, context.getPendingCount());
-		assertEquals(2, context.getOverride("exp_test_abc"));
+		assertEquals(3, context.getCustomAssignment("exp_test_abc"));
+		assertEquals(3, context.getOverride("not_found"));
 
 		future.join();
 		assertEquals(0, context.getPendingCount());
-		assertEquals(2, context.getOverride("exp_test_abc"));
+		assertEquals(3, context.getCustomAssignment("exp_test_abc"));
+		assertEquals(3, context.getOverride("not_found"));
 
 		verify(eventHandler, times(1)).publish(any(), any());
 		verify(eventHandler, times(1)).publish(context, expected);
@@ -905,6 +1051,9 @@ class ContextTest {
 		Mockito.clearInvocations(eventHandler);
 
 		// repeat
+		assertEquals(1, context.getTreatment("exp_test_ab"));
+		assertEquals(3, context.getTreatment("exp_test_abc"));
+		assertEquals(3, context.getTreatment("not_found"));
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 
 		assertEquals(1, context.getPendingCount());

@@ -63,6 +63,23 @@ class ContextConfigTest {
 	}
 
 	@Test
+	void setCustomAssignment() {
+		final ContextConfig config = ContextConfig.create()
+				.setCustomAssignment("exp_test", 2);
+		assertEquals(2, config.getCustomAssignment("exp_test"));
+	}
+
+	@Test
+	void setCustomAssignments() {
+		final Map<String, Integer> cassignments = TestUtils.mapOf("exp_test", 2, "exp_test_new", 1);
+		final ContextConfig config = ContextConfig.create()
+				.setCustomAssignments(cassignments);
+		assertEquals(2, config.getCustomAssignment("exp_test"));
+		assertEquals(1, config.getCustomAssignment("exp_test_new"));
+		assertEquals(cassignments, config.getCustomAssignments());
+	}
+
+	@Test
 	void setPublishDelay() {
 		final ContextConfig config = ContextConfig.create()
 				.setPublishDelay(999);
