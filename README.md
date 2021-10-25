@@ -1,11 +1,11 @@
-# A/B Smartly SDK 
+# A/B Smartly SDK
 
 A/B Smartly - Java SDK
 
 ## Compatibility
 
 The A/B Smartly Java SDK is compatible with Java versions 1.8 and later.
-It provides both a blocking and an asynchronous interfaces. 
+It provides both a blocking and an asynchronous interfaces.
 
 ## Installation
 
@@ -15,7 +15,7 @@ To install the ABSmartly SDK, place the following in your `build.gradle` and rep
 
 ```gradle
 dependencies {
-  compile 'com.absmartly:core-api:{VERSION}'
+  compile 'com.absmartly.sdk:core-api:{VERSION}'
 }
 ```
 
@@ -91,7 +91,7 @@ We can avoid repeating the round-trip on the client-side by re-using data previo
 
     final ContextConfig anotherContextConfig = ContextConfig.create()
         .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8"); // a unique id identifying the other user
-    
+
     final Context anotherContext = sdk.createContextWith(anotherContextConfig, context.getData());
     assert(anotherContext.isReady()); // no need to wait
 ```
