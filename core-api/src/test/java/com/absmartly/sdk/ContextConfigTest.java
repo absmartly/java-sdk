@@ -1,6 +1,7 @@
 package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.Map;
 
@@ -12,6 +13,19 @@ class ContextConfigTest {
 		final ContextConfig config = ContextConfig.create()
 				.setUnit("session_id", "0ab1e23f4eee");
 		assertEquals("0ab1e23f4eee", config.getUnit("session_id"));
+	}
+
+	@Test
+	void setUnitEmpty() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			final ContextConfig config = ContextConfig.create()
+					.setUnit("", "0ab1e23f4eee");
+		}, "Invalid unit type: ");
+
+		assertThrows(IllegalArgumentException.class, () -> {
+			final ContextConfig config = ContextConfig.create()
+					.setUnit("session_id", "");
+		}, "Unit 'session_id' UID must not be empty");
 	}
 
 	@Test

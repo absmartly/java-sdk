@@ -13,12 +13,20 @@ public class ContextConfig {
 	private ContextConfig() {}
 
 	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
+		if (unitType.isEmpty()) {
+			throw new IllegalArgumentException(String.format("Invalid unit type: %d", unitType));
+		}
+		if (uid.isEmpty()) {
+			throw new IllegalArgumentException(String.format("Unit '%s' UID must not be empty", unitType, uid));
+		}
 		units_.put(unitType, uid);
 		return this;
 	}
 
 	public ContextConfig setUnits(@Nonnull final Map<String, String> units) {
-		units_.putAll(units);
+		for (final Map.Entry<String, String> entry : units.entrySet()) {
+			setUnit(entry.getKey(), entry.getValue());
+		}
 		return this;
 	}
 

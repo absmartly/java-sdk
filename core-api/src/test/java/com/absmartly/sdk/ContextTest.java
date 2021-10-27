@@ -254,7 +254,7 @@ class ContextTest {
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
-		final String notReadyMessage = "ABSmartly Context is not yet ready.";
+		final String notReadyMessage = "ABSmartly Context is not yet ready";
 		assertEquals(notReadyMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
 		assertEquals(notReadyMessage,
@@ -291,7 +291,7 @@ class ContextTest {
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
 
-		final String closingMessage = "ABSmartly Context is closing.";
+		final String closingMessage = "ABSmartly Context is closing";
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closingMessage,
@@ -348,7 +348,7 @@ class ContextTest {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		final String closedMessage = "ABSmartly Context is closed.";
+		final String closedMessage = "ABSmartly Context is closed";
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closedMessage,
