@@ -1,9 +1,9 @@
 package com.absmartly.sdk;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.apache.hc.client5.http.HttpRequestRetryStrategy;
 import org.apache.hc.core5.http.HttpRequest;
@@ -35,7 +35,7 @@ public class DefaultHTTPClientRetryStrategy implements HttpRequestRetryStrategy 
 		return TimeValue.ofMilliseconds(MIN_RETRY_INTERVAL + (((1L << (execCount - 1)) * retryIntervalUs_) / 1_000));
 	}
 
-	private final static Set<Integer> retryableCodes_ = Stream.of(502, 503).collect(Collectors.toSet());
+	private final static Set<Integer> retryableCodes_ = new HashSet<>(Arrays.asList(502, 503));
 
 	private final int maxRetries_;
 	private final long retryIntervalUs_;

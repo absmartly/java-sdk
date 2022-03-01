@@ -115,7 +115,7 @@ public class Client implements Closeable {
 	private final String url_;
 	private final Map<String, String> query_;
 	private final Map<String, String> headers_;
-	private HTTPClient httpClient_;
+	private final HTTPClient httpClient_;
 	private ContextDataDeserializer deserializer_;
 	private ContextEventSerializer serializer_;
 }

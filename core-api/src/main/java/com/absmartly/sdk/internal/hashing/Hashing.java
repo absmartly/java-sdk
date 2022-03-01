@@ -5,7 +5,12 @@ import com.absmartly.sdk.internal.Buffers;
 public abstract class Hashing {
 	private Hashing() {}
 
-	private static final ThreadLocal<byte[]> threadBuffer = ThreadLocal.withInitial(() -> new byte[512]);
+	private static ThreadLocal<byte[]> threadBuffer = new ThreadLocal<byte[]>() {
+		@Override
+		public byte[] initialValue() {
+			return new byte[512];
+		}
+	};
 
 	public static byte[] hashUnit(CharSequence unit) {
 		final int n = unit.length();

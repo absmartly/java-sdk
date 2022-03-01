@@ -162,7 +162,12 @@ public abstract class MD5 {
 		int[] state = new int[4];
 	}
 
-	private static final ThreadLocal<BufferState> threadState = ThreadLocal.withInitial(BufferState::new);
+	private static final ThreadLocal<BufferState> threadState = new ThreadLocal<BufferState>() {
+		@Override
+		public BufferState initialValue() {
+			return new BufferState();
+		}
+	};
 
 	private static int[] md5state(byte[] key, int offset, int len) {
 		final int n = offset + (len & ~63);

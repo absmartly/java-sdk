@@ -3,7 +3,12 @@ package com.absmartly.sdk.internal;
 import com.absmartly.sdk.internal.hashing.Murmur3_32;
 
 public class VariantAssigner {
-	private static final ThreadLocal<byte[]> threadBuffer = ThreadLocal.withInitial(() -> new byte[12]);
+	private static final ThreadLocal<byte[]> threadBuffer = new ThreadLocal<byte[]>() {
+		@Override
+		public byte[] initialValue() {
+			return new byte[12];
+		}
+	};
 	private static final double normalizer = 1.0 / 0xffffffffL;
 
 	public VariantAssigner(byte[] unitHash) {
