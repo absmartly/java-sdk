@@ -1,9 +1,9 @@
 package com.absmartly.sdk.json;
 
-import java.util.Objects;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+
+import com.absmartly.sdk.java.util.Objects;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -20,15 +20,12 @@ public class Unit {
 
 	@Override
 	public boolean equals(Object o) {
-		if (this == o) {
+		if (this == o)
 			return true;
-		}
-		if (o == null || getClass() != o.getClass()) {
+		if (o == null || getClass() != o.getClass())
 			return false;
-		}
 		Unit unit = (Unit) o;
-		return Objects.equals(type, unit.type) &&
-				Objects.equals(uid, unit.uid);
+		return Objects.equals(type, unit.type) && Objects.equals(uid, unit.uid);
 	}
 
 	@Override

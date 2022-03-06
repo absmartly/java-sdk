@@ -2,7 +2,7 @@ package com.absmartly.sdk;
 
 import java.io.Closeable;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletableFuture;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;

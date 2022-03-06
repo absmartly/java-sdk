@@ -4,21 +4,24 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.*;
 
 class ContextTest {
@@ -69,7 +72,6 @@ class ContextTest {
 	CompletableFuture<ContextData> dataFuture;
 
 	CompletableFuture<ContextData> refreshDataFutureReady;
-	CompletableFuture<ContextData> refreshDataFutureFailed;
 	CompletableFuture<ContextData> refreshDataFuture;
 
 	ContextDataProvider dataProvider;
@@ -77,7 +79,7 @@ class ContextTest {
 	VariableParser variableParser;
 	ScheduledExecutorService scheduler;
 	DefaultContextDataDeserializer deser = new DefaultContextDataDeserializer();
-	Clock clock = Clock.fixed(Instant.ofEpochMilli(1_620_000_000_000L), ZoneId.of("UTC"));
+	Clock clock = Clock.fixed(1_620_000_000_000L);
 
 	@BeforeEach
 	void setUp() {
@@ -92,7 +94,6 @@ class ContextTest {
 		dataFuture = new CompletableFuture<>();
 
 		refreshDataFutureReady = CompletableFuture.completedFuture(refreshData);
-		refreshDataFutureFailed = TestUtils.failedFuture(new Exception("FAILED"));
 		refreshDataFuture = new CompletableFuture<>();
 
 		dataProvider = mock(ContextDataProvider.class);
@@ -1470,15 +1471,15 @@ class ContextTest {
 		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName)).forEach(experiment -> {
 			experiment.iteration = 2;
 			experiment.trafficSeedHi = 54870830;
-			experiment.trafficSeedHi = 398724581;
+			experiment.trafficSeedLo = 398724581;
 			experiment.seedHi = 77498863;
-			experiment.seedHi = 34737352;
+			experiment.seedLo = 34737352;
 		});
 
 		refreshDataFuture.complete(refreshData);
 		refreshFuture.join();
 
-		assertEquals(1, context.getTreatment(experimentName));
+		assertEquals(2, context.getTreatment(experimentName));
 		assertEquals(0, context.getTreatment("not_found"));
 
 		assertEquals(3, context.getPendingCount()); // full-on experiment triggered a new exposure
@@ -1508,15 +1509,15 @@ class ContextTest {
 		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName)).forEach(experiment -> {
 			experiment.id = 11;
 			experiment.trafficSeedHi = 54870830;
-			experiment.trafficSeedHi = 398724581;
+			experiment.trafficSeedLo = 398724581;
 			experiment.seedHi = 77498863;
-			experiment.seedHi = 34737352;
+			experiment.seedLo = 34737352;
 		});
 
 		refreshDataFuture.complete(refreshData);
 		refreshFuture.join();
 
-		assertEquals(1, context.getTreatment(experimentName));
+		assertEquals(2, context.getTreatment(experimentName));
 		assertEquals(0, context.getTreatment("not_found"));
 
 		assertEquals(3, context.getPendingCount()); // full-on experiment triggered a new exposure

@@ -14,10 +14,10 @@ public class ContextConfig {
 
 	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
 		if (unitType.isEmpty()) {
-			throw new IllegalArgumentException(String.format("Invalid unit type: %d", unitType));
+			throw new IllegalArgumentException(String.format("Invalid unit type: %s", unitType));
 		}
 		if (uid.isEmpty()) {
-			throw new IllegalArgumentException(String.format("Unit '%s' UID must not be empty", unitType, uid));
+			throw new IllegalArgumentException(String.format("Unit '%s' UID must not be empty", unitType));
 		}
 		units_.put(unitType, uid);
 		return this;
@@ -40,7 +40,7 @@ public class ContextConfig {
 
 	public ContextConfig setAttribute(@Nonnull final String name, @Nonnull final Object value) {
 		if (attributes_ == null) {
-			attributes_ = new HashMap<>();
+			attributes_ = new HashMap<String, Object>();
 		}
 		attributes_.put(name, value);
 		return this;
@@ -48,7 +48,7 @@ public class ContextConfig {
 
 	public ContextConfig setAttributes(@Nonnull final Map<String, Object> attributes) {
 		if (attributes_ == null) {
-			attributes_ = new HashMap<>(attributes.size());
+			attributes_ = new HashMap<String, Object>(attributes.size());
 		}
 		attributes_.putAll(attributes);
 		return this;
@@ -64,7 +64,7 @@ public class ContextConfig {
 
 	public ContextConfig setOverride(@Nonnull final String experimentName, int variant) {
 		if (overrides_ == null) {
-			overrides_ = new HashMap<>();
+			overrides_ = new HashMap<String, Integer>();
 		}
 		overrides_.put(experimentName, variant);
 		return this;
@@ -72,7 +72,7 @@ public class ContextConfig {
 
 	public ContextConfig setOverrides(@Nonnull final Map<String, Integer> overrides) {
 		if (overrides_ == null) {
-			overrides_ = new HashMap<>(overrides.size());
+			overrides_ = new HashMap<String, Integer>(overrides.size());
 		}
 		overrides_.putAll(overrides);
 		return this;
@@ -88,7 +88,7 @@ public class ContextConfig {
 
 	public ContextConfig setCustomAssignment(@Nonnull final String experimentName, int variant) {
 		if (cassigmnents_ == null) {
-			cassigmnents_ = new HashMap<>();
+			cassigmnents_ = new HashMap<String, Integer>();
 		}
 		cassigmnents_.put(experimentName, variant);
 		return this;
@@ -96,7 +96,7 @@ public class ContextConfig {
 
 	public ContextConfig setCustomAssignments(@Nonnull final Map<String, Integer> customAssignments) {
 		if (cassigmnents_ == null) {
-			cassigmnents_ = new HashMap<>(customAssignments.size());
+			cassigmnents_ = new HashMap<String, Integer>(customAssignments.size());
 		}
 		cassigmnents_.putAll(customAssignments);
 		return this;
@@ -119,7 +119,7 @@ public class ContextConfig {
 		return this.publishDelay_;
 	}
 
-	private final Map<String, String> units_ = new HashMap<>();
+	private final Map<String, String> units_ = new HashMap<String, String>();
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
 	private Map<String, Integer> cassigmnents_;

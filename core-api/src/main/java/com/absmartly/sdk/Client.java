@@ -4,7 +4,11 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionStage;
+import java8.util.function.Consumer;
+import java8.util.function.Function;
+import java8.util.function.Supplier;
 
 import javax.annotation.Nonnull;
 
@@ -54,54 +58,76 @@ public class Client implements Closeable {
 			serializer_ = new DefaultContextEventSerializer();
 		}
 
-		headers_ = new HashMap<>(6);
+		headers_ = new HashMap<String, String>(6);
 		headers_.put("X-API-Key", apiKey);
 		headers_.put("X-Application", application);
 		headers_.put("X-Environment", environment);
 		headers_.put("X-Application-Version", Long.toString(0));
 		headers_.put("X-Agent", "java-sdk");
 
-		query_ = new HashMap<>(2);
+		query_ = new HashMap<String, String>(2);
 		query_.put("application", application);
 		query_.put("environment", environment);
 	}
 
 	CompletableFuture<ContextData> getContextData() {
-		final CompletableFuture<ContextData> dataFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextData> dataFuture = new CompletableFuture<ContextData>();
 
-		httpClient_.get(url_, query_, null).thenAccept(response -> {
-			final int code = response.getStatusCode();
-			if ((code / 100) == 2) {
-				final byte[] content = response.getContent();
-				dataFuture.complete(deserializer_.deserialize(response.getContent(), 0, content.length));
-			} else {
-				dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
+		httpClient_.get(url_, query_, null).thenAccept(new Consumer<HTTPClient.Response>() {
+			@Override
+			public void accept(HTTPClient.Response response) {
+				final int code = response.getStatusCode();
+				if ((code / 100) == 2) {
+					final byte[] content = response.getContent();
+					dataFuture.complete(deserializer_.deserialize(response.getContent(), 0, content.length));
+				} else {
+					dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
+				}
 			}
-		}).exceptionally(exception -> {
-			dataFuture.completeExceptionally(exception);
-			return null;
+		}).exceptionally(new Function<Throwable, Void>() {
+			@Override
+			public Void apply(Throwable exception) {
+				dataFuture.completeExceptionally(exception);
+				return null;
+			}
 		});
 
 		return dataFuture;
 	}
 
 	CompletableFuture<Void> publish(@Nonnull final PublishEvent event) {
-		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<Void>();
 
 		CompletableFuture
-				.supplyAsync(() -> serializer_.serialize(event))
-				.thenCompose(content -> httpClient_.put(url_, null, headers_, content))
-				.thenAccept(response -> {
-					final int code = response.getStatusCode();
-					if ((code / 100) == 2) {
-						publishFuture.complete(null);
-					} else {
-						publishFuture.completeExceptionally(new Exception(response.getStatusMessage()));
+				.supplyAsync(new Supplier<byte[]>() {
+					@Override
+					public byte[] get() {
+						return serializer_.serialize(event);
 					}
 				})
-				.exceptionally(exception -> {
-					publishFuture.completeExceptionally(exception);
-					return null;
+				.thenCompose(new Function<byte[], CompletionStage<HTTPClient.Response>>() {
+					@Override
+					public CompletionStage<HTTPClient.Response> apply(byte[] content) {
+						return httpClient_.put(url_, null, headers_, content);
+					}
+				})
+				.thenAccept(new Consumer<HTTPClient.Response>() {
+					@Override
+					public void accept(HTTPClient.Response response) {
+						final int code = response.getStatusCode();
+						if ((code / 100) == 2) {
+							publishFuture.complete(null);
+						} else {
+							publishFuture.completeExceptionally(new Exception(response.getStatusMessage()));
+						}
+					}
+				})
+				.exceptionally(new Function<Throwable, Void>() {
+					@Override
+					public Void apply(Throwable exception) {
+						publishFuture.completeExceptionally(exception);
+						return null;
+					}
 				});
 
 		return publishFuture;

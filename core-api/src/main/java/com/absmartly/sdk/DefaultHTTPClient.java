@@ -1,10 +1,11 @@
 package com.absmartly.sdk;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletableFuture;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.net.ssl.SSLContext;
 
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
@@ -14,9 +15,11 @@ import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClientBuilder;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
 import org.apache.hc.core5.concurrent.FutureCallback;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.io.CloseMode;
+import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 
@@ -25,12 +28,23 @@ public class DefaultHTTPClient implements HTTPClient {
 		return new DefaultHTTPClient(config);
 	}
 
-	private DefaultHTTPClient(final DefaultHTTPClientConfig config) {
+	private DefaultHTTPClient(final DefaultHTTPClientConfig config) throws SecurityException {
+		final SSLContext sslContext;
+
+		try {
+			sslContext = config.getSecurityProvider() != null
+					? SSLContexts.custom().setProvider(config.getSecurityProvider()).build()
+					: SSLContexts.createDefault();
+		} catch (Throwable e) {
+			throw new SecurityException("Error initializing SSL context", e);
+		}
+
 		final PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManagerBuilder
 				.create()
 				.setMaxConnTotal(200)
 				.setMaxConnPerRoute(20)
-				.setValidateAfterInactivity(TimeValue.ofMilliseconds(5_000))
+				.setValidateAfterInactivity(TimeValue.ofMilliseconds(5000))
+				.setTlsStrategy(new DefaultClientTlsStrategy(sslContext))
 				.build();
 
 		final CloseableHttpAsyncClient httpClient = HttpAsyncClientBuilder.create()
@@ -102,30 +116,34 @@ public class DefaultHTTPClient implements HTTPClient {
 	}
 
 	private CompletableFuture<Response> request(final SimpleHttpRequest request) {
-		final CompletableFuture<Response> future = new CompletableFuture<>();
+		final CompletableFuture<Response> future = new CompletableFuture<Response>();
 
-		httpClient_.execute(request, new FutureCallback<SimpleHttpResponse>() {
-			@Override
-			public void completed(SimpleHttpResponse result) {
-				final int statusCode = result.getCode();
-				final String responseMessage = result.getReasonPhrase();
-				final ContentType contentType = result.getContentType();
-				final byte[] body = result.getBodyBytes();
+		try {
+			httpClient_.execute(request, new FutureCallback<SimpleHttpResponse>() {
+				@Override
+				public void completed(SimpleHttpResponse result) {
+					final int statusCode = result.getCode();
+					final String responseMessage = result.getReasonPhrase();
+					final ContentType contentType = result.getContentType();
+					final byte[] body = result.getBodyBytes();
 
-				future.complete(new DefaultResponse(statusCode, responseMessage,
-						(contentType != null) ? contentType.getMimeType() : null, body));
-			}
+					future.complete(new DefaultResponse(statusCode, responseMessage,
+							(contentType != null) ? contentType.getMimeType() : null, body));
+				}
 
-			@Override
-			public void failed(Exception e) {
-				future.completeExceptionally(e);
-			}
+				@Override
+				public void failed(Exception e) {
+					future.completeExceptionally(e);
+				}
 
-			@Override
-			public void cancelled() {
-				future.cancel(false);
-			}
-		});
+				@Override
+				public void cancelled() {
+					future.cancel(false);
+				}
+			});
+		} catch (Throwable e) {
+			future.completeExceptionally(e);
+		}
 
 		return future;
 	}
@@ -133,11 +151,19 @@ public class DefaultHTTPClient implements HTTPClient {
 	private SimpleHttpRequest buildRequest(final SimpleRequestBuilder request, final Map<String, String> query,
 			final Map<String, String> headers, final byte[] body) {
 		if (query != null) {
-			query.forEach(request::addParameter);
+			for (Map.Entry<String, String> entry : query.entrySet()) {
+				String name = entry.getKey();
+				String value = entry.getValue();
+				request.addParameter(name, value);
+			}
 		}
 
 		if (headers != null) {
-			headers.forEach(request::setHeader);
+			for (Map.Entry<String, String> entry : headers.entrySet()) {
+				String key = entry.getKey();
+				String value = entry.getValue();
+				request.setHeader(key, value);
+			}
 		}
 
 		if (body != null) {

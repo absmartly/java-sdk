@@ -1,11 +1,22 @@
 package com.absmartly.sdk;
 
+import java.security.Provider;
+
 public class DefaultHTTPClientConfig {
 	public static DefaultHTTPClientConfig create() {
 		return new DefaultHTTPClientConfig();
 	}
 
 	DefaultHTTPClientConfig() {}
+
+	public Provider getSecurityProvider() {
+		return securityProvider_;
+	}
+
+	public DefaultHTTPClientConfig setSecurityProvider(Provider securityProvider) {
+		securityProvider_ = securityProvider;
+		return this;
+	}
 
 	public long getConnectTimeout() {
 		return connectTimeout_;
@@ -52,9 +63,10 @@ public class DefaultHTTPClientConfig {
 		return this;
 	}
 
-	private long connectTimeout_ = 1_000;
-	private long connectionKeepAlive_ = 30_000;
-	private long connectionRequestTimeout_ = 1_000;
+	private Provider securityProvider_ = null;
+	private long connectTimeout_ = 3000;
+	private long connectionKeepAlive_ = 30000;
+	private long connectionRequestTimeout_ = 1000;
 	private long retryInterval_ = 333;
 	private int maxRetries_ = 5;
 }

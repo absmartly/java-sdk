@@ -1,20 +1,27 @@
 package com.absmartly.sdk;
 
 import java.io.Closeable;
-import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.function.Consumer;
+import java8.util.function.Function;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import com.absmartly.sdk.internal.Algorithm;
+import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
+import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.*;
 
 public class Context implements Closeable {
@@ -31,14 +38,14 @@ public class Context implements Closeable {
 		final Map<String, String> units = config.getUnits();
 		clock_ = clock;
 		publishDelay_ = config.getPublishDelay();
-		units_ = new HashMap<>(config.getUnits());
+		units_ = new HashMap<String, String>(config.getUnits());
 
 		eventHandler_ = eventHandler;
 		dataProvider_ = dataProvider;
 		variableParser_ = variableParser;
 		scheduler_ = scheduler;
-		assigners_ = new ConcurrentHashMap<>(units.size());
-		hashedUnits_ = new ConcurrentHashMap<>(units.size());
+		assigners_ = new HashMap<String, VariantAssigner>(units.size());
+		hashedUnits_ = new HashMap<String, byte[]>(units.size());
 
 		final Map<String, Object> attributes = config.getAttributes();
 		if (attributes != null) {
@@ -46,32 +53,46 @@ public class Context implements Closeable {
 		}
 
 		final Map<String, Integer> overrides = config.getOverrides();
-		overrides_ = (overrides != null) ? new ConcurrentHashMap<>(overrides) : new ConcurrentHashMap<>();
+		overrides_ = (overrides != null) ? new HashMap<String, Integer>(overrides) : new HashMap<String, Integer>();
 
 		final Map<String, Integer> cassignments = config.getCustomAssignments();
-		cassignments_ = (cassignments != null) ? new ConcurrentHashMap<>(cassignments) : new ConcurrentHashMap<>();
+		cassignments_ = (cassignments != null) ? new HashMap<String, Integer>(cassignments)
+				: new HashMap<String, Integer>();
 
 		if (dataFuture.isDone()) {
-			dataFuture.thenAccept(this::setData)
-					.exceptionally(exception -> {
-						setDataFailed(exception);
-						return null;
-					});
-		} else {
-			readyFuture_ = new CompletableFuture<>();
-			dataFuture.thenAccept(data -> {
-				setData(data);
-				readyFuture_.complete(null);
-				readyFuture_ = null;
-
-				if (getPendingCount() > 0) {
-					setTimeout();
+			dataFuture.thenAccept(new Consumer<ContextData>() {
+				@Override
+				public void accept(ContextData data) {
+					Context.this.setData(data);
 				}
-			}).exceptionally(exception -> {
-				setDataFailed(exception);
-				readyFuture_.complete(null);
-				readyFuture_ = null;
-				return null;
+			}).exceptionally(new Function<Throwable, Void>() {
+				@Override
+				public Void apply(Throwable exception) {
+					Context.this.setDataFailed(exception);
+					return null;
+				}
+			});
+		} else {
+			readyFuture_ = new CompletableFuture<Void>();
+			dataFuture.thenAccept(new Consumer<ContextData>() {
+				@Override
+				public void accept(ContextData data) {
+					Context.this.setData(data);
+					readyFuture_.complete(null);
+					readyFuture_ = null;
+
+					if (Context.this.getPendingCount() > 0) {
+						Context.this.setTimeout();
+					}
+				}
+			}).exceptionally(new Function<Throwable, Void>() {
+				@Override
+				public Void apply(Throwable exception) {
+					Context.this.setDataFailed(exception);
+					readyFuture_.complete(null);
+					readyFuture_ = null;
+					return null;
+				}
 			});
 		}
 	}
@@ -96,13 +117,21 @@ public class Context implements Closeable {
 		if (data_ != null) {
 			return CompletableFuture.completedFuture(this);
 		} else {
-			return readyFuture_.thenApply((k) -> this);
+			return readyFuture_.thenApply(new Function<Void, Context>() {
+				@Override
+				public Context apply(Void k) {
+					return Context.this;
+				}
+			});
 		}
 	}
 
 	public Context waitUntilReady() {
 		if (data_ == null) {
-			readyFuture_.join();
+			final CompletableFuture<Void> future = readyFuture_; // cache here to avoid locking
+			if (future != null && !future.isDone()) {
+				future.join();
+			}
 		}
 		return this;
 	}
@@ -112,7 +141,14 @@ public class Context implements Closeable {
 
 		try {
 			dataLock_.readLock().lock();
-			return Arrays.stream(data_.experiments).map(x -> x.name).toArray(String[]::new);
+			final String[] experimentNames = new String[data_.experiments.length];
+
+			int index = 0;
+			for (final Experiment experiment : data_.experiments) {
+				experimentNames[index++] = experiment.name;
+			}
+
+			return experimentNames;
 		} finally {
 			dataLock_.readLock().unlock();
 		}
@@ -132,55 +168,98 @@ public class Context implements Closeable {
 	public void setOverride(@Nonnull final String experimentName, final int variant) {
 		checkNotClosed();
 
-		final Integer previous = overrides_.put(experimentName, variant);
+		final Integer previous = Concurrency.putRW(contextLock_, overrides_, experimentName, variant);
 		if ((previous == null) || (previous != variant)) {
-			final Assignment assignment = assignmentCache_.get(experimentName);
-			if (assignment != null) {
-				if (!assignment.overridden || (assignment.variant != variant)) {
-					assignmentCache_.remove(experimentName, assignment);
+
+			try {
+				assignmentLock_.readLock().lock();
+				final Assignment assignment = assignmentCache_.get(experimentName);
+				if (assignment == null) {
+					return;
 				}
+			} finally {
+				assignmentLock_.readLock().unlock();
+			}
+
+			try {
+				assignmentLock_.writeLock().lock();
+				final Assignment assignment = assignmentCache_.get(experimentName);
+				if (assignment != null) {
+					if (!assignment.overridden || (assignment.variant != variant)) {
+						assignmentCache_.remove(experimentName);
+					}
+				}
+			} finally {
+				assignmentLock_.writeLock().unlock();
 			}
 		}
 	}
 
 	public Integer getOverride(@Nonnull final String experimentName) {
-		return overrides_.get(experimentName);
+		return Concurrency.getRW(contextLock_, overrides_, experimentName);
 	}
 
 	public void setOverrides(@Nonnull final Map<String, Integer> overrides) {
-		overrides.forEach(this::setOverride);
+		for (Map.Entry<String, Integer> entry : overrides.entrySet()) {
+			String key = entry.getKey();
+			Integer value = entry.getValue();
+			setOverride(key, value);
+		}
 	}
 
 	public void setCustomAssignment(@Nonnull final String experimentName, final int variant) {
 		checkNotClosed();
 
-		final Integer previous = cassignments_.put(experimentName, variant);
+		final Integer previous = Concurrency.putRW(contextLock_, cassignments_, experimentName, variant);
 		if ((previous == null) || (previous != variant)) {
-			final Assignment assignment = assignmentCache_.get(experimentName);
-			if (assignment != null) {
-				if (!assignment.custom || (assignment.variant != variant)) {
-					assignmentCache_.remove(experimentName, assignment);
+			try {
+				assignmentLock_.readLock().lock();
+				final Assignment assignment = assignmentCache_.get(experimentName);
+				if (assignment == null) {
+					return;
 				}
+			} finally {
+				assignmentLock_.readLock().unlock();
+			}
+
+			try {
+				assignmentLock_.writeLock().lock();
+				final Assignment assignment = assignmentCache_.get(experimentName);
+				if (assignment != null) {
+					if (!assignment.custom || (assignment.variant != variant)) {
+						assignmentCache_.remove(experimentName);
+					}
+				}
+			} finally {
+				assignmentLock_.writeLock().unlock();
 			}
 		}
 	}
 
 	public Integer getCustomAssignment(@Nonnull final String experimentName) {
-		return cassignments_.get(experimentName);
+		return Concurrency.getRW(contextLock_, cassignments_, experimentName);
 	}
 
 	public void setCustomAssignments(@Nonnull final Map<String, Integer> customAssignments) {
-		customAssignments.forEach(this::setCustomAssignment);
+		for (Map.Entry<String, Integer> entry : customAssignments.entrySet()) {
+			String key = entry.getKey();
+			Integer value = entry.getValue();
+			setCustomAssignment(key, value);
+		}
 	}
 
 	public void setAttribute(@Nonnull final String name, @Nullable final Object value) {
 		checkNotClosed();
 
-		attributes_.put(name, new Attribute(name, value, clock_.millis()));
+		Concurrency.putRW(contextLock_, attributes_, name, new Attribute(name, value, clock_.millis()));
 	}
 
 	public void setAttributes(@Nonnull final Map<String, Object> attributes) {
-		attributes.forEach(this::setAttribute);
+		for (Map.Entry<String, Object> entry : attributes.entrySet()) {
+			String key = entry.getKey();
+			Object value = entry.getValue();
+			setAttribute(key, value);
+		}
 	}
 
 	public int getTreatment(@Nonnull final String experimentName) {
@@ -229,8 +308,18 @@ public class Context implements Closeable {
 	public Map<String, String> getVariableKeys() {
 		checkReady(true);
 
-		final Map<String, String> variableKeys = new HashMap<>(indexVariables_.size());
-		indexVariables_.forEach((k, v) -> variableKeys.put(k, v.data.name));
+		final Map<String, String> variableKeys = new HashMap<String, String>(indexVariables_.size());
+
+		try {
+			dataLock_.readLock().lock();
+			for (Map.Entry<String, ExperimentVariables> entry : indexVariables_.entrySet()) {
+				String key = entry.getKey();
+				ExperimentVariables value = entry.getValue();
+				variableKeys.put(key, value.data.name);
+			}
+		} finally {
+			dataLock_.readLock().unlock();
+		}
 		return variableKeys;
 	}
 
@@ -272,7 +361,7 @@ public class Context implements Closeable {
 		final GoalAchievement achievement = new GoalAchievement();
 		achievement.achievedAt = clock_.millis();
 		achievement.name = goalName;
-		achievement.properties = (properties == null) ? null : new TreeMap<>(properties);
+		achievement.properties = (properties == null) ? null : new TreeMap<String, Object>(properties);
 
 		try {
 			eventLock_.lock();
@@ -303,16 +392,22 @@ public class Context implements Closeable {
 		checkNotClosed();
 
 		if (refreshing_.compareAndSet(false, true)) {
-			refreshFuture_ = new CompletableFuture<>();
+			refreshFuture_ = new CompletableFuture<Void>();
 
-			dataProvider_.getContextData().thenAccept(data -> {
-				setData(data);
-				refreshing_.set(false);
-				refreshFuture_.complete(null);
-			}).exceptionally(exception -> {
-				refreshing_.set(false);
-				refreshFuture_.completeExceptionally(exception);
-				return null;
+			dataProvider_.getContextData().thenAccept(new Consumer<ContextData>() {
+				@Override
+				public void accept(ContextData data) {
+					Context.this.setData(data);
+					refreshing_.set(false);
+					refreshFuture_.complete(null);
+				}
+			}).exceptionally(new Function<Throwable, Void>() {
+				@Override
+				public Void apply(Throwable exception) {
+					refreshing_.set(false);
+					refreshFuture_.completeExceptionally(exception);
+					return null;
+				}
 			});
 		}
 
@@ -332,17 +427,23 @@ public class Context implements Closeable {
 		if (!closed_.get()) {
 			if (closing_.compareAndSet(false, true)) {
 				if (pendingCount_.get() > 0) {
-					closingFuture_ = new CompletableFuture<>();
+					closingFuture_ = new CompletableFuture<Void>();
 
-					flush().thenAccept(x -> {
-						closed_.set(true);
-						closing_.set(false);
-						closingFuture_.complete(null);
-					}).exceptionally(exception -> {
-						closed_.set(true);
-						closing_.set(false);
-						closingFuture_.completeExceptionally(exception);
-						return null;
+					flush().thenAccept(new Consumer<Void>() {
+						@Override
+						public void accept(Void x) {
+							closed_.set(true);
+							closing_.set(false);
+							closingFuture_.complete(null);
+						}
+					}).exceptionally(new Function<Throwable, Void>() {
+						@Override
+						public Void apply(Throwable exception) {
+							closed_.set(true);
+							closing_.set(false);
+							closingFuture_.completeExceptionally(exception);
+							return null;
+						}
 					});
 
 					return closingFuture_;
@@ -400,13 +501,15 @@ public class Context implements Closeable {
 					final PublishEvent event = new PublishEvent();
 					event.hashed = true;
 					event.publishedAt = clock_.millis();
-					event.units = units_.entrySet().stream()
-							.map(entry -> new Unit(entry.getKey(),
-									new String(
-											hashedUnits_.computeIfAbsent(entry.getKey(),
-													k -> Hashing.hashUnit(entry.getValue())),
-											StandardCharsets.US_ASCII)))
-							.toArray(Unit[]::new);
+					event.units = Algorithm.mapSetToArray(units_.entrySet(), new Unit[0],
+							new Function<Map.Entry<String, String>, Unit>() {
+								@Override
+								public Unit apply(Map.Entry<String, String> entry) {
+									return new Unit(entry.getKey(),
+											new String(getUnitHash(entry.getKey(), entry.getValue()),
+													StandardCharsets.US_ASCII));
+								}
+							});
 					event.attributes = attributes_.isEmpty() ? null : attributes_.values().toArray(new Attribute[0]);
 					event.exposures = exposures;
 					event.goals = achievements;
@@ -471,70 +574,76 @@ public class Context implements Closeable {
 	}
 
 	private Assignment getAssignment(final String experimentName) {
-		return assignmentCache_.computeIfAbsent(experimentName, k -> {
-			final Integer custom = cassignments_.get(experimentName);
-			final Integer override = overrides_.get(experimentName);
-			final ExperimentVariables experiment = getExperiment(experimentName);
+		return Concurrency.computeIfAbsentRW(assignmentLock_, assignmentCache_, experimentName,
+				new Function<String, Assignment>() {
+					@Override
+					public Assignment apply(String key) {
+						final Integer custom = cassignments_.get(experimentName);
+						final Integer override = overrides_.get(experimentName);
+						final ExperimentVariables experiment = Context.this.getExperiment(experimentName);
 
-			final Assignment assignment = new Assignment();
-			assignment.name = experimentName;
-			assignment.eligible = true;
+						final Assignment assignment = new Assignment();
+						assignment.name = experimentName;
+						assignment.eligible = true;
 
-			if (override != null) {
-				if (experiment != null) {
-					assignment.id = experiment.data.id;
-					assignment.unitType = experiment.data.unitType;
-					assignment.assigned = units_.containsKey(experiment.data.unitType);
-				}
-
-				assignment.overridden = true;
-				assignment.variant = override;
-			} else {
-				if (experiment != null) {
-					final String unitType = experiment.data.unitType;
-					if (experiment.data.fullOnVariant == 0) {
-						final String uid = units_.get(experiment.data.unitType);
-						if (uid != null) {
-							final byte[] unitHash = getUnitHash(unitType, uid);
-
-							final VariantAssigner assigner = getVariantAssigner(unitType, unitHash);
-							final boolean eligible = assigner.assign(experiment.data.trafficSplit,
-									experiment.data.trafficSeedHi,
-									experiment.data.trafficSeedLo) == 1;
-							if (eligible) {
-								if (custom != null) {
-									assignment.variant = custom;
-									assignment.custom = true;
-								} else {
-									assignment.variant = assigner.assign(experiment.data.split, experiment.data.seedHi,
-											experiment.data.seedLo);
-								}
-							} else {
-								assignment.eligible = false;
-								assignment.variant = 0;
+						if (override != null) {
+							if (experiment != null) {
+								assignment.id = experiment.data.id;
+								assignment.unitType = experiment.data.unitType;
+								assignment.assigned = units_.containsKey(experiment.data.unitType);
 							}
-							assignment.assigned = true;
+
+							assignment.overridden = true;
+							assignment.variant = override;
+						} else {
+							if (experiment != null) {
+								final String unitType = experiment.data.unitType;
+								if (experiment.data.fullOnVariant == 0) {
+									final String uid = units_.get(experiment.data.unitType);
+									if (uid != null) {
+										final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
+
+										final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
+												unitHash);
+										final boolean eligible = assigner.assign(experiment.data.trafficSplit,
+												experiment.data.trafficSeedHi,
+												experiment.data.trafficSeedLo) == 1;
+										if (eligible) {
+											if (custom != null) {
+												assignment.variant = custom;
+												assignment.custom = true;
+											} else {
+												assignment.variant = assigner.assign(experiment.data.split,
+														experiment.data.seedHi,
+														experiment.data.seedLo);
+											}
+										} else {
+											assignment.eligible = false;
+											assignment.variant = 0;
+										}
+										assignment.assigned = true;
+									}
+								} else {
+									assignment.assigned = true;
+									assignment.variant = experiment.data.fullOnVariant;
+									assignment.fullOn = true;
+								}
+
+								assignment.unitType = unitType;
+								assignment.id = experiment.data.id;
+								assignment.iteration = experiment.data.iteration;
+								assignment.trafficSplit = experiment.data.trafficSplit;
+								assignment.fullOnVariant = experiment.data.fullOnVariant;
+							}
 						}
-					} else {
-						assignment.assigned = true;
-						assignment.variant = experiment.data.fullOnVariant;
-						assignment.fullOn = true;
+
+						if ((experiment != null) && (assignment.variant < experiment.data.variants.length)) {
+							assignment.variables = experiment.variables.get(assignment.variant);
+						}
+
+						return assignment;
 					}
-
-					assignment.unitType = unitType;
-					assignment.id = experiment.data.id;
-					assignment.iteration = experiment.data.iteration;
-					assignment.trafficSplit = experiment.data.trafficSplit;
-					assignment.fullOnVariant = experiment.data.fullOnVariant;
-				}
-			}
-
-			if ((experiment != null) && (assignment.variant < experiment.data.variants.length)) {
-				assignment.variables = experiment.variables.get(assignment.variant);
-			}
-
-			return assignment;
-		});
+				});
 	}
 
 	private Assignment getVariableAssignment(final String key) {
@@ -556,20 +665,26 @@ public class Context implements Closeable {
 	}
 
 	private ExperimentVariables getVariableExperiment(final String key) {
-		try {
-			dataLock_.readLock().lock();
-			return indexVariables_.get(key);
-		} finally {
-			dataLock_.readLock().unlock();
-		}
+		return Concurrency.getRW(dataLock_, indexVariables_, key);
 	}
 
 	private byte[] getUnitHash(final String unitType, final String unitUID) {
-		return hashedUnits_.computeIfAbsent(unitType, k -> Hashing.hashUnit(unitUID));
+		return Concurrency.computeIfAbsentRW(assignmentLock_, hashedUnits_, unitType, new Function<String, byte[]>() {
+			@Override
+			public byte[] apply(String key) {
+				return Hashing.hashUnit(unitUID);
+			}
+		});
 	}
 
 	private VariantAssigner getVariantAssigner(final String unitType, final byte[] unitHash) {
-		return assigners_.computeIfAbsent(unitType, k -> new VariantAssigner(unitHash));
+		return Concurrency.computeIfAbsentRW(assignmentLock_, assigners_, unitType,
+				new Function<String, VariantAssigner>() {
+					@Override
+					public VariantAssigner apply(String key) {
+						return new VariantAssigner(unitHash);
+					}
+				});
 	}
 
 	private void setTimeout() {
@@ -578,7 +693,12 @@ public class Context implements Closeable {
 				try {
 					timeoutLock_.lock();
 					if (timeout_ == null) {
-						timeout_ = scheduler_.schedule((Runnable) this::flush, publishDelay_, TimeUnit.MILLISECONDS);
+						timeout_ = scheduler_.schedule(new Runnable() {
+							@Override
+							public void run() {
+								Context.this.flush();
+							}
+						}, publishDelay_, TimeUnit.MILLISECONDS);
 					}
 				} finally {
 					timeoutLock_.unlock();
@@ -607,32 +727,33 @@ public class Context implements Closeable {
 	}
 
 	private void setData(final ContextData data) {
-		try {
-			final Map<String, ExperimentVariables> index = new HashMap<>();
-			final Map<String, ExperimentVariables> indexVariables = new HashMap<>();
+		final Map<String, ExperimentVariables> index = new HashMap<String, ExperimentVariables>();
+		final Map<String, ExperimentVariables> indexVariables = new HashMap<String, ExperimentVariables>();
 
-			for (final Experiment experiment : data.experiments) {
-				final ExperimentVariables experimentVariables = new ExperimentVariables();
-				experimentVariables.data = experiment;
-				experimentVariables.variables = new ArrayList<>(experiment.variants.length);
+		for (final Experiment experiment : data.experiments) {
+			final ExperimentVariables experimentVariables = new ExperimentVariables();
+			experimentVariables.data = experiment;
+			experimentVariables.variables = new ArrayList<Map<String, Object>>(experiment.variants.length);
 
-				for (final ExperimentVariant variant : experiment.variants) {
-					if ((variant.config != null) && !variant.config.isEmpty()) {
-						final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
-								variant.config);
-						for (final String key : variables.keySet()) {
-							indexVariables.put(key, experimentVariables);
-						}
-						experimentVariables.variables.add(variables);
-					} else {
-						experimentVariables.variables.add(Collections.emptyMap());
+			for (final ExperimentVariant variant : experiment.variants) {
+				if ((variant.config != null) && !variant.config.isEmpty()) {
+					final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
+							variant.config);
+					for (final String key : variables.keySet()) {
+						indexVariables.put(key, experimentVariables);
 					}
+					experimentVariables.variables.add(variables);
+				} else {
+					experimentVariables.variables.add(Collections.<String, Object> emptyMap());
 				}
-
-				index.put(experiment.name, experimentVariables);
 			}
 
+			index.put(experiment.name, experimentVariables);
+		}
+
+		try {
 			dataLock_.writeLock().lock();
+			assignmentLock_.writeLock().lock();
 
 			for (Iterator<Map.Entry<String, Assignment>> it = assignmentCache_.entrySet().iterator(); it.hasNext();) {
 				final Map.Entry<String, Assignment> entry = it.next();
@@ -660,6 +781,7 @@ public class Context implements Closeable {
 			indexVariables_ = indexVariables;
 			data_ = data;
 		} finally {
+			assignmentLock_.writeLock().unlock();
 			dataLock_.writeLock().unlock();
 		}
 	}
@@ -667,8 +789,8 @@ public class Context implements Closeable {
 	private void setDataFailed(final Throwable exception) {
 		try {
 			dataLock_.writeLock().lock();
-			index_ = new HashMap<>();
-			indexVariables_ = new HashMap<>();
+			index_ = new HashMap<String, ExperimentVariables>();
+			indexVariables_ = new HashMap<String, ExperimentVariables>();
 			data_ = new ContextData();
 			failed_ = true;
 		} finally {
@@ -690,17 +812,19 @@ public class Context implements Closeable {
 	private Map<String, ExperimentVariables> index_;
 	private Map<String, ExperimentVariables> indexVariables_;
 
-	private final ConcurrentMap<String, byte[]> hashedUnits_;
-	private final ConcurrentMap<String, VariantAssigner> assigners_;
-	private final ConcurrentMap<String, Assignment> assignmentCache_ = new ConcurrentHashMap<>();
+	private final ReentrantReadWriteLock assignmentLock_ = new ReentrantReadWriteLock();
+	private final Map<String, byte[]> hashedUnits_;
+	private final Map<String, VariantAssigner> assigners_;
+	private final Map<String, Assignment> assignmentCache_ = new HashMap<String, Assignment>();
 
 	private final ReentrantLock eventLock_ = new ReentrantLock();
-	private final ArrayList<Exposure> exposures_ = new ArrayList<>();
-	private final ArrayList<GoalAchievement> achievements_ = new ArrayList<>();
+	private final ArrayList<Exposure> exposures_ = new ArrayList<Exposure>();
+	private final ArrayList<GoalAchievement> achievements_ = new ArrayList<GoalAchievement>();
 
-	private final ConcurrentMap<String, Attribute> attributes_ = new ConcurrentHashMap<>();
-	private final ConcurrentMap<String, Integer> overrides_;
-	private final ConcurrentMap<String, Integer> cassignments_;
+	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
+	private final Map<String, Attribute> attributes_ = new HashMap<String, Attribute>();
+	private final Map<String, Integer> overrides_;
+	private final Map<String, Integer> cassignments_;
 
 	private final AtomicInteger pendingCount_ = new AtomicInteger(0);
 	private final AtomicBoolean closing_ = new AtomicBoolean(false);

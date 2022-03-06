@@ -1,10 +1,22 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.Mockito.mock;
+
+import java.security.Provider;
 
 import org.junit.jupiter.api.Test;
 
 class DefaultHTTPClientConfigTest {
+
+	@Test
+	void setSecurityProvider() {
+		final Provider provider = mock(Provider.class);
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+				.setSecurityProvider(provider);
+		assertSame(provider, config.getSecurityProvider());
+	}
 
 	@Test
 	void setConnectTimeout() {

@@ -1,10 +1,11 @@
 package com.absmartly.sdk.json;
 
 import java.util.Arrays;
-import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+
+import com.absmartly.sdk.java.util.Objects;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -32,18 +33,17 @@ public class Experiment {
 		Experiment that = (Experiment) o;
 		return id == that.id && iteration == that.iteration && seedHi == that.seedHi && seedLo == that.seedLo
 				&& trafficSeedHi == that.trafficSeedHi && trafficSeedLo == that.trafficSeedLo
-				&& fullOnVariant == that.fullOnVariant && Objects.equals(name, that.name) && Objects
-						.equals(unitType, that.unitType)
-				&& Arrays.equals(split, that.split) && Arrays
-						.equals(trafficSplit, that.trafficSplit)
-				&& Arrays.equals(applications, that.applications)
+				&& fullOnVariant == that.fullOnVariant && Objects.equals(name, that.name)
+				&& Objects.equals(unitType, that.unitType) && Arrays.equals(split, that.split)
+				&& Arrays.equals(trafficSplit, that.trafficSplit) && Arrays.equals(applications,
+						that.applications)
 				&& Arrays.equals(variants, that.variants);
 	}
 
 	@Override
 	public int hashCode() {
-		int result = Objects
-				.hash(id, name, unitType, iteration, seedHi, seedLo, trafficSeedHi, trafficSeedLo, fullOnVariant);
+		int result = Objects.hash(id, name, unitType, iteration, seedHi, seedLo, trafficSeedHi, trafficSeedLo,
+				fullOnVariant);
 		result = 31 * result + Arrays.hashCode(split);
 		result = 31 * result + Arrays.hashCode(trafficSplit);
 		result = 31 * result + Arrays.hashCode(applications);

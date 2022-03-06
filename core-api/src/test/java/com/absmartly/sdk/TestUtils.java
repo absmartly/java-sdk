@@ -5,15 +5,14 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java8.util.concurrent.CompletableFuture;
 
 public abstract class TestUtils {
 	public static byte[] getResourceBytes(String resourceName) {
 		final ClassLoader classLoader = ContextDataDeserializer.class.getClassLoader();
 		final File resource = new File(Objects.requireNonNull(classLoader.getResource(resourceName)).getFile());
-		try {
-			final FileInputStream inputStream = new FileInputStream(resource.getAbsolutePath());
+		try (final FileInputStream inputStream = new FileInputStream(resource.getAbsolutePath())) {
 			final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 
 			final byte[] data = new byte[16384];

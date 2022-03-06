@@ -30,6 +30,8 @@ public abstract class Murmur3_32 {
 			break;
 		case 1:
 			hash ^= scramble32(Buffers.getUInt8(key, i));
+			break;
+		case 0:
 		default:
 			break;
 		}

@@ -2,9 +2,9 @@ plugins {
 	id "java"
 	id "groovy"
 	id "jacoco"
+	id "findbugs"
 
 	id "com.diffplug.spotless" version "5.8.2"
-	id "com.github.spotbugs" version "4.6.0"
 	id "com.adarshr.test-logger" version "2.1.1"
 	id "org.barfuin.gradle.jacocolog" version "1.2.3"
 	id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
@@ -12,36 +12,39 @@ plugins {
 
 
 ext {
-	VERSION = "1.1.2"
+	VERSION = "1.2.0"
 	GROUP_ID = "com.absmartly.sdk"
 
 	slf4jVersion = "1.7.30"
 
-	javaVersion = "1.8"
 	jacksonVersion = "2.12.1"
 
 	junitVersion = "5.7.0"
 	mockitoVersion = "3.6.28"
-
-	SpotBugsTask = com.github.spotbugs.snom.SpotBugsTask
 }
 
 
 allprojects {
 	group = GROUP_ID
 
+	apply plugin: "java"
 	apply from: rootProject.file("gradle/repositories.gradle")
 	apply from: rootProject.file("gradle/spotless.gradle")
-	apply from: rootProject.file("gradle/spotbugs.gradle")
+	apply from: rootProject.file("gradle/findbugs.gradle")
 	apply from: rootProject.file("gradle/test-logger.gradle")
 	apply from: rootProject.file("gradle/jacoco.gradle")
 	apply from: rootProject.file("gradle/coverage-logger.gradle")
 
-	sourceCompatibility = javaVersion
-	targetCompatibility = javaVersion
+	compileJava {
+		sourceCompatibility = "1.6"
+		targetCompatibility = "1.6"
 
-	compileJava.dependsOn "spotlessApply"
-	compileTestJava.dependsOn "spotlessApply"
+		dependsOn "spotlessApply"
+	}
+
+	compileTestJava {
+		dependsOn "spotlessApply"
+	}
 }
 
 

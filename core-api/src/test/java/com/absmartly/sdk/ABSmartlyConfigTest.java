@@ -42,15 +42,17 @@ class ABSmartlyConfigTest {
 		final ContextDataProvider provider = mock(ContextDataProvider.class);
 		final VariableParser parser = mock(VariableParser.class);
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
-		final DefaultHTTPClientConfig defaultHTTPClientConfig = mock(DefaultHTTPClientConfig.class);
+		final Client client = mock(Client.class);
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setVariableParser(parser)
 				.setContextDataProvider(provider)
 				.setContextEventHandler(handler)
-				.setScheduler(scheduler);
+				.setScheduler(scheduler)
+				.setClient(client);
 		assertSame(provider, config.getContextDataProvider());
 		assertSame(handler, config.getContextEventHandler());
 		assertSame(parser, config.getVariableParser());
 		assertSame(scheduler, config.getScheduler());
+		assertSame(client, config.getClient());
 	}
 }

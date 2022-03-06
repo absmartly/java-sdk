@@ -5,6 +5,8 @@ import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextData {
@@ -12,6 +14,7 @@ public class ContextData {
 
 	public ContextData() {}
 
+	@SuppressFBWarnings(value = "EI_EXPOSE_REP2")
 	public ContextData(Experiment[] experiments) {
 		this.experiments = experiments;
 	}

@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.type.TypeFactory;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 public class DefaultVariableParser implements VariableParser {
 	private static final Logger log = LoggerFactory.getLogger(DefaultVariableParser.class);
@@ -21,7 +20,6 @@ public class DefaultVariableParser implements VariableParser {
 	public DefaultVariableParser() {
 		final ObjectMapper objectMapper = new ObjectMapper();
 		objectMapper.enable(MapperFeature.USE_STATIC_TYPING);
-		objectMapper.registerModule(new JavaTimeModule());
 		this.reader_ = objectMapper
 				.readerFor(TypeFactory.defaultInstance().constructMapType(HashMap.class, String.class, Object.class));
 	}

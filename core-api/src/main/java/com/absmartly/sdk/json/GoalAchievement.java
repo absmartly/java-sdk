@@ -1,13 +1,14 @@
 package com.absmartly.sdk.json;
 
 import java.util.Map;
-import java.util.Objects;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+
+import com.absmartly.sdk.java.util.Objects;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -31,8 +32,8 @@ public class GoalAchievement {
 		if (o == null || getClass() != o.getClass())
 			return false;
 		GoalAchievement that = (GoalAchievement) o;
-		return achievedAt == that.achievedAt && Objects.equals(name, that.name)
-				&& Objects.equals(properties, that.properties);
+		return achievedAt == that.achievedAt && Objects.equals(name, that.name) && Objects.equals(
+				properties, that.properties);
 	}
 
 	@Override

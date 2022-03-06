@@ -16,7 +16,7 @@ public class DefaultHTTPClientRetryStrategy implements HttpRequestRetryStrategy 
 
 	public DefaultHTTPClientRetryStrategy(final int maxRetries, final long maxRetryIntervalMs) {
 		this.maxRetries_ = maxRetries;
-		this.retryIntervalUs_ = Math.max(0, (2_000 * (maxRetryIntervalMs - MIN_RETRY_INTERVAL)) / (1L << maxRetries));
+		this.retryIntervalUs_ = Math.max(0, (2000 * (maxRetryIntervalMs - MIN_RETRY_INTERVAL)) / (1L << maxRetries));
 	}
 
 	@Override
@@ -32,10 +32,10 @@ public class DefaultHTTPClientRetryStrategy implements HttpRequestRetryStrategy 
 
 	@Override
 	public TimeValue getRetryInterval(final HttpResponse response, final int execCount, final HttpContext context) {
-		return TimeValue.ofMilliseconds(MIN_RETRY_INTERVAL + (((1L << (execCount - 1)) * retryIntervalUs_) / 1_000));
+		return TimeValue.ofMilliseconds(MIN_RETRY_INTERVAL + (((1L << (execCount - 1)) * retryIntervalUs_) / 1000));
 	}
 
-	private final static Set<Integer> retryableCodes_ = new HashSet<>(Arrays.asList(502, 503));
+	private final static Set<Integer> retryableCodes_ = new HashSet<Integer>(Arrays.asList(502, 503));
 
 	private final int maxRetries_;
 	private final long retryIntervalUs_;

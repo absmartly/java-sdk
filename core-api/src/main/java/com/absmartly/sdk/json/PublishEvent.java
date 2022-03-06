@@ -1,10 +1,11 @@
 package com.absmartly.sdk.json;
 
 import java.util.Arrays;
-import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+
+import com.absmartly.sdk.java.util.Objects;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -25,9 +26,8 @@ public class PublishEvent {
 		if (o == null || getClass() != o.getClass())
 			return false;
 		PublishEvent that = (PublishEvent) o;
-		return hashed == that.hashed && publishedAt == that.publishedAt && Arrays
-				.equals(units, that.units) && Arrays.equals(exposures, that.exposures) && Arrays
-						.equals(goals, that.goals)
+		return hashed == that.hashed && publishedAt == that.publishedAt && Arrays.equals(units, that.units)
+				&& Arrays.equals(exposures, that.exposures) && Arrays.equals(goals, that.goals)
 				&& Arrays.equals(attributes, that.attributes);
 	}
 

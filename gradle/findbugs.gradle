@@ -1,0 +1,16 @@
+apply plugin: "findbugs"
+
+findbugs {
+	toolVersion = "3.0.1"
+	effort = "max"
+}
+
+project.tasks.withType(FindBugs) {
+	group "Verification"
+	description "Run Findbugs on this project."
+
+	reports {
+		xml.enabled = false
+		html.enabled = true
+	}
+}

@@ -4,14 +4,26 @@ A/B Smartly - Java SDK
 
 ## Compatibility
 
-The A/B Smartly Java SDK is compatible with Java versions 1.8 and later.
-It provides both a blocking and an asynchronous interfaces.
+The A/B Smartly Java SDK is compatible with Java versions 1.6 and later.
+It provides both a blocking and an asynchronous interfaces. The asynchronous functions return a [custom backport](https://github.com/stefan-zobel/streamsupport) of the Java 8 `CompletableFuture` API.
+
+### Android
+
+The A/B Smartly SDK is compatible with Android 4.4 and later (API level 19+).
+
+The `android.permission.INTERNET` permission is required. To add this permission to your application ensure the following line is present in the `AndroidManifest.xml` file:
+```xml
+    <uses-permission android:name="android.permission.INTERNET"/>
+```
+
+If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
+
 
 ## Installation
 
 #### Gradle
 
-To install the ABSmartly SDK, place the following in your `build.gradle` and replace VERSION with the latest SDK version available in MavenCentral.
+To install the ABSmartly SDK, place the following in your `build.gradle` and replace {VERSION} with the latest SDK version available in MavenCentral.
 
 ```gradle
 dependencies {
@@ -21,7 +33,7 @@ dependencies {
 
 #### Maven
 
-To install the ABSmartly SDK, place the following in your `pom.xml` and replace VERSION with the latest SDK version available in MavenCentral.
+To install the ABSmartly SDK, place the following in your `pom.xml` and replace {VERSION} with the latest SDK version available in MavenCentral.
 
 ```xml
 <dependency>
@@ -30,6 +42,10 @@ To install the ABSmartly SDK, place the following in your `pom.xml` and replace 
     <version>{VERSION}</version>
 </dependency>
 ```
+
+#### Android 6.0 or earlier
+When targeting Android 6.0 or earlier, the default Java Security Provider will not work. Using [Conscrypt](https://github.com/google/conscrypt) is recommended. Follow these [instructions](https://github.com/google/conscrypt/blob/master/README.md) to install it as dependency.
+
 
 ## Getting Started
 
@@ -42,19 +58,51 @@ import com.absmartly.sdk.*;
 
 public class Example {
     static public void main(String[] args) {
+
         final ClientConfig clientConfig = ClientConfig.create()
-                .setEndpoint("https://your-company.absmartly.io/v1")
-                .setAPIKey("YOUR-API-KEY")
-                .setApplication("website") // created in the ABSmartly web console
-                .setEnvironment("development");  // created in the ABSmartly web console
+            .setEndpoint("https://your-company.absmartly.io/v1")
+            .setAPIKey("YOUR-API-KEY")
+            .setApplication("website") // created in the ABSmartly web console
+            .setEnvironment("development");  // created in the ABSmartly web console
+
+        final Client absmartlyClient = Client.create(clientConfig);
 
         final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
-				.setClient(Client.create(clientConfig));
+            .setClient(absmartlyClient);
 
-		final ABSmartly sdk = ABSmartly.create(sdkConfig);
-		// ...
+
+        final ABSmartly sdk = ABSmartly.create(sdkConfig);
+        // ...
     }
 }
+```
+
+#### Android 6.0 or earlier
+When targeting Android 6.0 or earlier, set the default Java Security Provider for SSL to *Conscrypt* by creating the *Client* instance as follows:
+
+```java
+import com.absmartly.sdk.*;
+import org.conscrypt.Conscrypt;
+
+    // ...
+    final ClientConfig clientConfig = ClientConfig.create()
+        .setEndpoint("https://your-company.absmartly.io/v1")
+        .setAPIKey("YOUR-API-KEY")
+        .setApplication("website") // created in the ABSmartly web console
+        .setEnvironment("development");  // created in the ABSmartly web console
+
+    final DefaultHTTPClientConfig httpClientConfig = DefaultHTTPClientConfig.create()
+        .setSecurityProvider(Conscrypt.newProvider());
+
+    final DefaultHTTPClient httpClient = DefaultHTTPClient.create(httpClientConfig);
+
+    final Client absmartlyClient = Client.create(clientConfig, httpClient);
+
+    final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
+        .setClient(absmartlyClient);
+
+    final ABSmartly sdk = ABSmartly.create(sdkConfig);
+    // ...
 ```
 
 #### Creating a new Context synchronously
@@ -143,7 +191,7 @@ The `close()` and `closeAsync()` methods will ensure all events have been publis
 ```
 
 #### Refreshing the context with fresh experiment data
-For long-running contexts, the context is usually created once when the application is first reached.
+For long-running contexts, the context is usually created once when the application is first started.
 However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
 To mitigate this, we can use the `refresh()` or `refreshAsync()` methods.
 

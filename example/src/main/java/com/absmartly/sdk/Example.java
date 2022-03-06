@@ -26,7 +26,7 @@ public class Example {
 		final int treatment = ctx.getTreatment("exp_test_ab");
 		System.out.println(treatment);
 
-		final Map<String, Object> properties = new HashMap<>();
+		final Map<String, Object> properties = new HashMap<String, Object>();
 		properties.put("value", 125);
 		properties.put("fee", 125);
 

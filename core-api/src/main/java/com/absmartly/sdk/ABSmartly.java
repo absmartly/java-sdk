@@ -2,14 +2,14 @@ package com.absmartly.sdk;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.time.Clock;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java8.util.concurrent.CompletableFuture;
 
 import javax.annotation.Nonnull;
 
+import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
 
 public class ABSmartly implements Closeable {
@@ -70,7 +70,7 @@ public class ABSmartly implements Closeable {
 
 		if (scheduler_ != null) {
 			try {
-				scheduler_.awaitTermination(5_000, TimeUnit.MILLISECONDS);
+				scheduler_.awaitTermination(5000, TimeUnit.MILLISECONDS);
 			} catch (InterruptedException ignored) {}
 			scheduler_ = null;
 		}

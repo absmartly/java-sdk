@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import com.absmartly.sdk.json.ContextData;
 
@@ -20,7 +19,6 @@ public class DefaultContextDataDeserializer implements ContextDataDeserializer {
 	public DefaultContextDataDeserializer() {
 		final ObjectMapper objectMapper = new ObjectMapper();
 		objectMapper.enable(MapperFeature.USE_STATIC_TYPING);
-		objectMapper.registerModule(new JavaTimeModule());
 		this.reader_ = objectMapper.readerFor(ContextData.class);
 	}
 
