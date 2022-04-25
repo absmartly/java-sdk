@@ -1,7 +1,7 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 import java.util.Map;
 
@@ -91,6 +91,14 @@ class ContextConfigTest {
 		assertEquals(2, config.getCustomAssignment("exp_test"));
 		assertEquals(1, config.getCustomAssignment("exp_test_new"));
 		assertEquals(cassignments, config.getCustomAssignments());
+	}
+
+	@Test
+	void setEventLogger() {
+		final ContextEventLogger logger = mock(ContextEventLogger.class);
+		final ContextConfig config = ContextConfig.create()
+				.setEventLogger(logger);
+		assertSame(logger, config.getEventLogger());
 	}
 
 	@Test

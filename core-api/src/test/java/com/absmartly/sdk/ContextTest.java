@@ -19,6 +19,7 @@ import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
 import com.absmartly.sdk.java.time.Clock;
@@ -75,6 +76,7 @@ class ContextTest {
 	CompletableFuture<ContextData> refreshDataFuture;
 
 	ContextDataProvider dataProvider;
+	ContextEventLogger eventLogger;
 	ContextEventHandler eventHandler;
 	VariableParser variableParser;
 	ScheduledExecutorService scheduler;
@@ -98,8 +100,30 @@ class ContextTest {
 
 		dataProvider = mock(ContextDataProvider.class);
 		eventHandler = mock(ContextEventHandler.class);
+		eventLogger = mock(ContextEventLogger.class);
 		variableParser = new DefaultVariableParser();
 		scheduler = mock(ScheduledExecutorService.class);
+	}
+
+	Context createContext(ContextConfig config, CompletableFuture<ContextData> dataFuture) {
+		return Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
+				eventLogger, variableParser);
+	}
+
+	Context createContext(CompletableFuture<ContextData> dataFuture) {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units);
+
+		return Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
+				eventLogger, variableParser);
+	}
+
+	Context createReadyContext() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units);
+
+		return Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
+				eventLogger, variableParser);
 	}
 
 	@Test
@@ -112,8 +136,7 @@ class ContextTest {
 				.setUnits(units)
 				.setOverrides(overrides);
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(config, dataFutureReady);
 		overrides.forEach((experimentName, variant) -> assertEquals(variant, context.getOverride(experimentName)));
 	}
 
@@ -127,41 +150,28 @@ class ContextTest {
 				.setUnits(units)
 				.setCustomAssignments(cassignments);
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(config, dataFutureReady);
 		cassignments.forEach(
 				(experimentName, variant) -> assertEquals(variant, context.getCustomAssignment(experimentName)));
 	}
 
 	@Test
 	void becomesReadyWithCompletedFuture() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 		assertSame(data, context.getData());
 	}
 
 	@Test
 	void becomesReadyAndFailedWithCompletedExceptionallyFuture() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureFailed, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFutureFailed);
 		assertTrue(context.isReady());
 		assertTrue(context.isFailed());
 	}
 
 	@Test
 	void becomesReadyAndFailedWithException() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -174,12 +184,35 @@ class ContextTest {
 	}
 
 	@Test
-	void waitUntilReady() throws InterruptedException {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+	void callsEventLoggerWhenReady() {
+		final Context context = createContext(dataFuture);
 
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		dataFuture.complete(data);
+
+		context.waitUntilReady();
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Ready, data);
+	}
+
+	@Test
+	void callsEventLoggerWithCompletedFuture() {
+		final Context context = createReadyContext();
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Ready, data);
+	}
+
+	@Test
+	void callsEventLoggerWithException() {
+		final Context context = createContext(dataFuture);
+
+		final Exception error = new Exception("FAILED");
+		dataFuture.completeExceptionally(error);
+
+		context.waitUntilReady();
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, error);
+	}
+
+	@Test
+	void waitUntilReady() throws InterruptedException {
+		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 
 		final Thread completer = new Thread(() -> dataFuture.complete(data));
@@ -194,11 +227,7 @@ class ContextTest {
 
 	@Test
 	void waitUntilReadyWithCompletedFuture() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		context.waitUntilReady();
@@ -207,11 +236,7 @@ class ContextTest {
 
 	@Test
 	void waitUntilReadyAsync() throws ExecutionException, InterruptedException {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 
 		final CompletableFuture<Context> readyFuture = context.waitUntilReadyAsync();
@@ -230,11 +255,7 @@ class ContextTest {
 
 	@Test
 	void waitUntilReadyAsyncWithCompletedFuture() throws ExecutionException, InterruptedException {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final CompletableFuture<Context> readyFuture = context.waitUntilReadyAsync();
@@ -247,11 +268,7 @@ class ContextTest {
 
 	@Test
 	void throwsWhenNotReady() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -274,11 +291,7 @@ class ContextTest {
 
 	@Test
 	void throwsWhenClosing() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -332,11 +345,7 @@ class ContextTest {
 
 	@Test
 	void throwsWhenClosed() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -389,11 +398,7 @@ class ContextTest {
 
 	@Test
 	void getExperiments() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final String[] experiments = Arrays.stream(data.experiments).map(x -> x.name).toArray(String[]::new);
@@ -406,8 +411,7 @@ class ContextTest {
 				.setUnits(units)
 				.setPublishDelay(333);
 
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(config, dataFuture);
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -419,6 +423,8 @@ class ContextTest {
 					runnable.set(invokation.getArgument(0));
 					return mock(ScheduledFuture.class);
 				});
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		dataFuture.complete(data);
 		context.waitUntilReady();
@@ -433,11 +439,7 @@ class ContextTest {
 
 	@Test
 	void setAttributesBeforeReady() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 
 		context.setAttribute("attr1", "value1");
@@ -450,12 +452,7 @@ class ContextTest {
 
 	@Test
 	void setOverride() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units)
-				.setAttributes(attributes);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 
 		context.setOverride("exp_test", 2);
 
@@ -482,12 +479,7 @@ class ContextTest {
 
 	@Test
 	void setOverrideClearsAssignmentCache() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units)
-				.setAttributes(attributes);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 
 		final Map<String, Integer> overrides = TestUtils.mapOf(
 				"exp_test_new", 3,
@@ -524,11 +516,7 @@ class ContextTest {
 
 	@Test
 	void setOverridesBeforeReady() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 
 		context.setOverride("exp_test", 2);
@@ -547,13 +535,7 @@ class ContextTest {
 
 	@Test
 	void setCustomAssignment() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units)
-				.setAttributes(attributes);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
-
+		final Context context = createReadyContext();
 		context.setCustomAssignment("exp_test", 2);
 
 		assertEquals(2, context.getCustomAssignment("exp_test"));
@@ -580,12 +562,7 @@ class ContextTest {
 
 	@Test
 	void setCustomAssignmentDoesNotOverrideFullOnOrNotEligibleAssignments() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units)
-				.setAttributes(attributes);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 
 		context.setCustomAssignment("exp_test_not_eligible", 3);
 		context.setCustomAssignment("exp_test_fullon", 3);
@@ -596,12 +573,7 @@ class ContextTest {
 
 	@Test
 	void setCustomAssignmentClearsAssignmentCache() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units)
-				.setAttributes(attributes);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 
 		final Map<String, Integer> cassignments = TestUtils.mapOf(
 				"exp_test_ab", 2,
@@ -634,11 +606,7 @@ class ContextTest {
 
 	@Test
 	void setCustomAssignmentsBeforeReady() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 
 		context.setCustomAssignment("exp_test", 2);
@@ -657,11 +625,8 @@ class ContextTest {
 
 	@Test
 	void peekTreatment() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
 		Arrays.stream(data.experiments).forEach(experiment -> assertEquals(expectedVariants.get(experiment.name),
 				context.peekTreatment(experiment.name)));
 		assertEquals(0, context.peekTreatment("not_found"));
@@ -676,11 +641,8 @@ class ContextTest {
 
 	@Test
 	void peekVariableValue() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
 		final Set<String> experiments = Arrays.stream(data.experiments).map(x -> x.name).collect(Collectors.toSet());
 
 		variableExperiments.forEach((variable, experimentName) -> {
@@ -699,11 +661,8 @@ class ContextTest {
 
 	@Test
 	void getVariableValue() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
 		final Set<String> experiments = Arrays.stream(data.experiments).map(x -> x.name).collect(Collectors.toSet());
 
 		variableExperiments.forEach((variable, experimentName) -> {
@@ -721,24 +680,43 @@ class ContextTest {
 	}
 
 	@Test
-	void getVariableKeys() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+	void getVariableValueCallsEventLogger() {
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, refreshDataFutureReady, dataProvider,
-				eventHandler,
-				variableParser);
+		Mockito.clearInvocations(eventLogger);
+
+		context.getVariableValue("banner.border", null);
+		context.getVariableValue("banner.size", null);
+
+		final Exposure[] exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
+		};
+
+		verify(eventLogger, times(exposures.length)).handleEvent(any(), any(), any());
+
+		for (Exposure expected : exposures) {
+			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+					ArgumentMatchers.eq(ContextEventLogger.EventType.Exposure), ArgumentMatchers.eq(expected));
+		}
+
+		// verify not called again with the same exposure
+		Mockito.clearInvocations(eventLogger);
+		context.getVariableValue("banner.border", null);
+		context.getVariableValue("banner.size", null);
+
+		verify(eventLogger, times(0)).handleEvent(any(), any(), any());
+	}
+
+	@Test
+	void getVariableKeys() {
+		final Context context = createContext(refreshDataFutureReady);
 
 		assertEquals(variableExperiments, context.getVariableKeys());
 	}
 
 	@Test
 	void peekTreatmentReturnsOverrideVariant() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 
 		Arrays.stream(data.experiments).forEach(
 				experiment -> context.setOverride(experiment.name, 11 + expectedVariants.get(experiment.name)));
@@ -758,11 +736,8 @@ class ContextTest {
 
 	@Test
 	void getTreatment() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
 		Arrays.stream(data.experiments).forEach(experiment -> assertEquals(expectedVariants.get(experiment.name),
 				context.getTreatment(experiment.name)));
 		assertEquals(0, context.getTreatment("not_found"));
@@ -798,8 +773,7 @@ class ContextTest {
 				.setUnits(units)
 				.setPublishDelay(333);
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(config, dataFutureReady);
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -809,6 +783,8 @@ class ContextTest {
 					runnable.set(invokation.getArgument(0));
 					return mock(ScheduledFuture.class);
 				});
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.getTreatment("exp_test_ab");
 		context.getTreatment("exp_test_abc");
@@ -823,11 +799,7 @@ class ContextTest {
 
 	@Test
 	void getTreatmentReturnsOverrideVariant() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 
 		Arrays.stream(data.experiments).forEach(
 				experiment -> context.setOverride(experiment.name, 11 + expectedVariants.get(experiment.name)));
@@ -863,11 +835,8 @@ class ContextTest {
 
 	@Test
 	void getTreatmentQueuesExposureOnce() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
 		Arrays.stream(data.experiments).forEach(experiment -> context.getTreatment(experiment.name));
 		context.getTreatment("not_found");
 
@@ -895,12 +864,37 @@ class ContextTest {
 	}
 
 	@Test
-	void track() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+	void getTreatmentCallsEventLogger() {
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		Mockito.clearInvocations(eventLogger);
+
+		context.getTreatment("exp_test_ab");
+		context.getTreatment("not_found");
+
+		final Exposure[] exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false),
+		};
+
+		verify(eventLogger, times(exposures.length)).handleEvent(any(), any(), any());
+
+		for (Exposure expected : exposures) {
+			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+					ArgumentMatchers.eq(ContextEventLogger.EventType.Exposure), ArgumentMatchers.eq(expected));
+		}
+
+		// verify not called again with the same exposure
+		Mockito.clearInvocations(eventLogger);
+		context.getTreatment("exp_test_ab");
+		context.getTreatment("not_found");
+
+		verify(eventLogger, times(0)).handleEvent(any(), any(), any());
+	}
+
+	@Test
+	void track() {
+		final Context context = createReadyContext();
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 		context.track("goal2", TestUtils.mapOf("tries", 7));
 
@@ -935,13 +929,41 @@ class ContextTest {
 	}
 
 	@Test
+	void trackCallsEventLogger() {
+		final Context context = createReadyContext();
+		Mockito.clearInvocations(eventLogger);
+
+		final Map<String, Object> properties = TestUtils.mapOf("amount", 125, "hours", 245);
+		context.track("goal1", properties);
+
+		final GoalAchievement[] achievements = new GoalAchievement[]{
+				new GoalAchievement("goal1", clock.millis(), properties)
+		};
+
+		verify(eventLogger, times(achievements.length)).handleEvent(any(), any(), any());
+
+		for (GoalAchievement goal : achievements) {
+			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+					ArgumentMatchers.eq(ContextEventLogger.EventType.Goal), ArgumentMatchers.eq(goal));
+		}
+
+		// verify called again with the same goal
+		Mockito.clearInvocations(eventLogger);
+		context.track("goal1", properties);
+
+		for (GoalAchievement goal : achievements) {
+			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+					ArgumentMatchers.eq(ContextEventLogger.EventType.Goal), ArgumentMatchers.eq(goal));
+		}
+	}
+
+	@Test
 	void trackStartsPublishTimeoutAfterAchievement() {
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units)
 				.setPublishDelay(333);
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(config, dataFutureReady);
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -951,6 +973,8 @@ class ContextTest {
 					runnable.set(invokation.getArgument(0));
 					return mock(ScheduledFuture.class);
 				});
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
 		context.track("goal1", TestUtils.mapOf("amount", 125));
 		context.track("goal2", TestUtils.mapOf("value", 999.0));
@@ -965,11 +989,8 @@ class ContextTest {
 
 	@Test
 	void trackQueuesWhenNotReady() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+		final Context context = createContext(dataFuture);
 
-		final Context context = Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				variableParser);
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
 		context.track("goal2", TestUtils.mapOf("tries", 7));
 		context.track("goal3", null);
@@ -979,16 +1000,56 @@ class ContextTest {
 
 	@Test
 	void publishDoesNotCallEventHandlerWhenQueueIsEmpty() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertEquals(0, context.getPendingCount());
 
 		context.publish();
 
 		verify(eventHandler, times(0)).publish(any(), any());
+	}
+
+	@Test
+	void publishCallsEventLogger() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+
+		Mockito.clearInvocations(eventLogger);
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.goals = new GoalAchievement[]{
+				new GoalAchievement("goal1", clock.millis(),
+						new TreeMap<>(TestUtils.mapOf("amount", 125, "hours", 245))),
+		};
+
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Publish, expected);
+	}
+
+	@Test
+	void publishCallsEventLoggerOnError() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+
+		Mockito.clearInvocations(eventLogger);
+
+		final Exception failure = new Exception("ERROR");
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.failedFuture(failure));
+
+		final CompletionException actual = assertThrows(CompletionException.class, context::publish);
+		assertSame(failure, actual.getCause());
+
+		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, failure);
 	}
 
 	@Test
@@ -1001,8 +1062,7 @@ class ContextTest {
 				.setCustomAssignment("exp_test_abc", 3)
 				.setOverride("not_found", 3);
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(config, dataFutureReady);
 
 		assertEquals(0, context.getPendingCount());
 
@@ -1088,11 +1148,7 @@ class ContextTest {
 
 	@Test
 	void publishDoesNotCallEventHandlerWhenFailed() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureFailed, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createContext(dataFutureFailed);
 		assertTrue(context.isReady());
 		assertTrue(context.isFailed());
 
@@ -1110,11 +1166,7 @@ class ContextTest {
 
 	@Test
 	void publishExceptionally() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -1133,11 +1185,7 @@ class ContextTest {
 
 	@Test
 	void closeAsync() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
@@ -1164,11 +1212,7 @@ class ContextTest {
 
 	@Test
 	void close() throws InterruptedException {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
@@ -1194,12 +1238,44 @@ class ContextTest {
 	}
 
 	@Test
-	void closeExceptionally() throws InterruptedException {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+	void closeCallsEventLogger() throws InterruptedException {
+		final Context context = createReadyContext();
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		Mockito.clearInvocations(eventLogger);
+
+		context.close();
+
+		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Close, null);
+	}
+
+	@Test
+	void closeCallsEventLoggerOnError() throws InterruptedException {
+		final Context context = createReadyContext();
+
+		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+
+		Mockito.clearInvocations(eventLogger);
+
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final Exception failure = new Exception("FAILED");
+		final Thread publisher = new Thread(() -> publishFuture.completeExceptionally(failure));
+		publisher.start();
+
+		final CompletionException actual = assertThrows(CompletionException.class, context::close);
+		assertSame(failure, actual.getCause());
+
+		publisher.join();
+
+		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, failure);
+	}
+
+	@Test
+	void closeExceptionally() throws InterruptedException {
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
@@ -1221,11 +1297,7 @@ class ContextTest {
 
 	@Test
 	void refresh() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		when(dataProvider.getContextData()).thenReturn(refreshDataFuture);
@@ -1240,12 +1312,36 @@ class ContextTest {
 	}
 
 	@Test
-	void refreshExceptionally() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
+	void refreshCallsEventLogger() {
+		final Context context = createReadyContext();
+		Mockito.clearInvocations(eventLogger);
 
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		when(dataProvider.getContextData()).thenReturn(refreshDataFuture);
+		refreshDataFuture.complete(refreshData);
+
+		context.refresh();
+
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Refresh, refreshData);
+	}
+
+	@Test
+	void refreshCallsEventLoggerOnError() {
+		final Context context = createReadyContext();
+		Mockito.clearInvocations(eventLogger);
+
+		final Exception failure = new Exception("ERROR");
+		when(dataProvider.getContextData()).thenReturn(CompletableFuture.failedFuture(failure));
+		refreshDataFuture.complete(refreshData);
+
+		final CompletionException actual = assertThrows(CompletionException.class, context::refresh);
+		assertSame(failure, actual.getCause());
+
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, failure);
+	}
+
+	@Test
+	void refreshExceptionally() {
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
@@ -1264,11 +1360,7 @@ class ContextTest {
 
 	@Test
 	void refreshAsync() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		when(dataProvider.getContextData()).thenReturn(refreshDataFuture);
@@ -1288,11 +1380,7 @@ class ContextTest {
 
 	@Test
 	void refreshKeepsAssignmentCacheWhenNotChanged() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		Arrays.stream(data.experiments).forEach(experiment -> context.getTreatment(experiment.name));
@@ -1317,11 +1405,7 @@ class ContextTest {
 
 	@Test
 	void refreshClearAssignmentCacheForStoppedExperiment() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final String experimentName = "exp_test_abc";
@@ -1350,11 +1434,7 @@ class ContextTest {
 
 	@Test
 	void refreshClearAssignmentCacheForStartedExperiment() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final String experimentName = "exp_test_new";
@@ -1380,11 +1460,7 @@ class ContextTest {
 
 	@Test
 	void refreshClearAssignmentCacheForFullOnExperiment() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final String experimentName = "exp_test_abc";
@@ -1416,11 +1492,7 @@ class ContextTest {
 
 	@Test
 	void refreshClearAssignmentCacheForTrafficSplitChange() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final String experimentName = "exp_test_not_eligible";
@@ -1449,11 +1521,7 @@ class ContextTest {
 
 	@Test
 	void refreshClearAssignmentCacheForIterationChange() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final String experimentName = "exp_test_abc";
@@ -1487,11 +1555,7 @@ class ContextTest {
 
 	@Test
 	void refreshClearAssignmentCacheForExperimentIdChange() {
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		final Context context = Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				variableParser);
+		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
 		final String experimentName = "exp_test_abc";

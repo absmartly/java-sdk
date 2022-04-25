@@ -47,6 +47,15 @@ public class ABSmartlyConfig {
 		return this;
 	}
 
+	public ContextEventLogger getContextEventLogger() {
+		return contextEventLogger_;
+	}
+
+	public ABSmartlyConfig setContextEventLogger(@Nonnull final ContextEventLogger logger) {
+		contextEventLogger_ = logger;
+		return this;
+	}
+
 	public Client getClient() {
 		return client_;
 	}
@@ -58,6 +67,8 @@ public class ABSmartlyConfig {
 
 	private ContextDataProvider contextDataProvider_;
 	private ContextEventHandler contextEventHandler_;
+
+	private ContextEventLogger contextEventLogger_;
 	private VariableParser variableParser_;
 	private ScheduledExecutorService scheduler_;
 	private Client client_;

@@ -36,7 +36,7 @@ public class ContextData {
 
 	@Override
 	public String toString() {
-		return "ContextGetResponse{" +
+		return "ContextData{" +
 				"experiments=" + Arrays.toString(experiments) +
 				'}';
 	}

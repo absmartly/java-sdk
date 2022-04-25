@@ -200,6 +200,38 @@ The `refresh()` method pulls updated experiment data from the A/B Smartly collec
     context.refresh();
 ```
 
+#### Using a custom Event Logger
+The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
+In addition, an event logger can be specified when creating a particular context, in the `ContextConfig`.
+```javascript
+    final ContextConfig contextConfig = ContextConfig.create()
+        .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
+        .setEventLogger(new ContextEventLogger() {
+            @Override
+            public void handleEvent(Context context, ContextEventLogger.EventType event, Object data) {
+                if (event == ContextEventLogger.EventType.Error) {
+                    log.error("{}", data);
+                } else {
+                    log.info("{}: {}", event, data);
+                }
+            }
+        });
+```
+
+The data parameter depends on the type of event.
+Currently, the SDK logs the following events:
+
+| event | when | data |
+|:---: |---|---|
+| `Error` | `Context` receives an error | `Throwable` object |
+| `Ready` | `Context` turns ready | `ContextData` used to initialize the context |
+| `Refresh` | `Context.refresh()` method succeeds | `ContextData` used to refresh the context |
+| `Publish` | `Context.publish()` method succeeds | `PublishEvent` sent to the A/B Smartly event collector |
+| `Exposure` | `Context.treatment()` method succeeds on first exposure | `Exposure` enqueued for publishing |
+| `Goal` | `Context.track()` method succeeds | `GoalAchievement` enqueued for publishing |
+| `Close` | `Context.close()` method succeeds the first time | null |
+
+
 #### Peek at treatment variants
 Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure.
 The A/B Smartly SDK provides a `peekTreatment()` method for that.

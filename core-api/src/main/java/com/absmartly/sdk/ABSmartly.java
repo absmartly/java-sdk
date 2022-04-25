@@ -20,6 +20,7 @@ public class ABSmartly implements Closeable {
 	private ABSmartly(@Nonnull ABSmartlyConfig config) {
 		contextDataProvider_ = config.getContextDataProvider();
 		contextEventHandler_ = config.getContextEventHandler();
+		contextEventLogger_ = config.getContextEventLogger();
 		variableParser_ = config.getVariableParser();
 		scheduler_ = config.getScheduler();
 
@@ -49,12 +50,12 @@ public class ABSmartly implements Closeable {
 
 	public Context createContext(@Nonnull ContextConfig config) {
 		return Context.create(Clock.systemUTC(), config, scheduler_, contextDataProvider_.getContextData(),
-				contextDataProvider_, contextEventHandler_, variableParser_);
+				contextDataProvider_, contextEventHandler_, contextEventLogger_, variableParser_);
 	}
 
 	public Context createContextWith(@Nonnull ContextConfig config, ContextData data) {
 		return Context.create(Clock.systemUTC(), config, scheduler_, CompletableFuture.completedFuture(data),
-				contextDataProvider_, contextEventHandler_, variableParser_);
+				contextDataProvider_, contextEventHandler_, contextEventLogger_, variableParser_);
 	}
 
 	public CompletableFuture<ContextData> getContextData() {
@@ -79,6 +80,7 @@ public class ABSmartly implements Closeable {
 	private Client client_;
 	private ContextDataProvider contextDataProvider_;
 	private ContextEventHandler contextEventHandler_;
+	private ContextEventLogger contextEventLogger_;
 	private VariableParser variableParser_;
 	private ScheduledExecutorService scheduler_;
 }

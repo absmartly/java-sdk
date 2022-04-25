@@ -110,6 +110,15 @@ public class ContextConfig {
 		return this.cassigmnents_;
 	}
 
+	public ContextEventLogger getEventLogger() {
+		return this.eventLogger_;
+	}
+
+	public ContextConfig setEventLogger(ContextEventLogger eventLogger) {
+		this.eventLogger_ = eventLogger;
+		return this;
+	}
+
 	public ContextConfig setPublishDelay(long delayMs) {
 		this.publishDelay_ = delayMs;
 		return this;
@@ -123,6 +132,8 @@ public class ContextConfig {
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
 	private Map<String, Integer> cassigmnents_;
+
+	private ContextEventLogger eventLogger_;
 
 	private long publishDelay_ = 100;
 }

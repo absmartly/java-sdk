@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
 import java8.util.function.Consumer;
 import java8.util.function.Function;
 
@@ -28,19 +29,22 @@ public class Context implements Closeable {
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
-			@Nonnull final ContextEventHandler eventHandler, @Nonnull final VariableParser variableParser) {
-		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, variableParser);
+			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
+			@Nonnull final VariableParser variableParser) {
+		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
+				variableParser);
 	}
 
 	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
 			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
-			ContextEventHandler eventHandler, VariableParser variableParser) {
+			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser) {
 		final Map<String, String> units = config.getUnits();
 		clock_ = clock;
 		publishDelay_ = config.getPublishDelay();
 		units_ = new HashMap<String, String>(config.getUnits());
 
 		eventHandler_ = eventHandler;
+		eventLogger_ = config.getEventLogger() != null ? config.getEventLogger() : eventLogger;
 		dataProvider_ = dataProvider;
 		variableParser_ = variableParser;
 		scheduler_ = scheduler;
@@ -64,11 +68,13 @@ public class Context implements Closeable {
 				@Override
 				public void accept(ContextData data) {
 					Context.this.setData(data);
+					Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
 				@Override
 				public Void apply(Throwable exception) {
 					Context.this.setDataFailed(exception);
+					Context.this.logError(exception);
 					return null;
 				}
 			});
@@ -81,6 +87,8 @@ public class Context implements Closeable {
 					readyFuture_.complete(null);
 					readyFuture_ = null;
 
+					Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
+
 					if (Context.this.getPendingCount() > 0) {
 						Context.this.setTimeout();
 					}
@@ -91,6 +99,9 @@ public class Context implements Closeable {
 					Context.this.setDataFailed(exception);
 					readyFuture_.complete(null);
 					readyFuture_ = null;
+
+					Context.this.logError(exception);
+
 					return null;
 				}
 			});
@@ -295,6 +306,8 @@ public class Context implements Closeable {
 				eventLock_.unlock();
 			}
 
+			logEvent(ContextEventLogger.EventType.Exposure, exposure);
+
 			setTimeout();
 		}
 	}
@@ -371,6 +384,8 @@ public class Context implements Closeable {
 			eventLock_.unlock();
 		}
 
+		logEvent(ContextEventLogger.EventType.Goal, achievement);
+
 		setTimeout();
 	}
 
@@ -400,12 +415,16 @@ public class Context implements Closeable {
 					Context.this.setData(data);
 					refreshing_.set(false);
 					refreshFuture_.complete(null);
+
+					Context.this.logEvent(ContextEventLogger.EventType.Refresh, data);
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
 				@Override
 				public Void apply(Throwable exception) {
 					refreshing_.set(false);
 					refreshFuture_.completeExceptionally(exception);
+
+					Context.this.logError(exception);
 					return null;
 				}
 			});
@@ -435,6 +454,8 @@ public class Context implements Closeable {
 							closed_.set(true);
 							closing_.set(false);
 							closingFuture_.complete(null);
+
+							Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 						}
 					}).exceptionally(new Function<Throwable, Void>() {
 						@Override
@@ -442,6 +463,8 @@ public class Context implements Closeable {
 							closed_.set(true);
 							closing_.set(false);
 							closingFuture_.completeExceptionally(exception);
+							// event logger gets this error during publish
+
 							return null;
 						}
 					});
@@ -450,6 +473,8 @@ public class Context implements Closeable {
 				} else {
 					closed_.set(true);
 					closing_.set(false);
+
+					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 				}
 			}
 
@@ -472,6 +497,8 @@ public class Context implements Closeable {
 
 		if (!failed_) {
 			if (pendingCount_.get() > 0) {
+				final CompletableFuture<Void> result = new CompletableFuture<Void>();
+
 				Exposure[] exposures = null;
 				GoalAchievement[] achievements = null;
 				int eventCount;
@@ -514,8 +541,24 @@ public class Context implements Closeable {
 					event.exposures = exposures;
 					event.goals = achievements;
 
-					return eventHandler_.publish(this, event);
+					eventHandler_.publish(this, event).thenRunAsync(new Runnable() {
+						@Override
+						public void run() {
+							Context.this.logEvent(ContextEventLogger.EventType.Publish, event);
+							result.complete(null);
+						}
+					}).exceptionally(new Function<Throwable, Void>() {
+						@Override
+						public Void apply(Throwable throwable) {
+							Context.this.logError(throwable);
+
+							result.completeExceptionally(throwable);
+							return null;
+						}
+					});
 				}
+
+				return result;
 			}
 		} else {
 			try {
@@ -798,9 +841,25 @@ public class Context implements Closeable {
 		}
 	}
 
+	private void logEvent(ContextEventLogger.EventType event, Object data) {
+		if (eventLogger_ != null) {
+			eventLogger_.handleEvent(this, event, data);
+		}
+	}
+
+	private void logError(Throwable error) {
+		if (eventLogger_ != null) {
+			while (error instanceof CompletionException) {
+				error = error.getCause();
+			}
+			eventLogger_.handleEvent(this, ContextEventLogger.EventType.Error, error);
+		}
+	}
+
 	private final Clock clock_;
 	private final long publishDelay_;
 	private final ContextEventHandler eventHandler_;
+	private final ContextEventLogger eventLogger_;
 	private final ContextDataProvider dataProvider_;
 	private final VariableParser variableParser_;
 	private final ScheduledExecutorService scheduler_;

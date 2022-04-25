@@ -37,6 +37,13 @@ class ABSmartlyConfigTest {
 	}
 
 	@Test
+	void setContextEventLogger() {
+		final ContextEventLogger logger = mock(ContextEventLogger.class);
+		final ABSmartlyConfig config = ABSmartlyConfig.create().setContextEventLogger(logger);
+		assertSame(logger, config.getContextEventLogger());
+	}
+
+	@Test
 	void setAll() {
 		final ContextEventHandler handler = mock(ContextEventHandler.class);
 		final ContextDataProvider provider = mock(ContextDataProvider.class);

@@ -43,7 +43,7 @@ public class PublishEvent {
 
 	@Override
 	public String toString() {
-		return "PublishRequest{" +
+		return "PublishEvent{" +
 				"hashedUnits=" + hashed +
 				", units=" + Arrays.toString(units) +
 				", publishedAt=" + publishedAt +
