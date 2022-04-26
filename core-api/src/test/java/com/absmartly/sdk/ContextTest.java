@@ -1250,6 +1250,38 @@ class ContextTest {
 	}
 
 	@Test
+	void closeCallsEventLoggerWithPendingEvents() throws InterruptedException {
+		final Context context = createReadyContext();
+
+		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+
+		Mockito.clearInvocations(eventLogger);
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.goals = new GoalAchievement[]{
+				new GoalAchievement("goal1", clock.millis(),
+						new TreeMap<>(TestUtils.mapOf("amount", 125, "hours", 245))),
+		};
+
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final Thread publisher = new Thread(() -> publishFuture.complete(null));
+		publisher.start();
+
+		context.close();
+		publisher.join();
+
+		verify(eventLogger, times(2)).handleEvent(any(), any(), any());
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Publish, expected);
+		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Close, null);
+	}
+
+	@Test
 	void closeCallsEventLoggerOnError() throws InterruptedException {
 		final Context context = createReadyContext();
 
