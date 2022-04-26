@@ -497,8 +497,6 @@ public class Context implements Closeable {
 
 		if (!failed_) {
 			if (pendingCount_.get() > 0) {
-				final CompletableFuture<Void> result = new CompletableFuture<Void>();
-
 				Exposure[] exposures = null;
 				GoalAchievement[] achievements = null;
 				int eventCount;
@@ -541,6 +539,8 @@ public class Context implements Closeable {
 					event.exposures = exposures;
 					event.goals = achievements;
 
+					final CompletableFuture<Void> result = new CompletableFuture<Void>();
+
 					eventHandler_.publish(this, event).thenRunAsync(new Runnable() {
 						@Override
 						public void run() {
@@ -556,9 +556,9 @@ public class Context implements Closeable {
 							return null;
 						}
 					});
-				}
 
-				return result;
+					return result;
+				}
 			}
 		} else {
 			try {
