@@ -203,33 +203,55 @@ The `refresh()` method pulls updated experiment data from the A/B Smartly collec
 #### Using a custom Event Logger
 The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
 In addition, an event logger can be specified when creating a particular context, in the `ContextConfig`.
-```javascript
-    final ContextConfig contextConfig = ContextConfig.create()
-        .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
-        .setEventLogger(new ContextEventLogger() {
-            @Override
-            public void handleEvent(Context context, ContextEventLogger.EventType event, Object data) {
-                if (event == ContextEventLogger.EventType.Error) {
-                    log.error("{}", data);
-                } else {
-                    log.info("{}: {}", event, data);
-                }
+```java
+    // example implementation
+    public class CustomEventLogger implements ContextEventLogger {
+        @Override
+        public void handleEvent(Context context, ContextEventLogger.EventType event, Object data) {
+            switch (event) {
+            case Exposure:
+                final Exposure exposure = (Exposure)data;
+                System.out.printf("exposed to experiment %s", exposure.name);
+                break;
+            case Goal:
+                final GoalAchievement goal = (GoalAchievement)data;
+                System.out.printf("goal tracked: %s", goal.name);
+                break;
+            case Error:
+                System.out.printf("error: %s", data);
+                break;
+            case Publish:
+            case Ready:
+            case Refresh:
+            case Close:
+                break;
             }
-        });
+        }
+    }
+```
+
+```java
+    // for all contexts, during sdk initialization
+    final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create();
+    sdkConfig.setContextEventLogger(new CustomEventLogger());
+    
+    // OR, alternatively, during a particular context initialization
+    final ContextConfig contextConfig = ContextConfig.create();
+    contextConfig.setEventLogger(new CustomEventLogger());
 ```
 
 The data parameter depends on the type of event.
 Currently, the SDK logs the following events:
 
-| event | when | data |
-|:---: |---|---|
-| `Error` | `Context` receives an error | `Throwable` object |
-| `Ready` | `Context` turns ready | `ContextData` used to initialize the context |
-| `Refresh` | `Context.refresh()` method succeeds | `ContextData` used to refresh the context |
-| `Publish` | `Context.publish()` method succeeds | `PublishEvent` sent to the A/B Smartly event collector |
-| `Exposure` | `Context.treatment()` method succeeds on first exposure | `Exposure` enqueued for publishing |
-| `Goal` | `Context.track()` method succeeds | `GoalAchievement` enqueued for publishing |
-| `Close` | `Context.close()` method succeeds the first time | null |
+| event | when                                                       | data |
+|:---: |------------------------------------------------------------|---|
+| `Error` | `Context` receives an error                                | `Throwable` object |
+| `Ready` | `Context` turns ready                                      | `ContextData` used to initialize the context |
+| `Refresh` | `Context.refresh()` method succeeds                        | `ContextData` used to refresh the context |
+| `Publish` | `Context.publish()` method succeeds                        | `PublishEvent` sent to the A/B Smartly event collector |
+| `Exposure` | `Context.getTreatment()` method succeeds on first exposure | `Exposure` enqueued for publishing |
+| `Goal` | `Context.track()` method succeeds                          | `GoalAchievement` enqueued for publishing |
+| `Close` | `Context.close()` method succeeds the first time           | `null` |
 
 
 #### Peek at treatment variants
