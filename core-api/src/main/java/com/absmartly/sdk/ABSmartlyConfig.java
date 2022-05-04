@@ -56,6 +56,15 @@ public class ABSmartlyConfig {
 		return this;
 	}
 
+	public AudienceDeserializer getAudienceDeserializer() {
+		return audienceDeserializer_;
+	}
+
+	public ABSmartlyConfig setAudienceDeserializer(@Nonnull final AudienceDeserializer audienceDeserializer) {
+		audienceDeserializer_ = audienceDeserializer;
+		return this;
+	}
+
 	public Client getClient() {
 		return client_;
 	}
@@ -70,6 +79,8 @@ public class ABSmartlyConfig {
 
 	private ContextEventLogger contextEventLogger_;
 	private VariableParser variableParser_;
+
+	private AudienceDeserializer audienceDeserializer_;
 	private ScheduledExecutorService scheduler_;
 	private Client client_;
 }

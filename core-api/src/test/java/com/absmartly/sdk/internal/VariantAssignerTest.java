@@ -13,7 +13,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import com.absmartly.sdk.TestUtils;
 import com.absmartly.sdk.internal.hashing.Hashing;
 
-class VariantAssignerTest {
+class VariantAssignerTest extends TestUtils {
 	@Test
 	void chooseVariant() {
 		assertEquals(1, VariantAssigner.chooseVariant(new double[]{0.0, 1.0}, 0.0));
@@ -50,37 +50,37 @@ class VariantAssignerTest {
 	@ParameterizedTest(name = "testAssignmentsMatch_{0}{1}")
 	@MethodSource("com.absmartly.sdk.internal.VariantAssignerTest#testAssignmentsMatchArgs")
 	void testAssignmentsMatch(Object unitUID, List<Integer> expectedVariants) {
-		final List<List<Double>> splits = TestUtils.listOf(
-				TestUtils.listOf(0.5, 0.5),
-				TestUtils.listOf(0.5, 0.5),
-				TestUtils.listOf(0.5, 0.5),
-				TestUtils.listOf(0.5, 0.5),
-				TestUtils.listOf(0.5, 0.5),
-				TestUtils.listOf(0.5, 0.5),
-				TestUtils.listOf(0.5, 0.5),
-				TestUtils.listOf(0.33, 0.33, 0.34),
-				TestUtils.listOf(0.33, 0.33, 0.34),
-				TestUtils.listOf(0.33, 0.33, 0.34),
-				TestUtils.listOf(0.33, 0.33, 0.34),
-				TestUtils.listOf(0.33, 0.33, 0.34),
-				TestUtils.listOf(0.33, 0.33, 0.34),
-				TestUtils.listOf(0.33, 0.33, 0.34));
+		final List<List<Double>> splits = listOf(
+				listOf(0.5, 0.5),
+				listOf(0.5, 0.5),
+				listOf(0.5, 0.5),
+				listOf(0.5, 0.5),
+				listOf(0.5, 0.5),
+				listOf(0.5, 0.5),
+				listOf(0.5, 0.5),
+				listOf(0.33, 0.33, 0.34),
+				listOf(0.33, 0.33, 0.34),
+				listOf(0.33, 0.33, 0.34),
+				listOf(0.33, 0.33, 0.34),
+				listOf(0.33, 0.33, 0.34),
+				listOf(0.33, 0.33, 0.34),
+				listOf(0.33, 0.33, 0.34));
 
-		final List<List<Integer>> seeds = TestUtils.listOf(
-				TestUtils.listOf(0x00000000, 0x00000000),
-				TestUtils.listOf(0x00000000, 0x00000001),
-				TestUtils.listOf(0x8015406f, 0x7ef49b98),
-				TestUtils.listOf(0x3b2e7d90, 0xca87df4d),
-				TestUtils.listOf(0x52c1f657, 0xd248bb2e),
-				TestUtils.listOf(0x865a84d0, 0xaa22d41a),
-				TestUtils.listOf(0x27d1dc86, 0x845461b9),
-				TestUtils.listOf(0x00000000, 0x00000000),
-				TestUtils.listOf(0x00000000, 0x00000001),
-				TestUtils.listOf(0x8015406f, 0x7ef49b98),
-				TestUtils.listOf(0x3b2e7d90, 0xca87df4d),
-				TestUtils.listOf(0x52c1f657, 0xd248bb2e),
-				TestUtils.listOf(0x865a84d0, 0xaa22d41a),
-				TestUtils.listOf(0x27d1dc86, 0x845461b9));
+		final List<List<Integer>> seeds = listOf(
+				listOf(0x00000000, 0x00000000),
+				listOf(0x00000000, 0x00000001),
+				listOf(0x8015406f, 0x7ef49b98),
+				listOf(0x3b2e7d90, 0xca87df4d),
+				listOf(0x52c1f657, 0xd248bb2e),
+				listOf(0x865a84d0, 0xaa22d41a),
+				listOf(0x27d1dc86, 0x845461b9),
+				listOf(0x00000000, 0x00000000),
+				listOf(0x00000000, 0x00000001),
+				listOf(0x8015406f, 0x7ef49b98),
+				listOf(0x3b2e7d90, 0xca87df4d),
+				listOf(0x52c1f657, 0xd248bb2e),
+				listOf(0x865a84d0, 0xaa22d41a),
+				listOf(0x27d1dc86, 0x845461b9));
 
 		final byte[] unitHash = Hashing.hashUnit(unitUID.toString());
 		final VariantAssigner assigner = new VariantAssigner(unitHash);
@@ -94,9 +94,9 @@ class VariantAssignerTest {
 
 	static Stream<? extends Arguments> testAssignmentsMatchArgs() {
 		return Stream.of(
-				Arguments.of(123456789, TestUtils.listOf(1, 0, 1, 1, 1, 0, 0, 2, 1, 2, 2, 2, 0, 0)),
-				Arguments.of("bleh@absmartly.com", TestUtils.listOf(0, 1, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 1, 1)),
+				Arguments.of(123456789, listOf(1, 0, 1, 1, 1, 0, 0, 2, 1, 2, 2, 2, 0, 0)),
+				Arguments.of("bleh@absmartly.com", listOf(0, 1, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 1, 1)),
 				Arguments.of("e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-						TestUtils.listOf(1, 0, 1, 1, 0, 0, 0, 2, 0, 2, 1, 0, 0, 1)));
+						listOf(1, 0, 1, 1, 0, 0, 0, 2, 0, 2, 1, 0, 0, 1)));
 	}
 }

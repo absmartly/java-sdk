@@ -12,7 +12,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
-class AlgorithmTest {
+import com.absmartly.sdk.TestUtils;
+
+class AlgorithmTest extends TestUtils {
 	@Test
 	void mapSetToArray() {
 		final Function<Integer, Integer> square = mock(Function.class, withSettings().defaultAnswer(new Answer() {

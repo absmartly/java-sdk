@@ -28,6 +28,11 @@ public abstract class TestUtils {
 		}
 	}
 
+	public static <K, V> Map<K, V> mapOf() {
+		final HashMap<K, V> hashMap = new HashMap<>(0);
+		return hashMap;
+	}
+
 	public static <K, V> Map<K, V> mapOf(K k1, V v1) {
 		final HashMap<K, V> hashMap = new HashMap<>(1);
 		hashMap.put(k1, v1);

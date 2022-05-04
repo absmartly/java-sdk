@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java8.util.concurrent.CompletableFuture;
@@ -14,10 +13,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
-class ClientTest {
+class ClientTest extends TestUtils {
 	@Test
 	void createThrowsWithInvalidConfig() {
 		assertThrows(IllegalArgumentException.class, () -> {
@@ -81,11 +81,11 @@ class ClientTest {
 			final DefaultHTTPClient httpClient = mock(DefaultHTTPClient.class);
 			clientStatic.when(() -> DefaultHTTPClient.create(any())).thenReturn(httpClient);
 
-			final Map<String, String> expectedQuery = TestUtils.mapOf(
+			final Map<String, String> expectedQuery = mapOf(
 					"application", "website",
 					"environment", "dev");
 
-			final Map<String, String> expectedHeaders = TestUtils.mapOf(
+			final Map<String, String> expectedHeaders = mapOf(
 					"X-API-Key", "test-api-key",
 					"X-Application", "website",
 					"X-Environment", "dev",
@@ -129,7 +129,7 @@ class ClientTest {
 
 		final byte[] bytes = "{}".getBytes(StandardCharsets.UTF_8);
 
-		final Map<String, String> expectedQuery = TestUtils.mapOf(
+		final Map<String, String> expectedQuery = mapOf(
 				"application", "website",
 				"environment", "dev");
 
@@ -181,7 +181,7 @@ class ClientTest {
 				.setEnvironment("dev")
 				.setContextDataDeserializer(deser), httpClient);
 
-		final Map<String, String> expectedQuery = TestUtils.mapOf(
+		final Map<String, String> expectedQuery = mapOf(
 				"application", "website",
 				"environment", "dev");
 
@@ -209,12 +209,12 @@ class ClientTest {
 				.setEnvironment("dev")
 				.setContextDataDeserializer(deser), httpClient);
 
-		final Map<String, String> expectedQuery = TestUtils.mapOf(
+		final Map<String, String> expectedQuery = mapOf(
 				"application", "website",
 				"environment", "dev");
 
 		final Exception failure = new Exception("FAILED");
-		final CompletableFuture<HTTPClient.Response> responseFuture = TestUtils.failedFuture(failure);
+		final CompletableFuture<HTTPClient.Response> responseFuture = failedFuture(failure);
 
 		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
 				.thenReturn(responseFuture);
@@ -238,7 +238,7 @@ class ClientTest {
 				.setEnvironment("dev")
 				.setContextEventSerializer(ser), httpClient);
 
-		final Map<String, String> expectedHeaders = TestUtils.mapOf(
+		final Map<String, String> expectedHeaders = mapOf(
 				"X-API-Key", "test-api-key",
 				"X-Application", "website",
 				"X-Environment", "dev",
@@ -271,7 +271,7 @@ class ClientTest {
 				.setEnvironment("dev")
 				.setContextEventSerializer(ser), httpClient);
 
-		final Map<String, String> expectedHeaders = TestUtils.mapOf(
+		final Map<String, String> expectedHeaders = mapOf(
 				"X-API-Key", "test-api-key",
 				"X-Application", "website",
 				"X-Environment", "dev",
@@ -306,7 +306,7 @@ class ClientTest {
 				.setEnvironment("dev")
 				.setContextEventSerializer(ser), httpClient);
 
-		final Map<String, String> expectedHeaders = TestUtils.mapOf(
+		final Map<String, String> expectedHeaders = mapOf(
 				"X-API-Key", "test-api-key",
 				"X-Application", "website",
 				"X-Environment", "dev",
@@ -317,7 +317,7 @@ class ClientTest {
 		final byte[] bytes = new byte[]{0};
 
 		final Exception failure = new Exception("FAILED");
-		final CompletableFuture<HTTPClient.Response> responseFuture = TestUtils.failedFuture(failure);
+		final CompletableFuture<HTTPClient.Response> responseFuture = failedFuture(failure);
 
 		when(ser.serialize(event)).thenReturn(bytes);
 		when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, bytes)).thenReturn(responseFuture);

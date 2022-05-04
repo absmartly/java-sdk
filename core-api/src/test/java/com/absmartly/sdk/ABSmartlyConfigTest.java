@@ -7,7 +7,7 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import org.junit.jupiter.api.Test;
 
-class ABSmartlyConfigTest {
+class ABSmartlyConfigTest extends TestUtils {
 	@Test
 	void setContextDataProvider() {
 		final ContextDataProvider provider = mock(ContextDataProvider.class);

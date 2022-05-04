@@ -17,7 +17,7 @@ import org.mockito.MockedStatic;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
 
-class ABSmartlyTest {
+class ABSmartlyTest extends TestUtils {
 	Client client;
 
 	@BeforeEach
@@ -59,7 +59,7 @@ class ABSmartlyTest {
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
-				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any()))
+				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 						.thenReturn(contextMock);
 
 				final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -80,13 +80,16 @@ class ABSmartlyTest {
 						.forClass(ContextEventLogger.class);
 				final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor
 						.forClass(VariableParser.class);
+				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
+						.forClass(AudienceMatcher.class);
 
 				contextStatic.verify(times(1),
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any()));
+						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
 				contextStatic.verify(times(1),
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
-								eventLoggerCaptor.capture(), variableParserCaptor.capture()));
+								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
+								audienceMatcherCaptor.capture()));
 
 				assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 				assertSame(contextConfig, configCaptor.getValue());
@@ -96,6 +99,7 @@ class ABSmartlyTest {
 				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextEventHandler);
 				assertNull(eventLoggerCaptor.getValue());
 				assertTrue(variableParserCaptor.getValue() instanceof DefaultVariableParser);
+				assertNotNull(audienceMatcherCaptor.getValue());
 			}
 		}
 	}
@@ -113,7 +117,7 @@ class ABSmartlyTest {
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
-				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any()))
+				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 						.thenReturn(contextMock);
 
 				final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -136,13 +140,16 @@ class ABSmartlyTest {
 						.forClass(ContextEventLogger.class);
 				final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor
 						.forClass(VariableParser.class);
+				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
+						.forClass(AudienceMatcher.class);
 
 				contextStatic.verify(times(1),
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any()));
+						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
 				contextStatic.verify(times(1),
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
-								eventLoggerCaptor.capture(), variableParserCaptor.capture()));
+								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
+								audienceMatcherCaptor.capture()));
 
 				assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 				assertSame(contextConfig, configCaptor.getValue());
@@ -152,6 +159,7 @@ class ABSmartlyTest {
 				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextEventHandler);
 				assertNull(eventLoggerCaptor.getValue());
 				assertTrue(variableParserCaptor.getValue() instanceof DefaultVariableParser);
+				assertNotNull(audienceMatcherCaptor.getValue());
 			}
 		}
 	}
@@ -183,6 +191,7 @@ class ABSmartlyTest {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
 		final ContextEventHandler eventHandler = mock(ContextEventHandler.class);
 		final ContextEventLogger eventLogger = mock(ContextEventLogger.class);
+		final AudienceDeserializer audienceDeserializer = mock(AudienceDeserializer.class);
 		final VariableParser variableParser = mock(VariableParser.class);
 
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
@@ -191,13 +200,19 @@ class ABSmartlyTest {
 				.setContextEventHandler(eventHandler)
 				.setContextEventLogger(eventLogger)
 				.setScheduler(scheduler)
+				.setAudienceDeserializer(audienceDeserializer)
 				.setVariableParser(variableParser);
 
 		final ABSmartly absmartly = ABSmartly.create(config);
 
-		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
+		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class);
+				final MockedConstruction<AudienceMatcher> audienceMatcherCtor = mockConstruction(AudienceMatcher.class,
+						(mock, context) -> {
+							assertEquals(1, context.getCount());
+							assertSame(audienceDeserializer, context.arguments().get(0));
+						})) {
 			final Context contextMock = mock(Context.class);
-			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any()))
+			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 					.thenReturn(contextMock);
 
 			final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -217,13 +232,14 @@ class ABSmartlyTest {
 			final ArgumentCaptor<ContextEventLogger> eventLoggerCaptor = ArgumentCaptor
 					.forClass(ContextEventLogger.class);
 			final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor.forClass(VariableParser.class);
+			final ArgumentCaptor<AudienceMatcher> audienceMatcher = ArgumentCaptor.forClass(AudienceMatcher.class);
 
 			contextStatic.verify(times(1),
-					() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any()));
+					() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
 			contextStatic.verify(times(1),
 					() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 							dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
-							eventLoggerCaptor.capture(), variableParserCaptor.capture()));
+							eventLoggerCaptor.capture(), variableParserCaptor.capture(), audienceMatcher.capture()));
 
 			assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 			assertSame(contextConfig, configCaptor.getValue());
@@ -233,6 +249,7 @@ class ABSmartlyTest {
 			assertSame(eventHandler, eventHandlerCaptor.getValue());
 			assertSame(eventLogger, eventLoggerCaptor.getValue());
 			assertSame(variableParser, variableParserCaptor.getValue());
+			assertNotNull(audienceMatcher.getValue());
 		}
 	}
 
@@ -248,7 +265,7 @@ class ABSmartlyTest {
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 			final Context contextMock = mock(Context.class);
-			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any()))
+			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 					.thenReturn(contextMock);
 
 			final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");

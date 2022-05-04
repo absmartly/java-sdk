@@ -30,14 +30,15 @@ public class Context implements Closeable {
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
 			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
-			@Nonnull final VariableParser variableParser) {
+			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher) {
 		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
-				variableParser);
+				variableParser, audienceMatcher);
 	}
 
 	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
 			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
-			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser) {
+			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,
+			AudienceMatcher audienceMatcher) {
 		final Map<String, String> units = config.getUnits();
 		clock_ = clock;
 		publishDelay_ = config.getPublishDelay();
@@ -47,6 +48,7 @@ public class Context implements Closeable {
 		eventLogger_ = config.getEventLogger() != null ? config.getEventLogger() : eventLogger;
 		dataProvider_ = dataProvider;
 		variableParser_ = variableParser;
+		audienceMatcher_ = audienceMatcher;
 		scheduler_ = scheduler;
 		assigners_ = new HashMap<String, VariantAssigner>(units.size());
 		hashedUnits_ = new HashMap<String, byte[]>(units.size());
@@ -262,7 +264,7 @@ public class Context implements Closeable {
 	public void setAttribute(@Nonnull final String name, @Nullable final Object value) {
 		checkNotClosed();
 
-		Concurrency.putRW(contextLock_, attributes_, name, new Attribute(name, value, clock_.millis()));
+		Concurrency.addRW(contextLock_, attributes_, new Attribute(name, value, clock_.millis()));
 	}
 
 	public void setAttributes(@Nonnull final Map<String, Object> attributes) {
@@ -297,6 +299,7 @@ public class Context implements Closeable {
 			exposure.overridden = assignment.overridden;
 			exposure.fullOn = assignment.fullOn;
 			exposure.custom = assignment.custom;
+			exposure.audienceMismatch = assignment.audienceMismatch;
 
 			try {
 				eventLock_.lock();
@@ -535,7 +538,7 @@ public class Context implements Closeable {
 													StandardCharsets.US_ASCII));
 								}
 							});
-					event.attributes = attributes_.isEmpty() ? null : attributes_.values().toArray(new Attribute[0]);
+					event.attributes = attributes_.isEmpty() ? null : attributes_.toArray(new Attribute[0]);
 					event.exposures = exposures;
 					event.goals = achievements;
 
@@ -611,6 +614,8 @@ public class Context implements Closeable {
 		boolean eligible;
 		boolean fullOn;
 		boolean custom;
+
+		boolean audienceMismatch;
 		Map<String, Object> variables = Collections.emptyMap();
 
 		final AtomicBoolean exposed = new AtomicBoolean(false);
@@ -641,7 +646,22 @@ public class Context implements Closeable {
 						} else {
 							if (experiment != null) {
 								final String unitType = experiment.data.unitType;
-								if (experiment.data.fullOnVariant == 0) {
+
+								if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
+									final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
+									for (final Attribute attr : attributes_) {
+										attrs.put(attr.name, attr.value);
+									}
+
+									final Boolean result = audienceMatcher_.evaluate(experiment.data.audience, attrs);
+									if (result != null) {
+										assignment.audienceMismatch = !result;
+									}
+								}
+
+								if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+									assignment.variant = 0;
+								} else if (experiment.data.fullOnVariant == 0) {
 									final String uid = units_.get(experiment.data.unitType);
 									if (uid != null) {
 										final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
@@ -862,6 +882,7 @@ public class Context implements Closeable {
 	private final ContextEventLogger eventLogger_;
 	private final ContextDataProvider dataProvider_;
 	private final VariableParser variableParser_;
+	private final AudienceMatcher audienceMatcher_;
 	private final ScheduledExecutorService scheduler_;
 	private final Map<String, String> units_;
 	private boolean failed_;
@@ -881,7 +902,7 @@ public class Context implements Closeable {
 	private final ArrayList<GoalAchievement> achievements_ = new ArrayList<GoalAchievement>();
 
 	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
-	private final Map<String, Attribute> attributes_ = new HashMap<String, Attribute>();
+	private final List<Attribute> attributes_ = new ArrayList<Attribute>();
 	private final Map<String, Integer> overrides_;
 	private final Map<String, Integer> cassignments_;
 

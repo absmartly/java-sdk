@@ -15,7 +15,7 @@ import org.apache.hc.core5.http.protocol.HttpContext;
 import org.apache.hc.core5.util.TimeValue;
 import org.junit.jupiter.api.Test;
 
-class DefaultHTTPClientRetryStrategyTest {
+class DefaultHTTPClientRetryStrategyTest extends TestUtils {
 	@Test
 	void retryRequest() {
 		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, 1_000);
@@ -33,7 +33,7 @@ class DefaultHTTPClientRetryStrategyTest {
 	void testRetryRequest() {
 		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, 1_000);
 		final HttpContext context = new BasicHttpContext();
-		final Set<Integer> retryableCodes = TestUtils.setOf(502, 503);
+		final Set<Integer> retryableCodes = setOf(502, 503);
 
 		for (int code : retryableCodes) {
 			final HttpResponse response = new SimpleHttpResponse(code);

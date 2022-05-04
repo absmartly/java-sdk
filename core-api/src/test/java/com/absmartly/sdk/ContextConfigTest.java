@@ -7,7 +7,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-class ContextConfigTest {
+class ContextConfigTest extends TestUtils {
 	@Test
 	void setUnit() {
 		final ContextConfig config = ContextConfig.create()
@@ -30,7 +30,7 @@ class ContextConfigTest {
 
 	@Test
 	void setUnits() {
-		final Map<String, String> units = TestUtils.mapOf("session_id", "0ab1e23f4eee", "user_id",
+		final Map<String, String> units = mapOf("session_id", "0ab1e23f4eee", "user_id",
 				Long.toString(0xabcdef));
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units);
@@ -51,7 +51,7 @@ class ContextConfigTest {
 
 	@Test
 	void setAttributes() {
-		final Map<String, Object> attributes = TestUtils.mapOf("user_agent", "Chrome", "age", 9);
+		final Map<String, Object> attributes = mapOf("user_agent", "Chrome", "age", 9);
 		final ContextConfig config = ContextConfig.create()
 				.setAttributes(attributes);
 		assertEquals("Chrome", config.getAttribute("user_agent"));
@@ -68,7 +68,7 @@ class ContextConfigTest {
 
 	@Test
 	void setOverrides() {
-		final Map<String, Integer> overrides = TestUtils.mapOf("exp_test", 2, "exp_test_new", 1);
+		final Map<String, Integer> overrides = mapOf("exp_test", 2, "exp_test_new", 1);
 		final ContextConfig config = ContextConfig.create()
 				.setOverrides(overrides);
 		assertEquals(2, config.getOverride("exp_test"));
@@ -85,7 +85,7 @@ class ContextConfigTest {
 
 	@Test
 	void setCustomAssignments() {
-		final Map<String, Integer> cassignments = TestUtils.mapOf("exp_test", 2, "exp_test_new", 1);
+		final Map<String, Integer> cassignments = mapOf("exp_test", 2, "exp_test_new", 1);
 		final ContextConfig config = ContextConfig.create()
 				.setCustomAssignments(cassignments);
 		assertEquals(2, config.getCustomAssignment("exp_test"));

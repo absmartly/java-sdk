@@ -2,8 +2,6 @@ package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.IOException;
-
 import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.json.ContextData;
@@ -11,10 +9,10 @@ import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.ExperimentApplication;
 import com.absmartly.sdk.json.ExperimentVariant;
 
-class DefaultContextDataDeserializerTest {
+class DefaultContextDataDeserializerTest extends TestUtils {
 	@Test
 	void deserialize() {
-		final byte[] bytes = TestUtils.getResourceBytes("context.json");
+		final byte[] bytes = getResourceBytes("context.json");
 
 		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
 		final ContextData data = deser.deserialize(bytes, 0, bytes.length);
@@ -36,6 +34,8 @@ class DefaultContextDataDeserializerTest {
 				new ExperimentVariant("A", null),
 				new ExperimentVariant("B", "{\"banner.border\":1,\"banner.size\":\"large\"}")
 		};
+		experiment0.audienceStrict = false;
+		experiment0.audience = null;
 
 		final Experiment experiment1 = new Experiment();
 		experiment1.id = 2;
@@ -55,6 +55,8 @@ class DefaultContextDataDeserializerTest {
 				new ExperimentVariant("B", "{\"button.color\":\"blue\"}"),
 				new ExperimentVariant("C", "{\"button.color\":\"red\"}")
 		};
+		experiment1.audienceStrict = false;
+		experiment1.audience = "";
 
 		final Experiment experiment2 = new Experiment();
 		experiment2.id = 3;
@@ -74,6 +76,8 @@ class DefaultContextDataDeserializerTest {
 				new ExperimentVariant("B", "{\"card.width\":\"80%\"}"),
 				new ExperimentVariant("C", "{\"card.width\":\"75%\"}")
 		};
+		experiment2.audienceStrict = false;
+		experiment2.audience = "{}";
 
 		final Experiment experiment3 = new Experiment();
 		experiment3.id = 4;
@@ -94,6 +98,8 @@ class DefaultContextDataDeserializerTest {
 				new ExperimentVariant("C", "{\"submit.color\":\"blue\",\"submit.shape\":\"rect\"}"),
 				new ExperimentVariant("D", "{\"submit.color\":\"green\",\"submit.shape\":\"square\"}")
 		};
+		experiment3.audienceStrict = false;
+		experiment3.audience = "null";
 
 		final ContextData expected = new ContextData();
 		expected.experiments = new Experiment[]{
@@ -108,8 +114,8 @@ class DefaultContextDataDeserializerTest {
 	}
 
 	@Test
-	void deserializeDoesNotThrow() throws IOException {
-		final byte[] bytes = TestUtils.getResourceBytes("context.json");
+	void deserializeDoesNotThrow() {
+		final byte[] bytes = getResourceBytes("context.json");
 
 		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
 		assertDoesNotThrow(() -> {

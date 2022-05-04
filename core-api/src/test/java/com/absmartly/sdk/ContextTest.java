@@ -25,25 +25,25 @@ import org.mockito.Mockito;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.*;
 
-class ContextTest {
-	final Map<String, String> units = TestUtils.mapOf(
+class ContextTest extends TestUtils {
+	final Map<String, String> units = mapOf(
 			"session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
 			"user_id", "123456789",
 			"email", "bleh@absmartly.com");
 
-	final Map<String, Object> attributes = TestUtils.mapOf(
+	final Map<String, Object> attributes = mapOf(
 			"attr1", "value1",
 			"attr2", "value2",
 			"attr3", 5);
 
-	final Map<String, Integer> expectedVariants = TestUtils.mapOf(
+	final Map<String, Integer> expectedVariants = mapOf(
 			"exp_test_ab", 1,
 			"exp_test_abc", 2,
 			"exp_test_not_eligible", 0,
 			"exp_test_fullon", 2,
 			"exp_test_new", 1);
 
-	final Map<String, Object> expectedVariables = TestUtils.mapOf(
+	final Map<String, Object> expectedVariables = mapOf(
 			"banner.border", 1,
 			"banner.size", "large",
 			"button.color", "red",
@@ -51,7 +51,7 @@ class ContextTest {
 			"submit.shape", "rect",
 			"show-modal", true);
 
-	final Map<String, String> variableExperiments = TestUtils.mapOf(
+	final Map<String, String> variableExperiments = mapOf(
 			"banner.border", "exp_test_ab",
 			"banner.size", "exp_test_ab",
 			"button.color", "exp_test_abc",
@@ -68,6 +68,11 @@ class ContextTest {
 
 	ContextData data;
 	ContextData refreshData;
+
+	ContextData audienceData;
+
+	ContextData audienceStrictData;
+
 	CompletableFuture<ContextData> dataFutureReady;
 	CompletableFuture<ContextData> dataFutureFailed;
 	CompletableFuture<ContextData> dataFuture;
@@ -75,39 +80,53 @@ class ContextTest {
 	CompletableFuture<ContextData> refreshDataFutureReady;
 	CompletableFuture<ContextData> refreshDataFuture;
 
+	CompletableFuture<ContextData> audienceDataFutureReady;
+	CompletableFuture<ContextData> audienceStrictDataFutureReady;
+
 	ContextDataProvider dataProvider;
 	ContextEventLogger eventLogger;
 	ContextEventHandler eventHandler;
 	VariableParser variableParser;
+	AudienceMatcher audienceMatcher;
 	ScheduledExecutorService scheduler;
 	DefaultContextDataDeserializer deser = new DefaultContextDataDeserializer();
 	Clock clock = Clock.fixed(1_620_000_000_000L);
 
 	@BeforeEach
 	void setUp() {
-		final byte[] bytes = TestUtils.getResourceBytes("context.json");
+		final byte[] bytes = getResourceBytes("context.json");
 		data = deser.deserialize(bytes, 0, bytes.length);
 
-		final byte[] refreshBytes = TestUtils.getResourceBytes("refreshed.json");
+		final byte[] refreshBytes = getResourceBytes("refreshed.json");
 		refreshData = deser.deserialize(refreshBytes, 0, refreshBytes.length);
 
+		final byte[] audienceBytes = getResourceBytes("audience_context.json");
+		audienceData = deser.deserialize(audienceBytes, 0, audienceBytes.length);
+
+		final byte[] audienceStrictBytes = getResourceBytes("audience_strict_context.json");
+		audienceStrictData = deser.deserialize(audienceStrictBytes, 0, audienceStrictBytes.length);
+
 		dataFutureReady = CompletableFuture.completedFuture(data);
-		dataFutureFailed = TestUtils.failedFuture(new Exception("FAILED"));
+		dataFutureFailed = failedFuture(new Exception("FAILED"));
 		dataFuture = new CompletableFuture<>();
 
 		refreshDataFutureReady = CompletableFuture.completedFuture(refreshData);
 		refreshDataFuture = new CompletableFuture<>();
 
+		audienceDataFutureReady = CompletableFuture.completedFuture(audienceData);
+		audienceStrictDataFutureReady = CompletableFuture.completedFuture(audienceStrictData);
+
 		dataProvider = mock(ContextDataProvider.class);
 		eventHandler = mock(ContextEventHandler.class);
 		eventLogger = mock(ContextEventLogger.class);
 		variableParser = new DefaultVariableParser();
+		audienceMatcher = new AudienceMatcher(new DefaultAudienceDeserializer());
 		scheduler = mock(ScheduledExecutorService.class);
 	}
 
 	Context createContext(ContextConfig config, CompletableFuture<ContextData> dataFuture) {
 		return Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				eventLogger, variableParser);
+				eventLogger, variableParser, audienceMatcher);
 	}
 
 	Context createContext(CompletableFuture<ContextData> dataFuture) {
@@ -115,7 +134,7 @@ class ContextTest {
 				.setUnits(units);
 
 		return Context.create(clock, config, scheduler, dataFuture, dataProvider, eventHandler,
-				eventLogger, variableParser);
+				eventLogger, variableParser, audienceMatcher);
 	}
 
 	Context createReadyContext() {
@@ -123,12 +142,12 @@ class ContextTest {
 				.setUnits(units);
 
 		return Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
-				eventLogger, variableParser);
+				eventLogger, variableParser, audienceMatcher);
 	}
 
 	@Test
 	void constructorSetsOverrides() {
-		final Map<String, Integer> overrides = TestUtils.mapOf(
+		final Map<String, Integer> overrides = mapOf(
 				"exp_test", 2,
 				"exp_test_1", 1);
 
@@ -142,7 +161,7 @@ class ContextTest {
 
 	@Test
 	void constructorSetsCustomAssignments() {
-		final Map<String, Integer> cassignments = TestUtils.mapOf(
+		final Map<String, Integer> cassignments = mapOf(
 				"exp_test", 2,
 				"exp_test_1", 1);
 
@@ -295,7 +314,7 @@ class ContextTest {
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
@@ -310,19 +329,19 @@ class ContextTest {
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class,
-						() -> context.setAttributes(TestUtils.mapOf("attr1", "value1")))
+						() -> context.setAttributes(mapOf("attr1", "value1")))
 								.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
 		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverrides(TestUtils.mapOf("exp_test_ab", 2)))
+				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
 						.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class,
-						() -> context.setCustomAssignments(TestUtils.mapOf("exp_test_ab", 2)))
+						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
 								.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
@@ -349,7 +368,7 @@ class ContextTest {
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
@@ -363,19 +382,19 @@ class ContextTest {
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class,
-						() -> context.setAttributes(TestUtils.mapOf("attr1", "value1")))
+						() -> context.setAttributes(mapOf("attr1", "value1")))
 								.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
 		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverrides(TestUtils.mapOf("exp_test_ab", 2)))
+				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
 						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class,
-						() -> context.setCustomAssignments(TestUtils.mapOf("exp_test_ab", 2)))
+						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
 								.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
@@ -415,7 +434,7 @@ class ContextTest {
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125));
+		context.track("goal1", mapOf("amount", 125));
 
 		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
 		when(scheduler.schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS)))
@@ -443,7 +462,7 @@ class ContextTest {
 		assertFalse(context.isReady());
 
 		context.setAttribute("attr1", "value1");
-		context.setAttributes(TestUtils.mapOf("attr2", "value2"));
+		context.setAttributes(mapOf("attr2", "value2"));
 
 		dataFuture.complete(data);
 
@@ -464,7 +483,7 @@ class ContextTest {
 		context.setOverride("exp_test_2", 1);
 		assertEquals(1, context.getOverride("exp_test_2"));
 
-		final Map<String, Integer> overrides = TestUtils.mapOf(
+		final Map<String, Integer> overrides = mapOf(
 				"exp_test_new", 3,
 				"exp_test_new_2", 5);
 
@@ -481,7 +500,7 @@ class ContextTest {
 	void setOverrideClearsAssignmentCache() {
 		final Context context = createReadyContext();
 
-		final Map<String, Integer> overrides = TestUtils.mapOf(
+		final Map<String, Integer> overrides = mapOf(
 				"exp_test_new", 3,
 				"exp_test_new_2", 5);
 
@@ -520,7 +539,7 @@ class ContextTest {
 		assertFalse(context.isReady());
 
 		context.setOverride("exp_test", 2);
-		context.setOverrides(TestUtils.mapOf(
+		context.setOverrides(mapOf(
 				"exp_test_new", 3,
 				"exp_test_new_2", 5));
 
@@ -546,7 +565,7 @@ class ContextTest {
 		context.setCustomAssignment("exp_test_2", 1);
 		assertEquals(1, context.getCustomAssignment("exp_test_2"));
 
-		final Map<String, Integer> cassignments = TestUtils.mapOf(
+		final Map<String, Integer> cassignments = mapOf(
 				"exp_test_new", 3,
 				"exp_test_new_2", 5);
 
@@ -575,7 +594,7 @@ class ContextTest {
 	void setCustomAssignmentClearsAssignmentCache() {
 		final Context context = createReadyContext();
 
-		final Map<String, Integer> cassignments = TestUtils.mapOf(
+		final Map<String, Integer> cassignments = mapOf(
 				"exp_test_ab", 2,
 				"exp_test_abc", 3);
 
@@ -610,7 +629,7 @@ class ContextTest {
 		assertFalse(context.isReady());
 
 		context.setCustomAssignment("exp_test", 2);
-		context.setCustomAssignments(TestUtils.mapOf(
+		context.setCustomAssignments(mapOf(
 				"exp_test_new", 3,
 				"exp_test_new_2", 5));
 
@@ -660,6 +679,20 @@ class ContextTest {
 	}
 
 	@Test
+	void peekVariableValueReturnsAssignedVariantOnAudienceMismatchNonStrictMode() {
+		final Context context = createContext(audienceDataFutureReady);
+
+		assertEquals("large", context.peekVariableValue("banner.size", "small"));
+	}
+
+	@Test
+	void peekVariableValueReturnsControlVariantOnAudienceMismatchStrictMode() {
+		final Context context = createContext(audienceStrictDataFutureReady);
+
+		assertEquals("small", context.peekVariableValue("banner.size", "small"));
+	}
+
+	@Test
 	void getVariableValue() {
 		final Context context = createReadyContext();
 
@@ -680,6 +713,95 @@ class ContextTest {
 	}
 
 	@Test
+	void getVariableValueQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() {
+		final Context context = createContext(audienceDataFutureReady);
+		context.setAttribute("age", 21);
+
+		assertEquals("large", context.getVariableValue("banner.size", "small"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.attributes = new Attribute[]{
+				new Attribute("age", 21, clock.millis()),
+		};
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getVariableValueQueuesExposureWithAudienceMismatchTrueOnAudienceMismatch() {
+		final Context context = createContext(audienceDataFutureReady);
+
+		assertEquals("large", context.getVariableValue("banner.size", "small"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getVariableValueQueuesExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode() {
+		final Context context = createContext(audienceStrictDataFutureReady);
+
+		assertEquals("small", context.getVariableValue("banner.size", "small"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false,
+						true),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
+	}
+
+	@Test
 	void getVariableValueCallsEventLogger() {
 		final Context context = createReadyContext();
 
@@ -689,7 +811,7 @@ class ContextTest {
 		context.getVariableValue("banner.size", null);
 
 		final Exposure[] exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
 		};
 
 		verify(eventLogger, times(exposures.length)).handleEvent(any(), any(), any());
@@ -735,6 +857,20 @@ class ContextTest {
 	}
 
 	@Test
+	void peekTreatmentReturnsAssignedVariantOnAudienceMismatchNonStrictMode() {
+		final Context context = createContext(audienceDataFutureReady);
+
+		assertEquals(1, context.peekTreatment("exp_test_ab"));
+	}
+
+	@Test
+	void peekTreatmentReturnsControlVariantOnAudienceMismatchStrictMode() {
+		final Context context = createContext(audienceStrictDataFutureReady);
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+	}
+
+	@Test
 	void getTreatment() {
 		final Context context = createReadyContext();
 
@@ -749,12 +885,14 @@ class ContextTest {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
-				new Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false),
-				new Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false,
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false,
 						false),
-				new Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false),
-				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false),
+				new Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false,
+						false, false),
+				new Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false,
+						false),
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -816,11 +954,14 @@ class ContextTest {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false),
-				new Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false),
-				new Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false),
-				new Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false),
-				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false, false),
+				new Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false,
+						false),
+				new Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false,
+						false),
+				new Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false,
+						false),
+				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -864,6 +1005,95 @@ class ContextTest {
 	}
 
 	@Test
+	void getTreatmentQueuesExposureWithAudienceMismatchFalseOnAudienceMatch() {
+		final Context context = createContext(audienceDataFutureReady);
+		context.setAttribute("age", 21);
+
+		assertEquals(1, context.getTreatment("exp_test_ab"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.attributes = new Attribute[]{
+				new Attribute("age", 21, clock.millis()),
+		};
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getTreatmentQueuesExposureWithAudienceMismatchTrueOnAudienceMismatch() {
+		final Context context = createContext(audienceDataFutureReady);
+
+		assertEquals(1, context.getTreatment("exp_test_ab"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getTreatmentQueuesExposureWithAudienceMismatchTrueAndControlVariantOnAudienceMismatchInStrictMode() {
+		final Context context = createContext(audienceStrictDataFutureReady);
+
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false,
+						true),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
+	}
+
+	@Test
 	void getTreatmentCallsEventLogger() {
 		final Context context = createReadyContext();
 
@@ -873,8 +1103,8 @@ class ContextTest {
 		context.getTreatment("not_found");
 
 		final Exposure[] exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
-				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
 		};
 
 		verify(eventLogger, times(exposures.length)).handleEvent(any(), any(), any());
@@ -895,12 +1125,12 @@ class ContextTest {
 	@Test
 	void track() {
 		final Context context = createReadyContext();
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
-		context.track("goal2", TestUtils.mapOf("tries", 7));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
+		context.track("goal2", mapOf("tries", 7));
 
 		assertEquals(2, context.getPendingCount());
 
-		context.track("goal2", TestUtils.mapOf("tests", 12));
+		context.track("goal2", mapOf("tests", 12));
 		context.track("goal3", null);
 
 		assertEquals(4, context.getPendingCount());
@@ -912,9 +1142,9 @@ class ContextTest {
 
 		expected.goals = new GoalAchievement[]{
 				new GoalAchievement("goal1", clock.millis(),
-						new TreeMap<>(TestUtils.mapOf("amount", 125, "hours", 245))),
-				new GoalAchievement("goal2", clock.millis(), new TreeMap<>(TestUtils.mapOf("tries", 7))),
-				new GoalAchievement("goal2", clock.millis(), new TreeMap<>(TestUtils.mapOf("tests", 12))),
+						new TreeMap<>(mapOf("amount", 125, "hours", 245))),
+				new GoalAchievement("goal2", clock.millis(), new TreeMap<>(mapOf("tries", 7))),
+				new GoalAchievement("goal2", clock.millis(), new TreeMap<>(mapOf("tests", 12))),
 				new GoalAchievement("goal3", clock.millis(), null),
 		};
 
@@ -933,7 +1163,7 @@ class ContextTest {
 		final Context context = createReadyContext();
 		Mockito.clearInvocations(eventLogger);
 
-		final Map<String, Object> properties = TestUtils.mapOf("amount", 125, "hours", 245);
+		final Map<String, Object> properties = mapOf("amount", 125, "hours", 245);
 		context.track("goal1", properties);
 
 		final GoalAchievement[] achievements = new GoalAchievement[]{
@@ -976,8 +1206,8 @@ class ContextTest {
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
-		context.track("goal1", TestUtils.mapOf("amount", 125));
-		context.track("goal2", TestUtils.mapOf("value", 999.0));
+		context.track("goal1", mapOf("amount", 125));
+		context.track("goal2", mapOf("value", 999.0));
 
 		verify(scheduler, times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS));
 		verify(eventHandler, times(0)).publish(any(), any());
@@ -991,8 +1221,8 @@ class ContextTest {
 	void trackQueuesWhenNotReady() {
 		final Context context = createContext(dataFuture);
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
-		context.track("goal2", TestUtils.mapOf("tries", 7));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
+		context.track("goal2", mapOf("tries", 7));
 		context.track("goal3", null);
 
 		assertEquals(3, context.getPendingCount());
@@ -1012,7 +1242,7 @@ class ContextTest {
 	void publishCallsEventLogger() {
 		final Context context = createReadyContext();
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		Mockito.clearInvocations(eventLogger);
 
@@ -1023,7 +1253,7 @@ class ContextTest {
 
 		expected.goals = new GoalAchievement[]{
 				new GoalAchievement("goal1", clock.millis(),
-						new TreeMap<>(TestUtils.mapOf("amount", 125, "hours", 245))),
+						new TreeMap<>(mapOf("amount", 125, "hours", 245))),
 		};
 
 		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
@@ -1038,7 +1268,7 @@ class ContextTest {
 	void publishCallsEventLoggerOnError() {
 		final Context context = createReadyContext();
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		Mockito.clearInvocations(eventLogger);
 
@@ -1056,7 +1286,7 @@ class ContextTest {
 	void publishResetsInternalQueuesAndKeepsAttributesOverridesAndCustomAssignments() {
 		final ContextConfig config = ContextConfig.create()
 				.setUnits(units)
-				.setAttributes(TestUtils.mapOf(
+				.setAttributes(mapOf(
 						"attr1", "value1",
 						"attr2", "value2"))
 				.setCustomAssignment("exp_test_abc", 3)
@@ -1069,7 +1299,7 @@ class ContextTest {
 		assertEquals(1, context.getTreatment("exp_test_ab"));
 		assertEquals(3, context.getTreatment("exp_test_abc"));
 		assertEquals(3, context.getTreatment("not_found"));
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		assertEquals(4, context.getPendingCount());
 
@@ -1079,14 +1309,14 @@ class ContextTest {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false),
-				new Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true),
-				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true, false),
+				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false),
 		};
 
 		expected.goals = new GoalAchievement[]{
 				new GoalAchievement("goal1", clock.millis(),
-						new TreeMap<>(TestUtils.mapOf("amount", 125, "hours", 245))),
+						new TreeMap<>(mapOf("amount", 125, "hours", 245))),
 		};
 
 		expected.attributes = new Attribute[]{
@@ -1115,7 +1345,7 @@ class ContextTest {
 		assertEquals(1, context.getTreatment("exp_test_ab"));
 		assertEquals(3, context.getTreatment("exp_test_abc"));
 		assertEquals(3, context.getTreatment("not_found"));
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		assertEquals(1, context.getPendingCount());
 
@@ -1126,7 +1356,7 @@ class ContextTest {
 
 		expectedNext.goals = new GoalAchievement[]{
 				new GoalAchievement("goal1", clock.millis(),
-						new TreeMap<>(TestUtils.mapOf("amount", 125, "hours", 245))),
+						new TreeMap<>(mapOf("amount", 125, "hours", 245))),
 		};
 
 		expectedNext.attributes = new Attribute[]{
@@ -1153,7 +1383,7 @@ class ContextTest {
 		assertTrue(context.isFailed());
 
 		context.getTreatment("exp_test_abc");
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		assertEquals(2, context.getPendingCount());
 
@@ -1170,12 +1400,12 @@ class ContextTest {
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		assertEquals(1, context.getPendingCount());
 
 		final Exception failure = new Exception("FAILED");
-		when(eventHandler.publish(any(), any())).thenReturn(TestUtils.failedFuture(failure));
+		when(eventHandler.publish(any(), any())).thenReturn(failedFuture(failure));
 
 		final CompletionException actual = assertThrows(CompletionException.class, context::publish);
 		assertSame(failure, actual.getCause());
@@ -1188,7 +1418,7 @@ class ContextTest {
 		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
@@ -1215,7 +1445,7 @@ class ContextTest {
 		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
@@ -1253,7 +1483,7 @@ class ContextTest {
 	void closeCallsEventLoggerWithPendingEvents() throws InterruptedException {
 		final Context context = createReadyContext();
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		Mockito.clearInvocations(eventLogger);
 
@@ -1264,7 +1494,7 @@ class ContextTest {
 
 		expected.goals = new GoalAchievement[]{
 				new GoalAchievement("goal1", clock.millis(),
-						new TreeMap<>(TestUtils.mapOf("amount", 125, "hours", 245))),
+						new TreeMap<>(mapOf("amount", 125, "hours", 245))),
 		};
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
@@ -1285,7 +1515,7 @@ class ContextTest {
 	void closeCallsEventLoggerOnError() throws InterruptedException {
 		final Context context = createReadyContext();
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		Mockito.clearInvocations(eventLogger);
 
@@ -1310,7 +1540,7 @@ class ContextTest {
 		final Context context = createReadyContext();
 		assertTrue(context.isReady());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
@@ -1377,12 +1607,12 @@ class ContextTest {
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 
-		context.track("goal1", TestUtils.mapOf("amount", 125, "hours", 245));
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
 
 		assertEquals(1, context.getPendingCount());
 
 		final Exception failure = new Exception("FAILED");
-		when(dataProvider.getContextData()).thenReturn(TestUtils.failedFuture(failure));
+		when(dataProvider.getContextData()).thenReturn(failedFuture(failure));
 
 		final CompletionException actual = assertThrows(CompletionException.class, context::refresh);
 		assertSame(failure, actual.getCause());

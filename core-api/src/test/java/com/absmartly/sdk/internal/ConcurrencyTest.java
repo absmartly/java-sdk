@@ -12,10 +12,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import com.absmartly.sdk.TestUtils;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 @SuppressFBWarnings(value = "RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT")
-class ConcurrencyTest {
+class ConcurrencyTest extends TestUtils {
 	@Test
 	void computeIfAbsentRW() {
 		final Map<Integer, Integer> map = mock(Map.class);

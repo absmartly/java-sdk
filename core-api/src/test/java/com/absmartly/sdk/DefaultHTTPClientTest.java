@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
-class DefaultHTTPClientTest {
+class DefaultHTTPClientTest extends TestUtils {
 	CloseableHttpAsyncClient asyncHTTPClient;
 	HttpAsyncClientBuilder asyncHTTPClientBuilder;
 
@@ -123,8 +123,8 @@ class DefaultHTTPClientTest {
 
 			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
-			final Map<String, String> requestQuery = TestUtils.mapOf("application", "website", "environment", "dev");
-			final Map<String, String> requestHeaders = TestUtils.mapOf(
+			final Map<String, String> requestQuery = mapOf("application", "website", "environment", "dev");
+			final Map<String, String> requestHeaders = mapOf(
 					"X-Application", "website",
 					"X-Environment", "dev");
 
@@ -185,8 +185,8 @@ class DefaultHTTPClientTest {
 
 			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
-			final Map<String, String> requestQuery = TestUtils.mapOf("application", "website", "environment", "dev");
-			final Map<String, String> requestHeaders = TestUtils.mapOf(
+			final Map<String, String> requestQuery = mapOf("application", "website", "environment", "dev");
+			final Map<String, String> requestHeaders = mapOf(
 					"X-Application", "website",
 					"X-Environment", "dev");
 
@@ -223,8 +223,8 @@ class DefaultHTTPClientTest {
 
 			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
-			final Map<String, String> requestQuery = TestUtils.mapOf("application", "website", "environment", "dev");
-			final Map<String, String> requestHeaders = TestUtils.mapOf(
+			final Map<String, String> requestQuery = mapOf("application", "website", "environment", "dev");
+			final Map<String, String> requestHeaders = mapOf(
 					"X-Application", "website",
 					"X-Environment", "dev");
 

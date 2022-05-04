@@ -1,5 +1,6 @@
 package com.absmartly.sdk.internal;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java8.util.function.Function;
@@ -49,6 +50,16 @@ public class Concurrency {
 		try {
 			writeLock.lock();
 			return map.put(key, value);
+		} finally {
+			writeLock.unlock();
+		}
+	}
+
+	static public <V> void addRW(ReentrantReadWriteLock lock, List<V> list, V value) {
+		final ReentrantReadWriteLock.WriteLock writeLock = lock.writeLock();
+		try {
+			writeLock.lock();
+			list.add(value);
 		} finally {
 			writeLock.unlock();
 		}

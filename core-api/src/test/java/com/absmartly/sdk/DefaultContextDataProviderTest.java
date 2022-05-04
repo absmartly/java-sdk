@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.json.ContextData;
 
-class DefaultContextDataProviderTest {
+class DefaultContextDataProviderTest extends TestUtils {
 	@Test
 	void getContextData() throws ExecutionException, InterruptedException {
 		final Client client = mock(Client.class);
@@ -33,7 +33,7 @@ class DefaultContextDataProviderTest {
 		final ContextDataProvider provider = new DefaultContextDataProvider(client);
 
 		final Exception failure = new Exception("FAILED");
-		final CompletableFuture<ContextData> failedFuture = TestUtils.failedFuture(failure);
+		final CompletableFuture<ContextData> failedFuture = failedFuture(failure);
 		when(client.getContextData()).thenReturn(failedFuture);
 
 		final CompletableFuture<ContextData> dataFuture = provider.getContextData();

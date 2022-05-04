@@ -32,7 +32,8 @@
 					"name":"B",
 					"config":"{\"banner.border\":1,\"banner.size\":\"large\"}"
 				}
-			]
+			],
+			"audience": null
 		},
 		{
 			"id":2,
@@ -71,7 +72,8 @@
 					"name":"C",
 					"config":"{\"button.color\":\"red\"}"
 				}
-			]
+			],
+			"audience": ""
 		},
 		{
 			"id":3,
@@ -110,7 +112,8 @@
 					"name":"C",
 					"config":"{\"card.width\":\"75%\"}"
 				}
-			]
+			],
+			"audience": "{}"
 		},
 		{
 			"id":4,
@@ -154,7 +157,8 @@
 					"name":"D",
 					"config":"{\"submit.color\":\"green\",\"submit.shape\":\"square\"}"
 				}
-			]
+			],
+			"audience": "null"
 		}
 	]
 }

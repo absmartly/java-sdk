@@ -23,6 +23,8 @@ public class Experiment {
 	public int fullOnVariant;
 	public ExperimentApplication[] applications;
 	public ExperimentVariant[] variants;
+	public boolean audienceStrict;
+	public String audience;
 
 	@Override
 	public boolean equals(Object o) {
@@ -35,15 +37,15 @@ public class Experiment {
 				&& trafficSeedHi == that.trafficSeedHi && trafficSeedLo == that.trafficSeedLo
 				&& fullOnVariant == that.fullOnVariant && Objects.equals(name, that.name)
 				&& Objects.equals(unitType, that.unitType) && Arrays.equals(split, that.split)
-				&& Arrays.equals(trafficSplit, that.trafficSplit) && Arrays.equals(applications,
-						that.applications)
-				&& Arrays.equals(variants, that.variants);
+				&& Arrays.equals(trafficSplit, that.trafficSplit) && Arrays.equals(applications, that.applications)
+				&& Arrays.equals(variants, that.variants) && audienceStrict == that.audienceStrict
+				&& Objects.equals(audience, that.audience);
 	}
 
 	@Override
 	public int hashCode() {
 		int result = Objects.hash(id, name, unitType, iteration, seedHi, seedLo, trafficSeedHi, trafficSeedLo,
-				fullOnVariant);
+				fullOnVariant, audienceStrict, audience);
 		result = 31 * result + Arrays.hashCode(split);
 		result = 31 * result + Arrays.hashCode(trafficSplit);
 		result = 31 * result + Arrays.hashCode(applications);
@@ -67,6 +69,8 @@ public class Experiment {
 				", fullOnVariant=" + fullOnVariant +
 				", applications=" + Arrays.toString(applications) +
 				", variants=" + Arrays.toString(variants) +
+				", audienceStrict=" + audienceStrict +
+				", audience='" + audience + '\'' +
 				'}';
 	}
 }

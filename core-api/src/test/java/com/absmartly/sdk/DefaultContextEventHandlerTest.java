@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.json.PublishEvent;
 
-class DefaultContextEventHandlerTest {
+class DefaultContextEventHandlerTest extends TestUtils {
 	@Test
 	void publish() throws ExecutionException, InterruptedException {
 		final Context context = mock(Context.class);
@@ -35,7 +35,7 @@ class DefaultContextEventHandlerTest {
 
 		final PublishEvent event = new PublishEvent();
 		final Exception failure = new Exception("FAILED");
-		final CompletableFuture<Void> failedFuture = TestUtils.failedFuture(failure);
+		final CompletableFuture<Void> failedFuture = failedFuture(failure);
 		when(client.publish(event)).thenReturn(failedFuture);
 
 		final CompletableFuture<Void> publishFuture = eventHandler.publish(context, event);

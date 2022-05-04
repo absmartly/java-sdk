@@ -8,7 +8,7 @@ import java.security.Provider;
 
 import org.junit.jupiter.api.Test;
 
-class DefaultHTTPClientConfigTest {
+class DefaultHTTPClientConfigTest extends TestUtils {
 
 	@Test
 	void setSecurityProvider() {

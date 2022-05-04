@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.TestUtils;
 
-class BuffersTest {
+class BuffersTest extends TestUtils {
 	@Test
 	void putUInt32() {
 		final int bytesLen = 9;
@@ -66,25 +66,25 @@ class BuffersTest {
 
 	@Test
 	void encodeUTF8() {
-		final List<List<Object>> testCases = TestUtils.listOf(
-				TestUtils.listOf("", new byte[]{}),
-				TestUtils.listOf(" ", new byte[]{32}),
-				TestUtils.listOf("a", new byte[]{97}),
-				TestUtils.listOf("ab", new byte[]{97, 98}),
-				TestUtils.listOf("abc", new byte[]{97, 98, 99}),
-				TestUtils.listOf("abcd", new byte[]{97, 98, 99, 100}),
-				TestUtils.listOf("ç", new byte[]{(byte) 195, (byte) 167}),
-				TestUtils.listOf("aç", new byte[]{97, (byte) 195, (byte) 167}),
-				TestUtils.listOf("çb", new byte[]{(byte) 195, (byte) 167, 98}),
-				TestUtils.listOf("açb", new byte[]{97, (byte) 195, (byte) 167, 98}),
-				TestUtils.listOf("↓", new byte[]{(byte) 226, (byte) 134, (byte) 147}),
-				TestUtils.listOf("a↓", new byte[]{97, (byte) 226, (byte) 134, (byte) 147}),
-				TestUtils.listOf("↓b", new byte[]{(byte) 226, (byte) 134, (byte) 147, 98}),
-				TestUtils.listOf("a↓b", new byte[]{97, (byte) 226, (byte) 134, (byte) 147, 98}),
-				TestUtils.listOf("aç↓", new byte[]{97, (byte) 195, (byte) 167, (byte) 226, (byte) 134, (byte) 147}),
-				TestUtils.listOf("aç↓b",
+		final List<List<Object>> testCases = listOf(
+				listOf("", new byte[]{}),
+				listOf(" ", new byte[]{32}),
+				listOf("a", new byte[]{97}),
+				listOf("ab", new byte[]{97, 98}),
+				listOf("abc", new byte[]{97, 98, 99}),
+				listOf("abcd", new byte[]{97, 98, 99, 100}),
+				listOf("ç", new byte[]{(byte) 195, (byte) 167}),
+				listOf("aç", new byte[]{97, (byte) 195, (byte) 167}),
+				listOf("çb", new byte[]{(byte) 195, (byte) 167, 98}),
+				listOf("açb", new byte[]{97, (byte) 195, (byte) 167, 98}),
+				listOf("↓", new byte[]{(byte) 226, (byte) 134, (byte) 147}),
+				listOf("a↓", new byte[]{97, (byte) 226, (byte) 134, (byte) 147}),
+				listOf("↓b", new byte[]{(byte) 226, (byte) 134, (byte) 147, 98}),
+				listOf("a↓b", new byte[]{97, (byte) 226, (byte) 134, (byte) 147, 98}),
+				listOf("aç↓", new byte[]{97, (byte) 195, (byte) 167, (byte) 226, (byte) 134, (byte) 147}),
+				listOf("aç↓b",
 						new byte[]{97, (byte) 195, (byte) 167, (byte) 226, (byte) 134, (byte) 147, 98}),
-				TestUtils.listOf("açb↓c",
+				listOf("açb↓c",
 						new byte[]{97, (byte) 195, (byte) 167, 98, (byte) 226, (byte) 134, (byte) 147, 99}));
 
 		for (final List<Object> testCase : testCases) {

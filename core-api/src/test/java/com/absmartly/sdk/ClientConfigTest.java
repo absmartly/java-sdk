@@ -1,11 +1,12 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 
 import org.junit.jupiter.api.Test;
 
-class ClientConfigTest {
+class ClientConfigTest extends TestUtils {
 	@Test
 	void setEndpoint() {
 		final ClientConfig config = ClientConfig.create().setEndpoint("https://test.endpoint.com");

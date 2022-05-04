@@ -2,13 +2,13 @@ package com.absmartly.sdk.internal.hashing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.nio.charset.StandardCharsets;
-
 import org.junit.jupiter.api.Test;
+
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 
 class HashingTest {
 	@Test
-	void hashUnit() {
+	void testHashUnit() {
 		assertEquals("H2jvj6o9YcAgNdhKqEbtWw",
 				new String(Hashing.hashUnit("4a42766ca6313d26f49985e799ff4f3790fb86efa0fce46edb3ea8fbf1ea3408"),
 						StandardCharsets.US_ASCII));
@@ -21,7 +21,7 @@ class HashingTest {
 	}
 
 	@Test
-	void hashUnitLarge() {
+	void testHashUnitLarge() {
 		final String chars = "4a42766ca6313d26f49985e799ff4f3790fb86efa0fce46edb3ea8fbf1ea3408";
 		final StringBuilder sb = new StringBuilder();
 
