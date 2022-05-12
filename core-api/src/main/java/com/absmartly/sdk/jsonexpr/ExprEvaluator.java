@@ -10,7 +10,7 @@ public class ExprEvaluator implements Evaluator {
 	final static ThreadLocal<DecimalFormat> formatter = new ThreadLocal<DecimalFormat>() {
 		@Override
 		public DecimalFormat initialValue() {
-			final DecimalFormat formatter = new DecimalFormat();
+			final DecimalFormat formatter = new DecimalFormat("#");
 			formatter.setMaximumFractionDigits(15);
 			formatter.setMinimumFractionDigits(0);
 			formatter.setMinimumIntegerDigits(1);

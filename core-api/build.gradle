@@ -20,7 +20,7 @@ dependencies {
 	implementation group: "com.google.code.findbugs", name: "findbugs-annotations", version: "3.0.1"
 
 	implementation group: "com.fasterxml.jackson.core", name: "jackson-databind", version: jacksonVersion
-	implementation group: "com.fasterxml.jackson.datatype", name: "jackson-datatype-jsr310", version: jacksonVersion
+	implementation group: "com.fasterxml.jackson.datatype", name: "jackson-datatype-jsr310", version: jacksonDataTypeVersion
 
 	testImplementation group: "org.junit.jupiter", name: "junit-jupiter-api", version: junitVersion
 	testImplementation group: "org.junit.jupiter", name: "junit-jupiter-params", version: junitVersion
