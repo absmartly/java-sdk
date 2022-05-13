@@ -1,7 +1,10 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executor;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionStage;
 import java8.util.function.Consumer;
@@ -9,11 +12,9 @@ import java8.util.function.Function;
 import java8.util.function.Supplier;
 
 import javax.annotation.Nonnull;
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.Executor;
+
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.PublishEvent;
 
 public class Client implements Closeable {
 	static public Client create(@Nonnull final ClientConfig config) {
@@ -76,28 +77,30 @@ public class Client implements Closeable {
 		final Executor executor = executor_ != null ? executor_ : dataFuture.defaultExecutor();
 
 		CompletableFuture
-			.runAsync(new Runnable() {
-			   @Override public void run() {
-				   httpClient_.get(url_, query_, null).thenAccept(new Consumer<HTTPClient.Response>() {
-					   @Override
-					   public void accept(HTTPClient.Response response) {
-						   final int code = response.getStatusCode();
-						   if ((code / 100) == 2) {
-							   final byte[] content = response.getContent();
-							   dataFuture.complete(deserializer_.deserialize(response.getContent(), 0, content.length));
-						   } else {
-							   dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
-						   }
-					   }
-				   }).exceptionally(new Function<Throwable, Void>() {
-					   @Override
-					   public Void apply(Throwable exception) {
-						   dataFuture.completeExceptionally(exception);
-						   return null;
-					   }
-				   });
-			   }
-		   }, executor);
+				.runAsync(new Runnable() {
+					@Override
+					public void run() {
+						httpClient_.get(url_, query_, null).thenAccept(new Consumer<HTTPClient.Response>() {
+							@Override
+							public void accept(HTTPClient.Response response) {
+								final int code = response.getStatusCode();
+								if ((code / 100) == 2) {
+									final byte[] content = response.getContent();
+									dataFuture.complete(
+											deserializer_.deserialize(response.getContent(), 0, content.length));
+								} else {
+									dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
+								}
+							}
+						}).exceptionally(new Function<Throwable, Void>() {
+							@Override
+							public Void apply(Throwable exception) {
+								dataFuture.completeExceptionally(exception);
+								return null;
+							}
+						});
+					}
+				}, executor);
 
 		return dataFuture;
 	}

@@ -1,12 +1,12 @@
 package com.absmartly.sdk;
 
-import org.junit.jupiter.api.Test;
-
-import java.util.concurrent.Executor;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
+
+import java.util.concurrent.Executor;
+
+import org.junit.jupiter.api.Test;
 
 class ClientConfigTest extends TestUtils {
 	@Test

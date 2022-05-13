@@ -1,15 +1,16 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.ContextData;
-import java8.util.concurrent.CompletableFuture;
-
-import javax.annotation.Nonnull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java8.util.concurrent.CompletableFuture;
+
+import javax.annotation.Nonnull;
+
+import com.absmartly.sdk.java.time.Clock;
+import com.absmartly.sdk.json.ContextData;
 
 public class ABSmartly implements Closeable {
 	public static ABSmartly create(@Nonnull ABSmartlyConfig config) {

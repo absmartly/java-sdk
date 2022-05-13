@@ -1,7 +1,8 @@
 package com.absmartly.sdk;
 
-import javax.annotation.Nonnull;
 import java.util.concurrent.Executor;
+
+import javax.annotation.Nonnull;
 
 public class ClientConfig {
 	public static ClientConfig create() {

@@ -653,9 +653,10 @@ public class Context implements Closeable {
 										attrs.put(attr.name, attr.value);
 									}
 
-									final Boolean result = audienceMatcher_.evaluate(experiment.data.audience, attrs);
-									if (result != null) {
-										assignment.audienceMismatch = !result;
+									final AudienceMatcher.Result match = audienceMatcher_
+											.evaluate(experiment.data.audience, attrs);
+									if (match != null) {
+										assignment.audienceMismatch = !match.get();
 									}
 								}
 

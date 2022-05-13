@@ -12,13 +12,25 @@ public class AudienceMatcher {
 		jsonExpr_ = new JsonExpr();
 	}
 
-	public Boolean evaluate(String audience, Map<String, Object> attributes) {
+	public static class Result {
+		public Result(boolean result) {
+			this.result = result;
+		}
+
+		public boolean get() {
+			return result;
+		}
+
+		private final boolean result;
+	}
+
+	public Result evaluate(String audience, Map<String, Object> attributes) {
 		final byte[] bytes = audience.getBytes(StandardCharsets.UTF_8);
 		final Map<String, Object> audienceMap = deserializer_.deserialize(bytes, 0, bytes.length);
 		if (audienceMap != null) {
 			final Object filter = audienceMap.get("filter");
 			if (filter instanceof Map || filter instanceof List) {
-				return jsonExpr_.evaluateBooleanExpr(filter, attributes);
+				return new Result(jsonExpr_.evaluateBooleanExpr(filter, attributes));
 			}
 		}
 

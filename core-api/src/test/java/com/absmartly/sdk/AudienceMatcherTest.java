@@ -24,13 +24,15 @@ class AudienceMatcherTest extends TestUtils {
 
 	@Test
 	void evaluateReturnsBoolean() {
-		assertTrue(matcher.evaluate("{\"filter\":[{\"value\":5}]}", null));
-		assertTrue(matcher.evaluate("{\"filter\":[{\"value\":true}]}", null));
-		assertTrue(matcher.evaluate("{\"filter\":[{\"value\":1}]}", null));
-		assertFalse(matcher.evaluate("{\"filter\":[{\"value\":null}]}", null));
-		assertFalse(matcher.evaluate("{\"filter\":[{\"value\":0}]}", null));
+		assertTrue(matcher.evaluate("{\"filter\":[{\"value\":5}]}", null).get());
+		assertTrue(matcher.evaluate("{\"filter\":[{\"value\":true}]}", null).get());
+		assertTrue(matcher.evaluate("{\"filter\":[{\"value\":1}]}", null).get());
+		assertFalse(matcher.evaluate("{\"filter\":[{\"value\":null}]}", null).get());
+		assertFalse(matcher.evaluate("{\"filter\":[{\"value\":0}]}", null).get());
 
-		assertFalse(matcher.evaluate("{\"filter\":[{\"not\":{\"var\":\"returning\"}}]}", mapOf("returning", true)));
-		assertTrue(matcher.evaluate("{\"filter\":[{\"not\":{\"var\":\"returning\"}}]}", mapOf("returning", false)));
+		assertFalse(
+				matcher.evaluate("{\"filter\":[{\"not\":{\"var\":\"returning\"}}]}", mapOf("returning", true)).get());
+		assertTrue(
+				matcher.evaluate("{\"filter\":[{\"not\":{\"var\":\"returning\"}}]}", mapOf("returning", false)).get());
 	}
 }

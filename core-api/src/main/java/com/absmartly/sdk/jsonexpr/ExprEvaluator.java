@@ -1,10 +1,10 @@
 package com.absmartly.sdk.jsonexpr;
 
+import static java.util.Collections.EMPTY_MAP;
+
 import java.text.DecimalFormat;
 import java.util.List;
 import java.util.Map;
-
-import static java.util.Collections.EMPTY_MAP;
 
 public class ExprEvaluator implements Evaluator {
 	final static ThreadLocal<DecimalFormat> formatter = new ThreadLocal<DecimalFormat>() {
