@@ -1,10 +1,12 @@
 package com.absmartly.sdk;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.Executor;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
-
-import org.junit.jupiter.api.Test;
 
 class ClientConfigTest extends TestUtils {
 	@Test
@@ -46,16 +48,25 @@ class ClientConfigTest extends TestUtils {
 	}
 
 	@Test
+	void setExecutor() {
+		final Executor executor = mock(Executor.class);
+		final ClientConfig config = ClientConfig.create().setExecutor(executor);
+		assertSame(executor, config.getExecutor());
+	}
+
+	@Test
 	void setAll() {
 		final ContextEventSerializer serializer = mock(ContextEventSerializer.class);
 		final ContextDataDeserializer deserializer = mock(ContextDataDeserializer.class);
+		final Executor executor = mock(Executor.class);
 		final ClientConfig config = ClientConfig.create()
 				.setEndpoint("https://test.endpoint.com")
 				.setAPIKey("api-key-test")
 				.setEnvironment("test")
 				.setApplication("website")
 				.setContextDataDeserializer(deserializer)
-				.setContextEventSerializer(serializer);
+				.setContextEventSerializer(serializer)
+				.setExecutor(executor);
 
 		assertEquals("https://test.endpoint.com", config.getEndpoint());
 		assertEquals("api-key-test", config.getAPIKey());
@@ -63,5 +74,6 @@ class ClientConfigTest extends TestUtils {
 		assertEquals("website", config.getApplication());
 		assertSame(deserializer, config.getContextDataDeserializer());
 		assertSame(serializer, config.getContextEventSerializer());
+		assertSame(executor, config.getExecutor());
 	}
 }

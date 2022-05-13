@@ -1,6 +1,7 @@
 package com.absmartly.sdk;
 
 import javax.annotation.Nonnull;
+import java.util.concurrent.Executor;
 
 public class ClientConfig {
 	public static ClientConfig create() {
@@ -63,10 +64,20 @@ public class ClientConfig {
 		return this;
 	}
 
+	Executor getExecutor() {
+		return executor_;
+	}
+
+	public ClientConfig setExecutor(@Nonnull final Executor executor) {
+		executor_ = executor;
+		return this;
+	}
+
 	private String endpoint_;
 	private String apiKey_;
 	private String environment_;
 	private String application_;
 	private ContextDataDeserializer deserializer_;
 	private ContextEventSerializer serializer_;
+	private Executor executor_;
 }

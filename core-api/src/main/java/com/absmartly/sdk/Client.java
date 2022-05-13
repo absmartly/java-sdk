@@ -1,9 +1,7 @@
 package com.absmartly.sdk;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.PublishEvent;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionStage;
 import java8.util.function.Consumer;
@@ -11,9 +9,11 @@ import java8.util.function.Function;
 import java8.util.function.Supplier;
 
 import javax.annotation.Nonnull;
-
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executor;
 
 public class Client implements Closeable {
 	static public Client create(@Nonnull final ClientConfig config) {
@@ -49,6 +49,7 @@ public class Client implements Closeable {
 		httpClient_ = httpClient;
 		deserializer_ = config.getContextDataDeserializer();
 		serializer_ = config.getContextEventSerializer();
+		executor_ = config.getExecutor();
 
 		if (deserializer_ == null) {
 			deserializer_ = new DefaultContextDataDeserializer();
@@ -72,31 +73,38 @@ public class Client implements Closeable {
 
 	CompletableFuture<ContextData> getContextData() {
 		final CompletableFuture<ContextData> dataFuture = new CompletableFuture<ContextData>();
+		final Executor executor = executor_ != null ? executor_ : dataFuture.defaultExecutor();
 
-		httpClient_.get(url_, query_, null).thenAccept(new Consumer<HTTPClient.Response>() {
-			@Override
-			public void accept(HTTPClient.Response response) {
-				final int code = response.getStatusCode();
-				if ((code / 100) == 2) {
-					final byte[] content = response.getContent();
-					dataFuture.complete(deserializer_.deserialize(response.getContent(), 0, content.length));
-				} else {
-					dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
-				}
-			}
-		}).exceptionally(new Function<Throwable, Void>() {
-			@Override
-			public Void apply(Throwable exception) {
-				dataFuture.completeExceptionally(exception);
-				return null;
-			}
-		});
+		CompletableFuture
+			.runAsync(new Runnable() {
+			   @Override public void run() {
+				   httpClient_.get(url_, query_, null).thenAccept(new Consumer<HTTPClient.Response>() {
+					   @Override
+					   public void accept(HTTPClient.Response response) {
+						   final int code = response.getStatusCode();
+						   if ((code / 100) == 2) {
+							   final byte[] content = response.getContent();
+							   dataFuture.complete(deserializer_.deserialize(response.getContent(), 0, content.length));
+						   } else {
+							   dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
+						   }
+					   }
+				   }).exceptionally(new Function<Throwable, Void>() {
+					   @Override
+					   public Void apply(Throwable exception) {
+						   dataFuture.completeExceptionally(exception);
+						   return null;
+					   }
+				   });
+			   }
+		   }, executor);
 
 		return dataFuture;
 	}
 
 	CompletableFuture<Void> publish(@Nonnull final PublishEvent event) {
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<Void>();
+		final Executor executor = executor_ != null ? executor_ : publishFuture.defaultExecutor();
 
 		CompletableFuture
 				.supplyAsync(new Supplier<byte[]>() {
@@ -104,7 +112,7 @@ public class Client implements Closeable {
 					public byte[] get() {
 						return serializer_.serialize(event);
 					}
-				})
+				}, executor)
 				.thenCompose(new Function<byte[], CompletionStage<HTTPClient.Response>>() {
 					@Override
 					public CompletionStage<HTTPClient.Response> apply(byte[] content) {
@@ -142,6 +150,7 @@ public class Client implements Closeable {
 	private final Map<String, String> query_;
 	private final Map<String, String> headers_;
 	private final HTTPClient httpClient_;
+	private final Executor executor_;
 	private ContextDataDeserializer deserializer_;
 	private ContextEventSerializer serializer_;
 }
