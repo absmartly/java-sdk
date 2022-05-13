@@ -1,10 +1,7 @@
 package com.absmartly.sdk;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.Executor;
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.PublishEvent;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionStage;
 import java8.util.function.Consumer;
@@ -12,9 +9,11 @@ import java8.util.function.Function;
 import java8.util.function.Supplier;
 
 import javax.annotation.Nonnull;
-
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executor;
 
 public class Client implements Closeable {
 	static public Client create(@Nonnull final ClientConfig config) {
@@ -65,7 +64,7 @@ public class Client implements Closeable {
 		headers_.put("X-Application", application);
 		headers_.put("X-Environment", environment);
 		headers_.put("X-Application-Version", Long.toString(0));
-		headers_.put("X-Agent", "java-sdk");
+		headers_.put("X-Agent", "absmartly-java-sdk");
 
 		query_ = new HashMap<String, String>(2);
 		query_.put("application", application);
