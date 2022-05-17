@@ -60,8 +60,8 @@ class ContextTest extends TestUtils {
 			"show-modal", "exp_test_new");
 
 	final Unit[] publishUnits = new Unit[]{
+		new Unit("user_id", "JfnnlDI7RTiF9RgfG2JNCw"),
 			new Unit("session_id", "pAE3a1i5Drs5mKRNq56adA"),
-			new Unit("user_id", "JfnnlDI7RTiF9RgfG2JNCw"),
 			new Unit("email", "IuqYkNRfEx5yClel4j3NbA")
 	};
 
@@ -336,6 +336,8 @@ class ContextTest extends TestUtils {
 				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closingMessage,
+			assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
+				.getMessage());		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
 						.getMessage());
 		assertEquals(closingMessage,
@@ -388,6 +390,9 @@ class ContextTest extends TestUtils {
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
+		assertEquals(closedMessage,
+			assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
+				.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
 						.getMessage());
@@ -453,6 +458,56 @@ class ContextTest extends TestUtils {
 		runnable.get().run();
 
 		verify(eventHandler, times(1)).publish(any(), any());
+	}
+
+	@Test
+	void setUnitsBeforeReady() {
+		final Context context = createContext(ContextConfig.create(), dataFuture);
+		assertFalse(context.isReady());
+
+		context.setUnits(units);
+
+		dataFuture.complete(data);
+
+		context.waitUntilReady();
+
+		context.getTreatment("exp_test_ab");
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.exposures = new Exposure[]{
+			new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, times(1)).publish(context, expected);
+	}
+
+	@Test
+	void setUnitEmpty() {
+		final Context context = createContext(dataFutureReady);
+		assertThrows(IllegalArgumentException.class, () -> {
+			context.setUnit("db_user_id", "");
+		}, "Unit 'session_id' UID must not be blank.");
+	}
+
+	@Test
+	void setUnitThrowsOnAlreadySet() {
+		final Context context = createContext(dataFutureReady);
+
+		assertThrows(IllegalArgumentException.class, () -> {
+			context.setUnit("session_id", "new_uid");
+		}, "Unit 'session_id' UID already set.");
 	}
 
 	@Test

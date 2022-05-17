@@ -1,9 +1,8 @@
 package com.absmartly.sdk;
 
+import javax.annotation.Nonnull;
 import java.util.HashMap;
 import java.util.Map;
-
-import javax.annotation.Nonnull;
 
 public class ContextConfig {
 	public static ContextConfig create() {
@@ -13,12 +12,10 @@ public class ContextConfig {
 	private ContextConfig() {}
 
 	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
-		if (unitType.isEmpty()) {
-			throw new IllegalArgumentException(String.format("Invalid unit type: %s", unitType));
+		if (units_ == null) {
+			units_ = new HashMap<String, String>();
 		}
-		if (uid.isEmpty()) {
-			throw new IllegalArgumentException(String.format("Unit '%s' UID must not be empty", unitType));
-		}
+
 		units_.put(unitType, uid);
 		return this;
 	}
@@ -128,7 +125,7 @@ public class ContextConfig {
 		return this.publishDelay_;
 	}
 
-	private final Map<String, String> units_ = new HashMap<String, String>();
+	private Map<String, String> units_;
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
 	private Map<String, Integer> cassigmnents_;

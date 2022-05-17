@@ -1,11 +1,12 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
+import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.Mockito.mock;
 
 class ContextConfigTest extends TestUtils {
 	@Test
@@ -13,31 +14,6 @@ class ContextConfigTest extends TestUtils {
 		final ContextConfig config = ContextConfig.create()
 				.setUnit("session_id", "0ab1e23f4eee");
 		assertEquals("0ab1e23f4eee", config.getUnit("session_id"));
-	}
-
-	@Test
-	void setUnitEmpty() {
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ContextConfig config = ContextConfig.create()
-					.setUnit("", "0ab1e23f4eee");
-		}, "Invalid unit type: ");
-
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ContextConfig config = ContextConfig.create()
-					.setUnit("session_id", "");
-		}, "Unit 'session_id' UID must not be empty");
-	}
-
-	@Test
-	void setUnits() {
-		final Map<String, String> units = mapOf("session_id", "0ab1e23f4eee", "user_id",
-				Long.toString(0xabcdef));
-		final ContextConfig config = ContextConfig.create()
-				.setUnits(units);
-
-		assertEquals("0ab1e23f4eee", config.getUnit("session_id"));
-		assertEquals(Long.toString(0xabcdef), config.getUnit("user_id"));
-		assertEquals(units, config.getUnits());
 	}
 
 	@Test

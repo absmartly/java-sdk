@@ -38,19 +38,24 @@ public class Context implements Closeable {
 			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
 			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,
 			AudienceMatcher audienceMatcher) {
-		final Map<String, String> units = config.getUnits();
 		clock_ = clock;
 		publishDelay_ = config.getPublishDelay();
-		units_ = new HashMap<String, String>(config.getUnits());
-
 		eventHandler_ = eventHandler;
 		eventLogger_ = config.getEventLogger() != null ? config.getEventLogger() : eventLogger;
 		dataProvider_ = dataProvider;
 		variableParser_ = variableParser;
 		audienceMatcher_ = audienceMatcher;
 		scheduler_ = scheduler;
-		assigners_ = new HashMap<String, VariantAssigner>(units.size());
-		hashedUnits_ = new HashMap<String, byte[]>(units.size());
+
+		units_ = new HashMap<String, String>();
+
+		final Map<String, String> units = config.getUnits();
+		if (units != null) {
+			setUnits(units);
+		}
+
+		assigners_ = new HashMap<String, VariantAssigner>(units_.size());
+		hashedUnits_ = new HashMap<String, byte[]>(units_.size());
 
 		final Map<String, Object> attributes = config.getAttributes();
 		if (attributes != null) {
@@ -257,6 +262,37 @@ public class Context implements Closeable {
 			String key = entry.getKey();
 			Integer value = entry.getValue();
 			setCustomAssignment(key, value);
+		}
+	}
+
+	public void setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
+		checkNotClosed();
+
+		final ReentrantReadWriteLock.WriteLock writeLock = contextLock_.writeLock();
+		try {
+			writeLock.lock();
+
+			final String previous = units_.get(unitType);
+			if ((previous != null) && !previous.equals(uid)) {
+				throw new IllegalArgumentException(String.format("Unit '%s' already set.", unitType));
+			}
+
+			final String trimmed = uid.trim();
+			if (trimmed.isEmpty()) {
+				throw new IllegalArgumentException(String.format("Unit '%s' UID must not be blank.", unitType));
+			}
+
+			units_.put(unitType, trimmed);
+		} finally {
+			writeLock.unlock();
+		}
+	}
+
+	public void setUnits(@Nonnull final Map<String, String> units) {
+		for (Map.Entry<String, String> entry : units.entrySet()) {
+			String key = entry.getKey();
+			String value = entry.getValue();
+			setUnit(key, value);
 		}
 	}
 
