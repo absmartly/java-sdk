@@ -1,21 +1,20 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.PublishEvent;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
-
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 class ClientTest extends TestUtils {
 	@Test
@@ -90,7 +89,7 @@ class ClientTest extends TestUtils {
 					"X-Application", "website",
 					"X-Environment", "dev",
 					"X-Application-Version", "0",
-					"X-Agent", "java-sdk");
+					"X-Agent", "absmartly-java-sdk");
 
 			when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
 					.thenReturn(getByteResponse(dataBytes));
@@ -243,7 +242,7 @@ class ClientTest extends TestUtils {
 				"X-Application", "website",
 				"X-Environment", "dev",
 				"X-Application-Version", "0",
-				"X-Agent", "java-sdk");
+				"X-Agent", "absmartly-java-sdk");
 
 		final PublishEvent event = new PublishEvent();
 		final byte[] bytes = new byte[]{0};
@@ -276,7 +275,7 @@ class ClientTest extends TestUtils {
 				"X-Application", "website",
 				"X-Environment", "dev",
 				"X-Application-Version", "0",
-				"X-Agent", "java-sdk");
+				"X-Agent", "absmartly-java-sdk");
 
 		final PublishEvent event = new PublishEvent();
 		final byte[] bytes = new byte[]{0};
@@ -311,7 +310,7 @@ class ClientTest extends TestUtils {
 				"X-Application", "website",
 				"X-Environment", "dev",
 				"X-Application-Version", "0",
-				"X-Agent", "java-sdk");
+				"X-Agent", "absmartly-java-sdk");
 
 		final PublishEvent event = new PublishEvent();
 		final byte[] bytes = new byte[]{0};
