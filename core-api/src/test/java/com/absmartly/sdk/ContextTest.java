@@ -1,8 +1,13 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import com.absmartly.sdk.java.time.Clock;
+import com.absmartly.sdk.json.*;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 
 import java.util.Arrays;
 import java.util.Map;
@@ -14,16 +19,10 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mockito;
-
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 class ContextTest extends TestUtils {
 	final Map<String, String> units = mapOf(
@@ -954,12 +953,12 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), true, true, true, false, false, false),
-				new Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), true, true, true, false, false,
+				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), false, true, true, false, false, false),
+				new Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), false, true, true, false, false,
 						false),
-				new Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), true, true, true, false, false,
+				new Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), false, true, true, false, false,
 						false),
-				new Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), true, true, true, false, false,
+				new Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), false, true, true, false, false,
 						false),
 				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false),
 		};

@@ -1,5 +1,19 @@
 package com.absmartly.sdk;
 
+import com.absmartly.sdk.internal.Algorithm;
+import com.absmartly.sdk.internal.Concurrency;
+import com.absmartly.sdk.internal.VariantAssigner;
+import com.absmartly.sdk.internal.hashing.Hashing;
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
+import com.absmartly.sdk.java.time.Clock;
+import com.absmartly.sdk.json.*;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
+import java8.util.function.Consumer;
+import java8.util.function.Function;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
@@ -9,21 +23,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
-import java8.util.function.Consumer;
-import java8.util.function.Function;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
-import com.absmartly.sdk.internal.Algorithm;
-import com.absmartly.sdk.internal.Concurrency;
-import com.absmartly.sdk.internal.VariantAssigner;
-import com.absmartly.sdk.internal.hashing.Hashing;
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.*;
 
 public class Context implements Closeable {
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
@@ -638,7 +637,6 @@ public class Context implements Closeable {
 							if (experiment != null) {
 								assignment.id = experiment.data.id;
 								assignment.unitType = experiment.data.unitType;
-								assignment.assigned = units_.containsKey(experiment.data.unitType);
 							}
 
 							assignment.overridden = true;
