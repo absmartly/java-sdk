@@ -1,20 +1,21 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
+
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.PublishEvent;
 
 class ClientTest extends TestUtils {
 	@Test

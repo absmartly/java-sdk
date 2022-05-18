@@ -1,12 +1,12 @@
 package com.absmartly.sdk;
 
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
+
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
 
 class ContextConfigTest extends TestUtils {
 	@Test
@@ -82,5 +82,12 @@ class ContextConfigTest extends TestUtils {
 		final ContextConfig config = ContextConfig.create()
 				.setPublishDelay(999);
 		assertEquals(999, config.getPublishDelay());
+	}
+
+	@Test
+	void setRefreshInterval() {
+		final ContextConfig config = ContextConfig.create()
+				.setRefreshInterval(999);
+		assertEquals(999, config.getRefreshInterval());
 	}
 }

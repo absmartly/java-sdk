@@ -1,13 +1,8 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.*;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mockito;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 import java.util.Arrays;
 import java.util.Map;
@@ -19,10 +14,16 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
+import com.absmartly.sdk.java.time.Clock;
+import com.absmartly.sdk.json.*;
 
 class ContextTest extends TestUtils {
 	final Map<String, String> units = mapOf(
@@ -60,7 +61,7 @@ class ContextTest extends TestUtils {
 			"show-modal", "exp_test_new");
 
 	final Unit[] publishUnits = new Unit[]{
-		new Unit("user_id", "JfnnlDI7RTiF9RgfG2JNCw"),
+			new Unit("user_id", "JfnnlDI7RTiF9RgfG2JNCw"),
 			new Unit("session_id", "pAE3a1i5Drs5mKRNq56adA"),
 			new Unit("email", "IuqYkNRfEx5yClel4j3NbA")
 	};
@@ -336,8 +337,9 @@ class ContextTest extends TestUtils {
 				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closingMessage,
-			assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
-				.getMessage());		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
+						.getMessage());
+		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
 						.getMessage());
 		assertEquals(closingMessage,
@@ -391,8 +393,8 @@ class ContextTest extends TestUtils {
 				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closedMessage,
-			assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
-				.getMessage());
+				assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
+						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setCustomAssignment("exp_test_ab", 2))
 						.getMessage());
@@ -426,6 +428,39 @@ class ContextTest extends TestUtils {
 
 		final String[] experiments = Arrays.stream(data.experiments).map(x -> x.name).toArray(String[]::new);
 		assertArrayEquals(experiments, context.getExperiments());
+	}
+
+	@Test
+	void startsRefreshTimerWhenReady() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setRefreshInterval(5_000);
+
+		final Context context = createContext(config, dataFuture);
+		assertFalse(context.isReady());
+		assertFalse(context.isFailed());
+
+		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
+		when(scheduler.scheduleWithFixedDelay((Runnable) any(), eq(config.getRefreshInterval()),
+				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
+						.thenAnswer(invokation -> {
+							runnable.set(invokation.getArgument(0));
+							return mock(ScheduledFuture.class);
+						});
+
+		dataFuture.complete(data);
+		context.waitUntilReady();
+
+		verify(scheduler, times(1)).scheduleWithFixedDelay((Runnable) any(), eq(config.getRefreshInterval()),
+				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS));
+		verify(eventHandler, times(0)).publish(any(), any());
+
+		verify(dataProvider, times(0)).getContextData();
+		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
+
+		runnable.get().run();
+
+		verify(dataProvider, times(1)).getContextData();
 	}
 
 	@Test
@@ -482,7 +517,7 @@ class ContextTest extends TestUtils {
 		expected.publishedAt = clock.millis();
 		expected.units = publishUnits;
 		expected.exposures = new Exposure[]{
-			new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1008,7 +1043,8 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), false, true, true, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), false, true, true, false, false,
+						false),
 				new Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), false, true, true, false, false,
 						false),
 				new Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), false, true, true, false, false,
@@ -1612,6 +1648,25 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
+	void closeStopsRefreshTimer() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setRefreshInterval(5_000);
+
+		final ScheduledFuture refreshTimer = mock(ScheduledFuture.class);
+		when(scheduler.scheduleWithFixedDelay((Runnable) any(), eq(config.getRefreshInterval()),
+				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
+						.thenReturn(refreshTimer);
+
+		final Context context = createContext(config, dataFutureReady);
+		assertTrue(context.isReady());
+
+		context.close();
+
+		verify(refreshTimer, times(1)).cancel(false);
+	}
+
+	@Test
 	void refresh() {
 		final Context context = createReadyContext();
 		assertTrue(context.isReady());
@@ -1717,6 +1772,49 @@ class ContextTest extends TestUtils {
 		context.getTreatment("not_found");
 
 		assertEquals(refreshData.experiments.length + 1, context.getPendingCount());
+	}
+
+	@Test
+	void refreshKeepsAssignmentCacheWhenNotChangedOnAudienceMismatch() {
+		final Context context = createContext(audienceStrictDataFutureReady);
+
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+
+		assertEquals(1, context.getPendingCount());
+
+		when(dataProvider.getContextData()).thenReturn(audienceStrictDataFutureReady);
+
+		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
+
+		verify(dataProvider, times(1)).getContextData();
+
+		refreshFuture.join();
+
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+
+		assertEquals(1, context.getPendingCount()); // no new exposure
+	}
+
+	@Test
+	void refreshKeepsAssignmentCacheWhenNotChangedWithOverride() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 3);
+		assertEquals(3, context.getTreatment("exp_test_ab"));
+
+		assertEquals(1, context.getPendingCount());
+
+		when(dataProvider.getContextData()).thenReturn(dataFutureReady);
+
+		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
+
+		verify(dataProvider, times(1)).getContextData();
+
+		refreshFuture.join();
+
+		assertEquals(3, context.getTreatment("exp_test_ab"));
+
+		assertEquals(1, context.getPendingCount()); // no new exposure
 	}
 
 	@Test

@@ -207,8 +207,15 @@ The `close()` and `closeAsync()` methods will ensure all events have been publis
 #### Refreshing the context with fresh experiment data
 For long-running contexts, the context is usually created once when the application is first started.
 However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-To mitigate this, we can use the `refresh()` or `refreshAsync()` methods.
+To mitigate this, we can use the `setRefreshInterval()` method on the context config.
 
+```java
+    final ContextConfig contextConfig = ContextConfig.create()
+		.setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
+        .setRefreshInterval(TimeUnit.HOURS.toMillis(4)); // every 4 hours
+```
+
+Alternatively, the `refresh()` method can be called manually.
 The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `getTreatment()` is called again.
 ```java
     context.refresh();

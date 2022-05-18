@@ -1,7 +1,10 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executor;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionStage;
 import java8.util.function.Consumer;
@@ -9,11 +12,9 @@ import java8.util.function.Function;
 import java8.util.function.Supplier;
 
 import javax.annotation.Nonnull;
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.Executor;
+
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.PublishEvent;
 
 public class Client implements Closeable {
 	static public Client create(@Nonnull final ClientConfig config) {

@@ -1,8 +1,9 @@
 package com.absmartly.sdk;
 
-import javax.annotation.Nonnull;
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.annotation.Nonnull;
 
 public class ContextConfig {
 	public static ContextConfig create() {
@@ -125,6 +126,15 @@ public class ContextConfig {
 		return this.publishDelay_;
 	}
 
+	public ContextConfig setRefreshInterval(long intervalMs) {
+		this.refreshInterval_ = intervalMs;
+		return this;
+	}
+
+	public long getRefreshInterval() {
+		return this.refreshInterval_;
+	}
+
 	private Map<String, String> units_;
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
@@ -133,4 +143,5 @@ public class ContextConfig {
 	private ContextEventLogger eventLogger_;
 
 	private long publishDelay_ = 100;
+	private long refreshInterval_ = 0;
 }
