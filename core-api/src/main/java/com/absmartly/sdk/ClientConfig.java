@@ -1,12 +1,24 @@
 package com.absmartly.sdk;
 
-import java.util.concurrent.Executor;
-
 import javax.annotation.Nonnull;
+import java.util.Properties;
+import java.util.concurrent.Executor;
 
 public class ClientConfig {
 	public static ClientConfig create() {
 		return new ClientConfig();
+	}
+
+	public static ClientConfig createFromProperties(Properties properties) {
+		return createFromProperties(properties, "");
+	}
+
+	public static ClientConfig createFromProperties(Properties properties, final String prefix) {
+		return create()
+			.setEndpoint(properties.getProperty(prefix + "endpoint"))
+			.setEnvironment(properties.getProperty(prefix + "environment"))
+			.setApplication(properties.getProperty(prefix + "application"))
+			.setAPIKey(properties.getProperty(prefix + "apikey"));
 	}
 
 	ClientConfig() {}
