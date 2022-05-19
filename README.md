@@ -147,7 +147,7 @@ We can avoid repeating the round-trip on the client-side by re-using data previo
 #### Setting extra units for a context
 You can add additional units to a context by calling the `setUnit()` or the `setUnits()` method.
 This method may be used for example, when a user logs in to your application, and you want to use the new unit type to the context.
-Please note that you cannot override an already set unit type as that would be a change of identity. In this case, you must create a new context instead.
+Please note that **you cannot override an already set unit type** as that would be a change of identity, and will throw an exception. In this case, you must create a new context instead.
 The `setUnit()` and `setUnits()` methods can be called before the context is ready.
 
 ```java

@@ -1,8 +1,9 @@
 package com.absmartly.sdk;
 
-import javax.annotation.Nonnull;
 import java.util.Properties;
 import java.util.concurrent.Executor;
+
+import javax.annotation.Nonnull;
 
 public class ClientConfig {
 	public static ClientConfig create() {
@@ -15,10 +16,10 @@ public class ClientConfig {
 
 	public static ClientConfig createFromProperties(Properties properties, final String prefix) {
 		return create()
-			.setEndpoint(properties.getProperty(prefix + "endpoint"))
-			.setEnvironment(properties.getProperty(prefix + "environment"))
-			.setApplication(properties.getProperty(prefix + "application"))
-			.setAPIKey(properties.getProperty(prefix + "apikey"));
+				.setEndpoint(properties.getProperty(prefix + "endpoint"))
+				.setEnvironment(properties.getProperty(prefix + "environment"))
+				.setApplication(properties.getProperty(prefix + "application"))
+				.setAPIKey(properties.getProperty(prefix + "apikey"));
 	}
 
 	ClientConfig() {}

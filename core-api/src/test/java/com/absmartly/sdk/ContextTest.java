@@ -441,7 +441,7 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isFailed());
 
 		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
-		when(scheduler.scheduleWithFixedDelay((Runnable) any(), eq(config.getRefreshInterval()),
+		when(scheduler.scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
 						.thenAnswer(invokation -> {
 							runnable.set(invokation.getArgument(0));
@@ -451,9 +451,8 @@ class ContextTest extends TestUtils {
 		dataFuture.complete(data);
 		context.waitUntilReady();
 
-		verify(scheduler, times(1)).scheduleWithFixedDelay((Runnable) any(), eq(config.getRefreshInterval()),
+		verify(scheduler, times(1)).scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS));
-		verify(eventHandler, times(0)).publish(any(), any());
 
 		verify(dataProvider, times(0)).getContextData();
 		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
@@ -461,6 +460,25 @@ class ContextTest extends TestUtils {
 		runnable.get().run();
 
 		verify(dataProvider, times(1)).getContextData();
+	}
+
+	@Test
+	void doestNotStartRefreshTimerWhenFailed() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setRefreshInterval(5_000);
+
+		final Context context = createContext(config, dataFuture);
+		assertFalse(context.isReady());
+		assertFalse(context.isFailed());
+
+		dataFuture.completeExceptionally(new Exception("test"));
+
+		context.waitUntilReady();
+
+		assertTrue(context.isFailed());
+
+		verify(scheduler, times(0)).scheduleWithFixedDelay(any(), anyLong(), anyLong(), any());
 	}
 
 	@Test
@@ -1654,7 +1672,7 @@ class ContextTest extends TestUtils {
 				.setRefreshInterval(5_000);
 
 		final ScheduledFuture refreshTimer = mock(ScheduledFuture.class);
-		when(scheduler.scheduleWithFixedDelay((Runnable) any(), eq(config.getRefreshInterval()),
+		when(scheduler.scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
 						.thenReturn(refreshTimer);
 
