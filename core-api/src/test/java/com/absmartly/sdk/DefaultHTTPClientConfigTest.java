@@ -56,7 +56,7 @@ class DefaultHTTPClientConfigTest extends TestUtils {
 	@Test
 	void setHttpVersionPolicy() {
 		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
-			.setHttpVersionPolicy(HTTPVersionPolicy.FORCE_HTTP_1);
-		assertEquals(HTTPVersionPolicy.FORCE_HTTP_1, config.getHttpVersionPolicy());
+				.setHTTPVersionPolicy(HTTPVersionPolicy.FORCE_HTTP_1);
+		assertEquals(HTTPVersionPolicy.FORCE_HTTP_1, config.getHTTPVersionPolicy());
 	}
 }

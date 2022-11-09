@@ -63,11 +63,11 @@ public class DefaultHTTPClientConfig {
 		return this;
 	}
 
-	public HTTPVersionPolicy getHttpVersionPolicy() {
+	public HTTPVersionPolicy getHTTPVersionPolicy() {
 		return httpVersionPolicy_;
 	}
 
-	public DefaultHTTPClientConfig setHttpVersionPolicy(final HTTPVersionPolicy httpVersionPolicy) {
+	public DefaultHTTPClientConfig setHTTPVersionPolicy(final HTTPVersionPolicy httpVersionPolicy) {
 		httpVersionPolicy_ = httpVersionPolicy;
 		return this;
 	}

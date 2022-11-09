@@ -53,7 +53,7 @@ public class DefaultHTTPClient implements HTTPClient {
 				.evictExpiredConnections()
 				.evictIdleConnections(TimeValue.ofMilliseconds(config.getConnectionKeepAlive()))
 				.setConnectionManager(connectionManager)
-				.setVersionPolicy(HttpVersionPolicy.valueOf(config.getHttpVersionPolicy().name()))
+				.setVersionPolicy(translateVersionPolicy(config.getHTTPVersionPolicy()))
 				.setDefaultRequestConfig(RequestConfig.custom()
 						.setConnectionKeepAlive(TimeValue.ofMilliseconds(config.getConnectionKeepAlive()))
 						.setConnectTimeout(Timeout.ofMilliseconds(config.getConnectTimeout()))
@@ -148,6 +148,18 @@ public class DefaultHTTPClient implements HTTPClient {
 		}
 
 		return future;
+	}
+
+	private HttpVersionPolicy translateVersionPolicy(HTTPVersionPolicy httpVersionPolicy) {
+		switch (httpVersionPolicy) {
+		default:
+		case NEGOTIATE:
+			return HttpVersionPolicy.NEGOTIATE;
+		case FORCE_HTTP_1:
+			return HttpVersionPolicy.FORCE_HTTP_1;
+		case FORCE_HTTP_2:
+			return HttpVersionPolicy.FORCE_HTTP_2;
+		}
 	}
 
 	private SimpleHttpRequest buildRequest(final SimpleRequestBuilder request, final Map<String, String> query,

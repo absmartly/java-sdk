@@ -17,6 +17,7 @@ import org.apache.hc.client5.http.impl.async.HttpAsyncClientBuilder;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
 import org.apache.hc.core5.concurrent.FutureCallback;
 import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.util.TimeValue;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +55,35 @@ class DefaultHTTPClientTest extends TestUtils {
 			verify(asyncHTTPClientBuilder, times(1)).evictIdleConnections(TimeValue.ofSeconds(30));
 			verify(asyncHTTPClientBuilder, times(1))
 					.setConnectionManager(any(PoolingAsyncClientConnectionManager.class));
+			verify(asyncHTTPClientBuilder, times(1)).setVersionPolicy(HttpVersionPolicy.NEGOTIATE);
 			verify(asyncHTTPClientBuilder, times(1)).setRetryStrategy(any(DefaultHTTPClientRetryStrategy.class));
+			verify(asyncHTTPClientBuilder, times(1)).build();
+
+			verify(asyncHTTPClient, times(1)).start();
+
+			httpClient.close();
+
+			verify(asyncHTTPClient, times(1)).close(CloseMode.GRACEFUL);
+		}
+	}
+
+	@Test
+	void constructorCustomConfig() {
+		try (final MockedStatic<HttpAsyncClientBuilder> builderStatic = Mockito
+				.mockStatic(HttpAsyncClientBuilder.class)) {
+			//noinspection ResultOfMethodCallIgnored
+			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
+
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create()
+					.setHTTPVersionPolicy(HTTPVersionPolicy.FORCE_HTTP_2));
+
+			verify(asyncHTTPClientBuilder, times(1)).disableCookieManagement();
+			verify(asyncHTTPClientBuilder, times(1)).evictExpiredConnections();
+			verify(asyncHTTPClientBuilder, times(1)).evictIdleConnections(TimeValue.ofSeconds(30));
+			verify(asyncHTTPClientBuilder, times(1))
+					.setConnectionManager(any(PoolingAsyncClientConnectionManager.class));
+			verify(asyncHTTPClientBuilder, times(1)).setRetryStrategy(any(DefaultHTTPClientRetryStrategy.class));
+			verify(asyncHTTPClientBuilder, times(1)).setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_2);
 			verify(asyncHTTPClientBuilder, times(1)).build();
 
 			verify(asyncHTTPClient, times(1)).start();
