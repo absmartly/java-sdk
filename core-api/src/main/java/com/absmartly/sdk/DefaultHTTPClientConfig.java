@@ -63,10 +63,20 @@ public class DefaultHTTPClientConfig {
 		return this;
 	}
 
+	public HTTPVersionPolicy getHttpVersionPolicy() {
+		return httpVersionPolicy_;
+	}
+
+	public DefaultHTTPClientConfig setHttpVersionPolicy(final HTTPVersionPolicy httpVersionPolicy) {
+		httpVersionPolicy_ = httpVersionPolicy;
+		return this;
+	}
+
 	private Provider securityProvider_ = null;
 	private long connectTimeout_ = 3000;
 	private long connectionKeepAlive_ = 30000;
 	private long connectionRequestTimeout_ = 1000;
 	private long retryInterval_ = 333;
 	private int maxRetries_ = 5;
+	private HTTPVersionPolicy httpVersionPolicy_ = HTTPVersionPolicy.NEGOTIATE;
 }

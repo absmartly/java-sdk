@@ -52,4 +52,11 @@ class DefaultHTTPClientConfigTest extends TestUtils {
 				.setRetryInterval(123);
 		assertEquals(123, config.getRetryInterval());
 	}
+
+	@Test
+	void setHttpVersionPolicy() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+			.setHttpVersionPolicy(HTTPVersionPolicy.FORCE_HTTP_1);
+		assertEquals(HTTPVersionPolicy.FORCE_HTTP_1, config.getHttpVersionPolicy());
+	}
 }
