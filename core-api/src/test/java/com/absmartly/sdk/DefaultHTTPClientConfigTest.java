@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 
 import java.security.Provider;
 
-import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.junit.jupiter.api.Test;
 
 class DefaultHTTPClientConfigTest extends TestUtils {
@@ -55,9 +54,9 @@ class DefaultHTTPClientConfigTest extends TestUtils {
 	}
 
 	@Test
-	void setHttpVersionPolicy() {
+	void setHTTPVersionPolicy() {
 		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
-			.setHttpVersionPolicy(HttpVersionPolicy.FORCE_HTTP_1);
-		assertEquals(HttpVersionPolicy.FORCE_HTTP_1, config.getHttpVersionPolicy());
+				.setHTTPVersionPolicy(DefaultHTTPClientConfig.HTTPVersionPolicy.FORCE_HTTP_1);
+		assertEquals(DefaultHTTPClientConfig.HTTPVersionPolicy.FORCE_HTTP_1, config.getHTTPVersionPolicy());
 	}
 }
