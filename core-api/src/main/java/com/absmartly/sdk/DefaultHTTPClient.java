@@ -52,6 +52,7 @@ public class DefaultHTTPClient implements HTTPClient {
 				.evictExpiredConnections()
 				.evictIdleConnections(TimeValue.ofMilliseconds(config.getConnectionKeepAlive()))
 				.setConnectionManager(connectionManager)
+				.setVersionPolicy(config.getHttpVersionPolicy())
 				.setDefaultRequestConfig(RequestConfig.custom()
 						.setConnectionKeepAlive(TimeValue.ofMilliseconds(config.getConnectionKeepAlive()))
 						.setConnectTimeout(Timeout.ofMilliseconds(config.getConnectTimeout()))
