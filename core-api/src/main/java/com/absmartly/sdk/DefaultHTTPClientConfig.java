@@ -78,6 +78,5 @@ public class DefaultHTTPClientConfig {
 	private long connectionRequestTimeout_ = 1000;
 	private long retryInterval_ = 333;
 	private int maxRetries_ = 5;
-
 	private HTTPVersionPolicy httpVersionPolicy_ = HTTPVersionPolicy.NEGOTIATE;
 }
