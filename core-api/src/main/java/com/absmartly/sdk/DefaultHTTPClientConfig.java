@@ -1,7 +1,6 @@
 package com.absmartly.sdk;
 
 import java.security.Provider;
-import org.apache.hc.core5.http2.HttpVersionPolicy;
 
 public class DefaultHTTPClientConfig {
 	public static DefaultHTTPClientConfig create() {
@@ -64,11 +63,11 @@ public class DefaultHTTPClientConfig {
 		return this;
 	}
 
-	public HttpVersionPolicy getHttpVersionPolicy() {
+	public HTTPVersionPolicy getHttpVersionPolicy() {
 		return httpVersionPolicy_;
 	}
 
-	public DefaultHTTPClientConfig setHttpVersionPolicy(final HttpVersionPolicy httpVersionPolicy) {
+	public DefaultHTTPClientConfig setHttpVersionPolicy(final HTTPVersionPolicy httpVersionPolicy) {
 		httpVersionPolicy_ = httpVersionPolicy;
 		return this;
 	}
@@ -80,5 +79,5 @@ public class DefaultHTTPClientConfig {
 	private long retryInterval_ = 333;
 	private int maxRetries_ = 5;
 
-	private HttpVersionPolicy httpVersionPolicy_ = HttpVersionPolicy.NEGOTIATE;
+	private HTTPVersionPolicy httpVersionPolicy_ = HTTPVersionPolicy.NEGOTIATE;
 }
