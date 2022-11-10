@@ -8,6 +8,7 @@ plugins {
 	id "com.adarshr.test-logger" version "2.1.1"
 	id "org.barfuin.gradle.jacocolog" version "1.2.3"
 	id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
+	id "org.owasp.dependencycheck" version "7.3.0"
 }
 
 
@@ -17,8 +18,8 @@ ext {
 
 	slf4jVersion = "1.7.30"
 
-	jacksonVersion = "2.12.6.1"
-	jacksonDataTypeVersion = "2.12.6"
+	jacksonVersion = "2.13.4.2"
+	jacksonDataTypeVersion = "2.13.4"
 
 	junitVersion = "5.7.0"
 	mockitoVersion = "3.6.28"
@@ -29,6 +30,7 @@ allprojects {
 	group = GROUP_ID
 
 	apply plugin: "java"
+	apply plugin: "org.owasp.dependencycheck"
 	apply from: rootProject.file("gradle/repositories.gradle")
 	apply from: rootProject.file("gradle/spotless.gradle")
 	apply from: rootProject.file("gradle/findbugs.gradle")
