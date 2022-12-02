@@ -311,17 +311,22 @@ public class Context implements Closeable {
 		return getAssignment(experimentName).variant;
 	}
 
-	public Map<String, String> getVariableKeys() {
+	public Map<String, List<String>> getVariableKeys() {
 		checkReady(true);
 
-		final Map<String, String> variableKeys = new HashMap<String, String>(indexVariables_.size());
+		final Map<String, List<String>> variableKeys = new HashMap<String, List<String>>(indexVariables_.size());
 
 		try {
 			dataLock_.readLock().lock();
-			for (Map.Entry<String, ExperimentVariables> entry : indexVariables_.entrySet()) {
-				String key = entry.getKey();
-				ExperimentVariables value = entry.getValue();
-				variableKeys.put(key, value.data.name);
+			for (Map.Entry<String, List<ExperimentVariables>> entry : indexVariables_.entrySet()) {
+				final String key = entry.getKey();
+				final List<ExperimentVariables> keyExperimentVariables = entry.getValue();
+				final List<String> values = new ArrayList<String>(keyExperimentVariables.size());
+
+				for (final ExperimentVariables experimentVariables : keyExperimentVariables) {
+					values.add(experimentVariables.data.name);
+				}
+				variableKeys.put(key, values);
 			}
 		} finally {
 			dataLock_.readLock().unlock();
@@ -738,10 +743,15 @@ public class Context implements Closeable {
 	}
 
 	private Assignment getVariableAssignment(final String key) {
-		final ExperimentVariables experiment = getVariableExperiment(key);
+		final List<ExperimentVariables> keyExperimentVariables = getVariableExperiments(key);
 
-		if (experiment != null) {
-			return getAssignment(experiment.data.name);
+		if (keyExperimentVariables != null) {
+			for (final ExperimentVariables experimentVariables : keyExperimentVariables) {
+				final Assignment assignment = getAssignment(experimentVariables.data.name);
+				if (assignment.assigned || assignment.overridden) {
+					return assignment;
+				}
+			}
 		}
 		return null;
 	}
@@ -755,7 +765,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	private ExperimentVariables getVariableExperiment(final String key) {
+	private List<ExperimentVariables> getVariableExperiments(final String key) {
 		return Concurrency.getRW(dataLock_, indexVariables_, key);
 	}
 
@@ -837,7 +847,7 @@ public class Context implements Closeable {
 
 	private void setData(final ContextData data) {
 		final Map<String, ExperimentVariables> index = new HashMap<String, ExperimentVariables>();
-		final Map<String, ExperimentVariables> indexVariables = new HashMap<String, ExperimentVariables>();
+		final Map<String, List<ExperimentVariables>> indexVariables = new HashMap<String, List<ExperimentVariables>>();
 
 		for (final Experiment experiment : data.experiments) {
 			final ExperimentVariables experimentVariables = new ExperimentVariables();
@@ -849,8 +859,26 @@ public class Context implements Closeable {
 					final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
 							variant.config);
 					for (final String key : variables.keySet()) {
-						indexVariables.put(key, experimentVariables);
+						List<ExperimentVariables> keyExperimentVariables = indexVariables.get(key);
+						if (keyExperimentVariables == null) {
+							keyExperimentVariables = new ArrayList<ExperimentVariables>();
+							indexVariables.put(key, keyExperimentVariables);
+						}
+
+						int at = Collections.binarySearch(keyExperimentVariables, experimentVariables,
+								new Comparator<ExperimentVariables>() {
+									@Override
+									public int compare(ExperimentVariables a, ExperimentVariables b) {
+										return Integer.valueOf(a.data.id).compareTo(b.data.id);
+									}
+								});
+
+						if (at < 0) {
+							at = -at - 1;
+							keyExperimentVariables.add(at, experimentVariables);
+						}
 					}
+
 					experimentVariables.variables.add(variables);
 				} else {
 					experimentVariables.variables.add(Collections.<String, Object> emptyMap());
@@ -877,7 +905,7 @@ public class Context implements Closeable {
 		try {
 			dataLock_.writeLock().lock();
 			index_ = new HashMap<String, ExperimentVariables>();
-			indexVariables_ = new HashMap<String, ExperimentVariables>();
+			indexVariables_ = new HashMap<String, List<ExperimentVariables>>();
 			data_ = new ContextData();
 			failed_ = true;
 		} finally {
@@ -915,7 +943,7 @@ public class Context implements Closeable {
 	private final ReentrantReadWriteLock dataLock_ = new ReentrantReadWriteLock();
 	private ContextData data_;
 	private Map<String, ExperimentVariables> index_;
-	private Map<String, ExperimentVariables> indexVariables_;
+	private Map<String, List<ExperimentVariables>> indexVariables_;
 
 	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
 

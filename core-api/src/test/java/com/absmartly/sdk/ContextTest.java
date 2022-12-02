@@ -4,10 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -51,14 +48,14 @@ class ContextTest extends TestUtils {
 			"submit.shape", "rect",
 			"show-modal", true);
 
-	final Map<String, String> variableExperiments = mapOf(
-			"banner.border", "exp_test_ab",
-			"banner.size", "exp_test_ab",
-			"button.color", "exp_test_abc",
-			"card.width", "exp_test_not_eligible",
-			"submit.color", "exp_test_fullon",
-			"submit.shape", "exp_test_fullon",
-			"show-modal", "exp_test_new");
+	final Map<String, List<String>> variableExperiments = mapOf(
+			"banner.border", listOf("exp_test_ab"),
+			"banner.size", listOf("exp_test_ab"),
+			"button.color", listOf("exp_test_abc"),
+			"card.width", listOf("exp_test_not_eligible"),
+			"submit.color", listOf("exp_test_fullon"),
+			"submit.shape", listOf("exp_test_fullon"),
+			"show-modal", listOf("exp_test_new"));
 
 	final Unit[] publishUnits = new Unit[]{
 			new Unit("user_id", "JfnnlDI7RTiF9RgfG2JNCw"),
@@ -142,6 +139,15 @@ class ContextTest extends TestUtils {
 				.setUnits(units);
 
 		return Context.create(clock, config, scheduler, dataFutureReady, dataProvider, eventHandler,
+				eventLogger, variableParser, audienceMatcher);
+	}
+
+	Context createReadyContext(ContextData data) {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units);
+
+		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
+				eventHandler,
 				eventLogger, variableParser, audienceMatcher);
 	}
 
@@ -771,7 +777,8 @@ class ContextTest extends TestUtils {
 
 		final Set<String> experiments = Arrays.stream(data.experiments).map(x -> x.name).collect(Collectors.toSet());
 
-		variableExperiments.forEach((variable, experimentName) -> {
+		variableExperiments.forEach((variable, experimentNames) -> {
+			final String experimentName = experimentNames.get(0);
 			final Object actual = context.peekVariableValue(variable, 17);
 			final boolean eligible = !experimentName.equals("exp_test_not_eligible");
 
@@ -783,6 +790,59 @@ class ContextTest extends TestUtils {
 		});
 
 		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void peekVariableValueConflictingKeyDisjointAudiences() {
+		for (final Experiment experiment : data.experiments) {
+			switch (experiment.name) {
+			case "exp_test_ab":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"arrow\"}";
+				break;
+			case "exp_test_abc":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"lt\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			}
+		}
+
+		{
+			final Context context = createReadyContext(data);
+			context.setAttribute("age", 20);
+			assertEquals("arrow", context.peekVariableValue("icon", "square"));
+		}
+
+		{
+			final Context context = createReadyContext(data);
+			context.setAttribute("age", 19);
+			assertEquals("circle", context.peekVariableValue("icon", "square"));
+		}
+	}
+
+	@Test
+	void peekVariableValuePicksLowestExperimentIdOnConflictingKey() {
+		for (final Experiment experiment : data.experiments) {
+			switch (experiment.name) {
+			case "exp_test_ab":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.id = 99;
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"arrow\"}";
+				break;
+			case "exp_test_abc":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.id = 1;
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			}
+		}
+
+		final Context context = createReadyContext(data);
+		assertEquals("circle", context.peekVariableValue("icon", "square"));
 	}
 
 	@Test
@@ -805,7 +865,8 @@ class ContextTest extends TestUtils {
 
 		final Set<String> experiments = Arrays.stream(data.experiments).map(x -> x.name).collect(Collectors.toSet());
 
-		variableExperiments.forEach((variable, experimentName) -> {
+		variableExperiments.forEach((variable, experimentNames) -> {
+			final String experimentName = experimentNames.get(0);
 			final Object actual = context.getVariableValue(variable, 17);
 			final boolean eligible = !experimentName.equals("exp_test_not_eligible");
 
@@ -817,6 +878,42 @@ class ContextTest extends TestUtils {
 		});
 
 		assertEquals(experiments.size(), context.getPendingCount());
+	}
+
+	@Test
+	void getVariableValueConflictingKeyDisjointAudiences() {
+		for (final Experiment experiment : data.experiments) {
+			switch (experiment.name) {
+			case "exp_test_ab":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"arrow\"}";
+				break;
+			case "exp_test_abc":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"lt\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			}
+		}
+
+		{
+			final Context context = createReadyContext(data);
+			context.setAttribute("age", 20);
+			assertEquals("arrow", context.getVariableValue("icon", "square"));
+
+			assertEquals(1, context.getPendingCount());
+		}
+
+		{
+			final Context context = createReadyContext(data);
+			context.setAttribute("age", 19);
+			assertEquals("circle", context.getVariableValue("icon", "square"));
+
+			assertEquals(1, context.getPendingCount());
+		}
 	}
 
 	@Test
@@ -880,32 +977,11 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
-	void getVariableValueQueuesExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode() {
+	void getVariableValueDoesNotQueuesExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode() {
 		final Context context = createContext(audienceStrictDataFutureReady);
 
 		assertEquals("small", context.getVariableValue("banner.size", "small"));
-		assertEquals(1, context.getPendingCount());
-
-		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-
-		context.publish();
-
-		final PublishEvent expected = new PublishEvent();
-		expected.hashed = true;
-		expected.publishedAt = clock.millis();
-		expected.units = publishUnits;
-
-		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false,
-						true),
-		};
-
-		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-
-		context.publish();
-
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		assertEquals(0, context.getPendingCount());
 	}
 
 	@Test
