@@ -10,7 +10,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextData {
-	public Experiment[] experiments;
+	public Experiment[] experiments = new Experiment[0];
 
 	public ContextData() {}
 
