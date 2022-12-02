@@ -520,6 +520,17 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
+	void setUnits() {
+		final Context context = createContext(ContextConfig.create(), dataFuture);
+		context.setUnits(units);
+
+		for (final Map.Entry<String, String> entry : units.entrySet()) {
+			assertEquals(entry.getValue(), context.getUnit(entry.getKey()));
+		}
+		assertEquals(units, context.getUnits());
+	}
+
+	@Test
 	void setUnitsBeforeReady() {
 		final Context context = createContext(ContextConfig.create(), dataFuture);
 		assertFalse(context.isReady());
@@ -570,12 +581,26 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
+	void setAttributes() {
+		final Context context = createContext(dataFuture);
+
+		context.setAttribute("attr1", "value1");
+		context.setAttributes(mapOf("attr2", "value2", "attr3", 15));
+
+		assertEquals("value1", context.getAttribute("attr1"));
+		assertEquals(mapOf("attr1", "value1", "attr2", "value2", "attr3", 15), context.getAttributes());
+	}
+
+	@Test
 	void setAttributesBeforeReady() {
 		final Context context = createContext(dataFuture);
 		assertFalse(context.isReady());
 
 		context.setAttribute("attr1", "value1");
 		context.setAttributes(mapOf("attr2", "value2"));
+
+		assertEquals("value1", context.getAttribute("attr1"));
+		assertEquals(mapOf("attr1", "value1", "attr2", "value2"), context.getAttributes());
 
 		dataFuture.complete(data);
 

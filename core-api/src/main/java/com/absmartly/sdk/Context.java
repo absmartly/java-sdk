@@ -220,6 +220,16 @@ public class Context implements Closeable {
 		}
 	}
 
+	public String getUnit(@Nonnull final String unitType) {
+		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		try {
+			readLock.lock();
+			return units_.get(unitType);
+		} finally {
+			readLock.unlock();
+		}
+	}
+
 	public void setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
 		checkNotClosed();
 
@@ -243,6 +253,16 @@ public class Context implements Closeable {
 		}
 	}
 
+	public Map<String, String> getUnits() {
+		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		try {
+			readLock.lock();
+			return new HashMap<String, String>(units_);
+		} finally {
+			readLock.unlock();
+		}
+	}
+
 	public void setUnits(@Nonnull final Map<String, String> units) {
 		for (Map.Entry<String, String> entry : units.entrySet()) {
 			String key = entry.getKey();
@@ -251,10 +271,41 @@ public class Context implements Closeable {
 		}
 	}
 
+	public Object getAttribute(@Nonnull final String name) {
+		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		try {
+			readLock.lock();
+			for (int i = attributes_.size(); i-- > 0;) {
+				final Attribute attr = attributes_.get(i);
+				if (name.equals(attr.name)) {
+					return attr.value;
+				}
+			}
+
+			return null;
+		} finally {
+			readLock.unlock();
+		}
+	}
+
 	public void setAttribute(@Nonnull final String name, @Nullable final Object value) {
 		checkNotClosed();
 
 		Concurrency.addRW(contextLock_, attributes_, new Attribute(name, value, clock_.millis()));
+	}
+
+	public Map<String, Object> getAttributes() {
+		final HashMap<String, Object> result = new HashMap<String, Object>(attributes_.size());
+		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		try {
+			readLock.lock();
+			for (final Attribute attr : attributes_) {
+				result.put(attr.name, attr.value);
+			}
+			return result;
+		} finally {
+			readLock.unlock();
+		}
 	}
 
 	public void setAttributes(@Nonnull final Map<String, Object> attributes) {
