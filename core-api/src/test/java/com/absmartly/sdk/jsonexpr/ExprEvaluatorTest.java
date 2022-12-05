@@ -208,6 +208,15 @@ class ExprEvaluatorTest extends TestUtils {
 		assertNull(evaluator.compare(null, "abc"));
 		assertNull(evaluator.compare(null, EMPTY_MAP));
 		assertNull(evaluator.compare(null, EMPTY_LIST));
+
+		assertNull(evaluator.compare(0, null));
+		assertNull(evaluator.compare(1, null));
+		assertNull(evaluator.compare(true, null));
+		assertNull(evaluator.compare(false, null));
+		assertNull(evaluator.compare("", null));
+		assertNull(evaluator.compare("abc", null));
+		assertNull(evaluator.compare(EMPTY_MAP, null));
+		assertNull(evaluator.compare(EMPTY_LIST, null));
 	}
 
 	@Test
