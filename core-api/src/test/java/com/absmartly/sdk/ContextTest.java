@@ -833,6 +833,8 @@ class ContextTest extends TestUtils {
 				experiment.audience = "{\"filter\":[{\"lt\":[{\"var\":\"age\"},{\"value\":20}]}]}";
 				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
 				break;
+			default:
+				break;
 			}
 		}
 
@@ -862,6 +864,8 @@ class ContextTest extends TestUtils {
 				assert (expectedVariants.get(experiment.name) != 0);
 				experiment.id = 1;
 				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			default:
 				break;
 			}
 		}
@@ -920,6 +924,8 @@ class ContextTest extends TestUtils {
 				experiment.audienceStrict = true;
 				experiment.audience = "{\"filter\":[{\"lt\":[{\"var\":\"age\"},{\"value\":20}]}]}";
 				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			default:
 				break;
 			}
 		}
