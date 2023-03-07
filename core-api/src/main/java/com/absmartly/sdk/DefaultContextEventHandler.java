@@ -16,5 +16,8 @@ public class DefaultContextEventHandler implements ContextEventHandler {
 		return client_.publish(event);
 	}
 
-	private final Client client_;
+	@Override
+	public void flushCache() {}
+
+	final Client client_;
 }

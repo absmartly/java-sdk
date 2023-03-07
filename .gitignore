@@ -11,3 +11,4 @@
 *.log
 build/
 out/
+/absmarly.db

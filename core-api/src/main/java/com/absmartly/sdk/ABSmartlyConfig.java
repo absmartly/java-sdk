@@ -38,6 +38,15 @@ public class ABSmartlyConfig {
 		return this;
 	}
 
+	public ResilienceConfig getResilienceConfig() {
+		return this.resilienceConfig;
+	}
+
+	public ABSmartlyConfig setResilienceConfig(@Nonnull final ResilienceConfig resilienceConfig) {
+		this.resilienceConfig = resilienceConfig;
+		return this;
+	}
+
 	public ScheduledExecutorService getScheduler() {
 		return scheduler_;
 	}
@@ -83,4 +92,5 @@ public class ABSmartlyConfig {
 	private AudienceDeserializer audienceDeserializer_;
 	private ScheduledExecutorService scheduler_;
 	private Client client_;
+	private ResilienceConfig resilienceConfig;
 }

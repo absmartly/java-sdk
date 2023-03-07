@@ -8,4 +8,5 @@ import com.absmartly.sdk.json.PublishEvent;
 
 public interface ContextEventHandler {
 	CompletableFuture<Void> publish(@Nonnull final Context context, @Nonnull final PublishEvent event);
+	void flushCache();
 }

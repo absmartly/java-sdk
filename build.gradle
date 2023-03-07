@@ -13,13 +13,15 @@ plugins {
 
 
 ext {
-	VERSION = "1.5.3"
+	VERSION = "1.5.4"
 	GROUP_ID = "com.absmartly.sdk"
 
 	slf4jVersion = "1.7.30"
 
 	jacksonVersion = "2.13.4.2"
 	jacksonDataTypeVersion = "2.13.4"
+
+	sqliteVersion = "3.40.1.0"
 
 	junitVersion = "5.7.0"
 	mockitoVersion = "3.6.28"
@@ -63,6 +65,7 @@ configure(subprojects.findAll {
 		from javadoc.destinationDir
 	}
 
+	//Config for local maven publish
 	afterEvaluate {
 		publishing {
 			publications {

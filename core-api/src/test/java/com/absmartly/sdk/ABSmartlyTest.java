@@ -256,15 +256,21 @@ class ABSmartlyTest extends TestUtils {
 	@Test
 	void close() throws IOException, InterruptedException {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+		final ContextDataProvider contextDataProvider = mock(ContextDataProvider.class);
 
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client)
-				.setScheduler(scheduler);
+				.setScheduler(scheduler)
+				.setContextDataProvider(contextDataProvider);
 
 		final ABSmartly absmartly = ABSmartly.create(config);
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 			final Context contextMock = mock(Context.class);
+
+			final CompletableFuture<ContextData> dataFuture = (CompletableFuture<ContextData>) mock(
+					CompletableFuture.class);
+			when(contextDataProvider.getContextData()).thenReturn(dataFuture);
 			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 					.thenReturn(contextMock);
 

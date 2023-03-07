@@ -25,6 +25,11 @@ public class ABSmartly implements Closeable {
 		audienceDeserializer_ = config.getAudienceDeserializer();
 		scheduler_ = config.getScheduler();
 
+		if (config.getResilienceConfig() != null
+				&& config.getResilienceConfig().getLocalCache() == null) {
+			throw new IllegalArgumentException("Missing LocalCache instance");
+		}
+
 		if ((contextDataProvider_ == null) || (contextEventHandler_ == null)) {
 			client_ = config.getClient();
 			if (client_ == null) {
@@ -32,11 +37,23 @@ public class ABSmartly implements Closeable {
 			}
 
 			if (contextDataProvider_ == null) {
-				contextDataProvider_ = new DefaultContextDataProvider(client_);
+				if (config.getResilienceConfig() != null) {
+					contextDataProvider_ = new ResilientContextDataProvider(client_,
+							config.getResilienceConfig().getLocalCache());
+				} else {
+					contextDataProvider_ = new DefaultContextDataProvider(client_);
+				}
 			}
 
 			if (contextEventHandler_ == null) {
-				contextEventHandler_ = new DefaultContextEventHandler(client_);
+				if (config.getResilienceConfig() != null) {
+					contextEventHandler_ = new ResilientContextEventHandler(
+							client_,
+							config.getResilienceConfig());
+				} else {
+					contextEventHandler_ = new DefaultContextEventHandler(client_);
+				}
+
 			}
 		}
 

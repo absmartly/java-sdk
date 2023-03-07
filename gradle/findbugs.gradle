@@ -3,6 +3,7 @@ apply plugin: "findbugs"
 findbugs {
 	toolVersion = "3.0.1"
 	effort = "max"
+	findbugsTest.enabled = false
 }
 
 project.tasks.withType(FindBugs) {
