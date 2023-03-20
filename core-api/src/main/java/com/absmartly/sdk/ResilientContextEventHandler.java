@@ -34,7 +34,7 @@ public class ResilientContextEventHandler extends DefaultContextEventHandler {
 	}
 
 	@Override
-	public CompletableFuture<Void> publish(@Nonnull final Context context, @Nonnull final PublishEvent event) {
+	public CompletableFuture<Void> publish(final Context context, @Nonnull final PublishEvent event) {
 		CompletableFuture<Void> decoratedSupplier = this.circuitBreakerHelper
 				.decorateCompletionFuture(new Supplier<CompletableFuture<Void>>() {
 					@Override
@@ -53,7 +53,7 @@ public class ResilientContextEventHandler extends DefaultContextEventHandler {
 		System.out.println("Sending events in cache: " + events.size());
 		for (PublishEvent event : events) {
 			event.publishedAt = Clock.systemUTC().millis();
-			this.client_.publish(event);
+			this.publish(null, event);
 		}
 	}
 
