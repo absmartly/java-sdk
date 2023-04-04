@@ -153,7 +153,7 @@ public class Context implements Closeable {
 				future.whenComplete(new BiConsumer<Void, Throwable>() {
 					@Override
 					public void accept(Void unused, Throwable throwable) {
-						eventHandler_.flushCache();
+						eventHandler_.onContextReady();
 					}
 				}).join();
 			}
