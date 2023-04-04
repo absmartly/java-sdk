@@ -36,7 +36,7 @@ class ClientConfigTest extends TestUtils {
 
 	@Test
 	void setContextDataDeserializer() {
-		final ContextDataDeserializer deserializer = mock(ContextDataDeserializer.class);
+		final ContextDataSerializer deserializer = mock(ContextDataSerializer.class);
 		final ClientConfig config = ClientConfig.create().setContextDataDeserializer(deserializer);
 		assertEquals(deserializer, config.getContextDataDeserializer());
 	}
@@ -58,7 +58,7 @@ class ClientConfigTest extends TestUtils {
 	@Test
 	void setAll() {
 		final ContextEventSerializer serializer = mock(ContextEventSerializer.class);
-		final ContextDataDeserializer deserializer = mock(ContextDataDeserializer.class);
+		final ContextDataSerializer deserializer = mock(ContextDataSerializer.class);
 		final Executor executor = mock(Executor.class);
 		final ClientConfig config = ClientConfig.create()
 				.setEndpoint("https://test.endpoint.com")
@@ -88,7 +88,7 @@ class ClientConfigTest extends TestUtils {
 				"absmartly.application", "website"));
 
 		final ContextEventSerializer serializer = mock(ContextEventSerializer.class);
-		final ContextDataDeserializer deserializer = mock(ContextDataDeserializer.class);
+		final ContextDataSerializer deserializer = mock(ContextDataSerializer.class);
 		final Executor executor = mock(Executor.class);
 		final ClientConfig config = ClientConfig.createFromProperties(props, "absmartly.")
 				.setContextDataDeserializer(deserializer)

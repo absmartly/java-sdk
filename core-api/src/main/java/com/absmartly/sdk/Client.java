@@ -53,7 +53,7 @@ public class Client implements Closeable {
 		executor_ = config.getExecutor();
 
 		if (deserializer_ == null) {
-			deserializer_ = new DefaultContextDataDeserializer();
+			deserializer_ = new DefaultContextDataSerializer();
 		}
 
 		if (serializer_ == null) {
@@ -154,6 +154,6 @@ public class Client implements Closeable {
 	private final Map<String, String> headers_;
 	private final HTTPClient httpClient_;
 	private final Executor executor_;
-	private ContextDataDeserializer deserializer_;
+	private ContextDataSerializer deserializer_;
 	private ContextEventSerializer serializer_;
 }

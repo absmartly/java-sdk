@@ -86,7 +86,7 @@ class ContextTest extends TestUtils {
 	VariableParser variableParser;
 	AudienceMatcher audienceMatcher;
 	ScheduledExecutorService scheduler;
-	DefaultContextDataDeserializer deser = new DefaultContextDataDeserializer();
+	DefaultContextDataSerializer deser = new DefaultContextDataSerializer();
 	Clock clock = Clock.fixed(1_620_000_000_000L);
 
 	@BeforeEach

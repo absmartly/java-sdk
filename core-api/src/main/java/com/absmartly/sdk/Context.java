@@ -11,6 +11,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
+import java8.util.function.BiConsumer;
 import java8.util.function.Consumer;
 import java8.util.function.Function;
 
@@ -70,6 +71,13 @@ public class Context implements Closeable {
 		final Map<String, Integer> cassignments = config.getCustomAssignments();
 		cassignments_ = (cassignments != null) ? new HashMap<String, Integer>(cassignments)
 				: new HashMap<String, Integer>();
+
+		dataFuture.whenComplete(new BiConsumer<ContextData, Throwable>() {
+			@Override
+			public void accept(ContextData unused, Throwable throwable) {
+				eventHandler_.onContextReady();
+			}
+		});
 
 		if (dataFuture.isDone()) {
 			dataFuture.thenAccept(new Consumer<ContextData>() {
@@ -602,7 +610,6 @@ public class Context implements Closeable {
 						@Override
 						public Void apply(Throwable throwable) {
 							Context.this.logError(throwable);
-
 							result.completeExceptionally(throwable);
 							return null;
 						}
@@ -920,7 +927,7 @@ public class Context implements Closeable {
 								new Comparator<ExperimentVariables>() {
 									@Override
 									public int compare(ExperimentVariables a, ExperimentVariables b) {
-										return Integer.valueOf(a.data.id).compareTo(b.data.id);
+										return Integer.compare(Integer.valueOf(a.data.id), b.data.id);
 									}
 								});
 
