@@ -6,7 +6,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.absmartly.sdk.TestUtils;
+import com.absmartly.sdk.*;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.Exposure;
 import com.absmartly.sdk.json.PublishEvent;
@@ -15,7 +15,9 @@ import com.absmartly.sdk.json.Unit;
 public class SqliteCacheTest extends TestUtils {
 	@Test
 	void parseDoesNotThrow() {
-		SqliteCache cache = new SqliteCache();
+		SqliteCache cache = new SqliteCache(
+				new DefaultContextDataSerializer(),
+				new DefaultContextEventSerializer());
 
 		Clock clock = Clock.fixed(1620000000000L);
 		final Unit[] publishUnits = new Unit[]{
@@ -32,9 +34,9 @@ public class SqliteCacheTest extends TestUtils {
 				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
 		};
 
-		cache.writeEvent(expected);
+		cache.writePublishEvent(expected);
 
-		List<PublishEvent> events = cache.retrieveEvents();
+		List<PublishEvent> events = cache.retrievePublishEvents();
 
 		assertEquals(1, events.size());
 

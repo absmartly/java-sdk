@@ -5,21 +5,31 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.commons.codec.binary.Base64;
+
+import com.absmartly.sdk.ContextDataSerializer;
+import com.absmartly.sdk.ContextEventSerializer;
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
-public final class SqliteCache extends AbstractCache {
+public final class SqliteCache extends SerializableCache {
 
 	private Connection connection;
 	private final ReentrantLock cacheLock = new ReentrantLock();
 
-	public void writeEvent(PublishEvent event) {
+	public SqliteCache(ContextDataSerializer contextDataSerializer,
+			ContextEventSerializer contextEventSerializer) {
+		super(contextDataSerializer, contextEventSerializer);
+	}
+
+	public void writePublishEvent(PublishEvent event) {
 		cacheLock.lock();
 		PreparedStatement statement = null;
 		try {
 			statement = getConnection().prepareStatement("insert into events (event) values (?)");
-			statement.setString(1,
-					this.serializeEvent(event));
+			String serilizedString = Base64.encodeBase64String(this.contextEventSerializer.serialize(event));
+			statement.setString(1, serilizedString);
 			statement.execute();
 		} catch (SQLException e) {
 			throw new RuntimeException(e);
@@ -29,7 +39,7 @@ public final class SqliteCache extends AbstractCache {
 		cacheLock.unlock();
 	}
 
-	public List<PublishEvent> retrieveEvents() {
+	public List<PublishEvent> retrievePublishEvents() {
 		cacheLock.lock();
 		Statement statement = null;
 		ResultSet rs = null;
@@ -39,8 +49,8 @@ public final class SqliteCache extends AbstractCache {
 			rs = statement.executeQuery("select * from events");
 			while (rs.next()) {
 				String eventStr = rs.getString("event");
-
-				events.add(this.deserializeEvent(eventStr));
+				final byte[] bytes = Base64.decodeBase64(eventStr);
+				events.add(this.contextEventSerializer.deserialize(bytes, 0, bytes.length));
 			}
 
 			statement.execute("DELETE FROM events");
@@ -62,8 +72,8 @@ public final class SqliteCache extends AbstractCache {
 			deleteStatement.close();
 
 			statement = getConnection().prepareStatement("insert into context (context) values (?)");
-			statement.setString(1,
-					this.serializeContext(contextData));
+			String serilizedString = String.valueOf(this.contextDataSerializer.serialize(contextData));
+			statement.setString(1, serilizedString);
 			statement.execute();
 		} catch (SQLException e) {
 			throw new RuntimeException(e);
@@ -82,8 +92,8 @@ public final class SqliteCache extends AbstractCache {
 			rs = statement.executeQuery("select * from context");
 			if (rs.next()) {
 				String eventStr = rs.getString("context");
-
-				contextData = this.deserializeContext(eventStr);
+				final byte[] bytes = eventStr.getBytes(StandardCharsets.UTF_8);
+				contextData = this.contextDataSerializer.deserialize(bytes, 0, bytes.length);
 			}
 		} catch (SQLException exception) {
 			throw new RuntimeException(exception);

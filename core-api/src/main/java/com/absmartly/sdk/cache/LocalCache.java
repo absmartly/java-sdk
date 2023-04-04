@@ -6,8 +6,11 @@ import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
 public interface LocalCache {
-	void writeEvent(PublishEvent event);
-	List<PublishEvent> retrieveEvents();
+	void writePublishEvent(PublishEvent event);
+
+	List<PublishEvent> retrievePublishEvents();
+
 	void writeContextData(ContextData event);
+
 	ContextData getContextData();
 }

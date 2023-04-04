@@ -12,12 +12,13 @@ public class DefaultContextEventHandler implements ContextEventHandler {
 	}
 
 	@Override
-	public CompletableFuture<Void> publish(@Nonnull final Context context, @Nonnull final PublishEvent event) {
+	public CompletableFuture<Void> publish(final Context context, @Nonnull final PublishEvent event) {
 		return client_.publish(event);
 	}
 
 	@Override
-	public void flushCache() {}
+	public void onContextReady() {
+	}
 
 	final Client client_;
 }

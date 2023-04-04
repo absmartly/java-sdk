@@ -59,9 +59,9 @@ class ResilientContextEventHandlerTest extends TestUtils {
 
 		PublishEvent cacheEvent = new PublishEvent();
 		cacheEvent.publishedAt = 123L;
-		when(localCache.retrieveEvents()).thenReturn(Arrays.asList(cacheEvent));
+		when(localCache.retrievePublishEvents()).thenReturn(Arrays.asList(cacheEvent));
 
-		verify(localCache, times(1)).retrieveEvents();
+		verify(localCache, times(1)).retrievePublishEvents();
 	}
 
 	@Test
@@ -86,7 +86,7 @@ class ResilientContextEventHandlerTest extends TestUtils {
 
 		PublishEvent cacheEvent = new PublishEvent();
 		cacheEvent.publishedAt = 123L;
-		when(localCache.retrieveEvents()).thenReturn(Arrays.asList(cacheEvent));
+		when(localCache.retrievePublishEvents()).thenReturn(Arrays.asList(cacheEvent));
 
 		final PublishEvent event = new PublishEvent();
 		ArrayList<PublishEvent> events = new ArrayList<>();
@@ -122,7 +122,7 @@ class ResilientContextEventHandlerTest extends TestUtils {
 			});
 		}
 
-		verify(localCache, atLeast(1)).writeEvent(eventArgumentCaptor.capture());
+		verify(localCache, atLeast(1)).writePublishEvent(eventArgumentCaptor.capture());
 		List<PublishEvent> cachedEvents = eventArgumentCaptor.getAllValues();
 
 		System.out.println("Cached Events: " + cachedEvents.size());
@@ -133,7 +133,7 @@ class ResilientContextEventHandlerTest extends TestUtils {
 		assertEquals(301, successCount.get() + cachedEvents.size());
 		assertTrue(errorCount.get() > 0);
 
-		verify(localCache, atLeast(1)).retrieveEvents();
+		verify(localCache, atLeast(1)).retrievePublishEvents();
 
 	}
 }

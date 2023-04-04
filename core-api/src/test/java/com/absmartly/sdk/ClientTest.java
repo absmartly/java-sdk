@@ -71,8 +71,8 @@ class ClientTest extends TestUtils {
 		final PublishEvent event = new PublishEvent();
 		final byte[] publishBytes = new byte[]{0};
 
-		try (final MockedConstruction<DefaultContextDataDeserializer> deserCtor = mockConstruction(
-				DefaultContextDataDeserializer.class,
+		try (final MockedConstruction<DefaultContextDataSerializer> deserCtor = mockConstruction(
+				DefaultContextDataSerializer.class,
 				(mock, context) -> when(mock.deserialize(dataBytes, 0, dataBytes.length)).thenReturn(expected));
 				final MockedConstruction<DefaultContextEventSerializer> serCtor = mockConstruction(
 						DefaultContextEventSerializer.class,
@@ -119,7 +119,7 @@ class ClientTest extends TestUtils {
 	@Test
 	void getContextData() throws ExecutionException, InterruptedException {
 		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
+		final ContextDataSerializer deser = mock(ContextDataSerializer.class);
 		final Client client = Client.create(ClientConfig.create()
 				.setEndpoint("https://localhost/v1")
 				.setAPIKey("test-api-key")
@@ -173,7 +173,7 @@ class ClientTest extends TestUtils {
 	@Test
 	void getContextDataExceptionallyHTTP() {
 		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
+		final ContextDataSerializer deser = mock(ContextDataSerializer.class);
 		final Client client = Client.create(ClientConfig.create()
 				.setEndpoint("https://localhost/v1")
 				.setAPIKey("test-api-key")
@@ -201,7 +201,7 @@ class ClientTest extends TestUtils {
 	@Test
 	void getContextDataExceptionallyConnection() {
 		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
+		final ContextDataSerializer deser = mock(ContextDataSerializer.class);
 		final Client client = Client.create(ClientConfig.create()
 				.setEndpoint("https://localhost/v1")
 				.setAPIKey("test-api-key")

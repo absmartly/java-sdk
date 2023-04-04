@@ -9,13 +9,13 @@ import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.ExperimentApplication;
 import com.absmartly.sdk.json.ExperimentVariant;
 
-class DefaultContextDataDeserializerTest extends TestUtils {
+class DefaultContextDataSerializerTest extends TestUtils {
 	@Test
-	void deserialize() {
+	void serializeAndDeserialize() {
 		final byte[] bytes = getResourceBytes("context.json");
 
-		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
-		final ContextData data = deser.deserialize(bytes, 0, bytes.length);
+		final ContextDataSerializer ser = new DefaultContextDataSerializer();
+		final ContextData data = ser.deserialize(bytes, 0, bytes.length);
 
 		final Experiment experiment0 = new Experiment();
 		experiment0.id = 1;
@@ -111,15 +111,19 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 
 		assertNotNull(data);
 		assertEquals(expected, data);
+
+		final byte[] bytesSerialized = ser.serialize(expected);
+		final ContextData dataDeserialized = ser.deserialize(bytesSerialized, 0, bytes.length);
+		assertEquals(expected, dataDeserialized);
 	}
 
 	@Test
 	void deserializeDoesNotThrow() {
 		final byte[] bytes = getResourceBytes("context.json");
 
-		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+		final ContextDataSerializer ser = new DefaultContextDataSerializer();
 		assertDoesNotThrow(() -> {
-			final ContextData data = deser.deserialize(bytes, 0, 14);
+			final ContextData data = ser.deserialize(bytes, 0, 14);
 			assertNull(data);
 		});
 	}

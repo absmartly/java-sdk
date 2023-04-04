@@ -7,22 +7,21 @@ import java.util.concurrent.locks.ReentrantLock;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
-public final class MemoryCache extends AbstractCache {
+public final class MemoryCache implements LocalCache {
 
 	private final List<PublishEvent> eventCache = new ArrayList<PublishEvent>();
 	private final ReentrantLock cacheLock = new ReentrantLock();
 	private ContextData contextData;
 
-	public void writeEvent(PublishEvent event) {
+	public void writePublishEvent(PublishEvent event) {
 		cacheLock.lock();
 		eventCache.add(event);
 		cacheLock.unlock();
 	}
 
-	public List<PublishEvent> retrieveEvents() {
+	public List<PublishEvent> retrievePublishEvents() {
 		cacheLock.lock();
-		List<PublishEvent> eventsToRetrieve = new ArrayList<PublishEvent>();
-		eventsToRetrieve.addAll(eventCache);
+		List<PublishEvent> eventsToRetrieve = new ArrayList<PublishEvent>(eventCache);
 		eventCache.clear();
 		cacheLock.unlock();
 		return eventsToRetrieve;

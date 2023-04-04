@@ -10,7 +10,7 @@ import java8.util.concurrent.CompletableFuture;
 
 public abstract class TestUtils {
 	public static byte[] getResourceBytes(String resourceName) {
-		final ClassLoader classLoader = ContextDataDeserializer.class.getClassLoader();
+		final ClassLoader classLoader = ContextDataSerializer.class.getClassLoader();
 		final File resource = new File(Objects.requireNonNull(classLoader.getResource(resourceName)).getFile());
 		try (final FileInputStream inputStream = new FileInputStream(resource.getAbsolutePath())) {
 			final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -34,7 +34,7 @@ public abstract class TestUtils {
 	}
 
 	public static <K, V> Map<K, V> mapOf(K k1, V v1) {
-		final HashMap<K, V> hashMap = new HashMap<>(1);
+		final var hashMap = new HashMap<K, V>(1);
 		hashMap.put(k1, v1);
 		return hashMap;
 	}

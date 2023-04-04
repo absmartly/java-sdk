@@ -63,4 +63,5 @@ public class ResilienceConfig {
 	private LocalCache localCache;
 	private float failureRateThreshold = 20;
 	private long backoffPeriodInMilliseconds = 30000;
+
 }

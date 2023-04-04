@@ -32,15 +32,15 @@ public class MemoryCacheTest extends TestUtils {
 				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
 		};
 
-		cache.writeEvent(expected);
+		cache.writePublishEvent(expected);
 
-		List<PublishEvent> events = cache.retrieveEvents();
+		List<PublishEvent> events = cache.retrievePublishEvents();
 
 		assertEquals(1, events.size());
 
 		assertEquals(expected, events.get(0));
 
-		List<PublishEvent> eventsInCache = cache.retrieveEvents();
+		List<PublishEvent> eventsInCache = cache.retrievePublishEvents();
 
 		assertEquals(0, eventsInCache.size());
 	}

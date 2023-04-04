@@ -19,7 +19,6 @@ import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.PublishEvent;
 
 public class ResilientContextEventHandler extends DefaultContextEventHandler {
-	private static final Logger log = LoggerFactory.getLogger(ResilientContextEventHandler.class);
 
 	public ResilientContextEventHandler(@Nonnull final Client client, @Nonnull ResilienceConfig resilienceConfig) {
 		super(client);
@@ -43,18 +42,22 @@ public class ResilientContextEventHandler extends DefaultContextEventHandler {
 					}
 				});
 		if (decoratedSupplier.isCompletedExceptionally()) {
-			localCache.writeEvent(event);
+			localCache.writePublishEvent(event);
 		}
 		return decoratedSupplier;
 	}
 
-	public void flushCache() {
-		List<PublishEvent> events = localCache.retrieveEvents();
-		System.out.println("Sending events in cache: " + events.size());
+	private void flushCache() {
+		List<PublishEvent> events = localCache.retrievePublishEvents();
 		for (PublishEvent event : events) {
 			event.publishedAt = Clock.systemUTC().millis();
 			this.publish(null, event);
 		}
+	}
+
+	@Override
+	public void onContextReady() {
+		this.flushCache();
 	}
 
 	private void onCircuitStateEventChange(CircuitBreakerStateChangeEvent event) {
@@ -64,6 +67,6 @@ public class ResilientContextEventHandler extends DefaultContextEventHandler {
 		}
 	}
 
-	private LocalCache localCache;
-	private CircuitBreakerHelper circuitBreakerHelper;
+	private final LocalCache localCache;
+	private final CircuitBreakerHelper circuitBreakerHelper;
 }

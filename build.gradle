@@ -13,7 +13,7 @@ plugins {
 
 
 ext {
-	VERSION = "1.5.4"
+	VERSION = "1.6.0"
 	GROUP_ID = "com.absmartly.sdk"
 
 	slf4jVersion = "1.7.30"

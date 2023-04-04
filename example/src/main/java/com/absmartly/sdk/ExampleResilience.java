@@ -16,7 +16,9 @@ public class ExampleResilience {
 				.setApplication(System.getenv("ABSMARTLY_APP"))
 				.setEnvironment(System.getenv("ABSMARTLY_ENV"));
 
-		final LocalCache localCache = new SqliteCache();
+		final LocalCache localCache = new SqliteCache(
+				new DefaultContextDataSerializer(),
+				new DefaultContextEventSerializer());
 
 		final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
 				.setClient(Client.create(clientConfig))

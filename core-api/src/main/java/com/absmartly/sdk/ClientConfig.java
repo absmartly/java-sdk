@@ -60,11 +60,11 @@ public class ClientConfig {
 		return this;
 	}
 
-	public ContextDataDeserializer getContextDataDeserializer() {
+	public ContextDataSerializer getContextDataDeserializer() {
 		return deserializer_;
 	}
 
-	public ClientConfig setContextDataDeserializer(@Nonnull final ContextDataDeserializer deserializer) {
+	public ClientConfig setContextDataDeserializer(@Nonnull final ContextDataSerializer deserializer) {
 		deserializer_ = deserializer;
 		return this;
 	}
@@ -91,7 +91,7 @@ public class ClientConfig {
 	private String apiKey_;
 	private String environment_;
 	private String application_;
-	private ContextDataDeserializer deserializer_;
+	private ContextDataSerializer deserializer_;
 	private ContextEventSerializer serializer_;
 	private Executor executor_;
 }
