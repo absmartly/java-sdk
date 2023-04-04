@@ -17,10 +17,22 @@ public final class SqliteCache extends SerializableCache {
 
 	private Connection connection;
 	private final ReentrantLock cacheLock = new ReentrantLock();
+	private final String databaseURL;
 
 	public SqliteCache(ContextDataSerializer contextDataSerializer,
 			ContextEventSerializer contextEventSerializer) {
+		this(
+			contextDataSerializer,
+			contextEventSerializer,
+			"absmarly.db"
+		);
+	}
+
+	public SqliteCache(ContextDataSerializer contextDataSerializer,
+					   ContextEventSerializer contextEventSerializer,
+					   String databaseFileName) {
 		super(contextDataSerializer, contextEventSerializer);
+		this.databaseURL = "jdbc:sqlite:" + databaseFileName;
 	}
 
 	public void writePublishEvent(PublishEvent event) {
@@ -106,7 +118,7 @@ public final class SqliteCache extends SerializableCache {
 
 	private Connection getConnection() throws SQLException {
 		if (this.connection == null) {
-			this.connection = DriverManager.getConnection("jdbc:sqlite:absmarly.db");
+			this.connection = DriverManager.getConnection(this.databaseURL);
 			setupDatabase();
 		}
 		return this.connection;
