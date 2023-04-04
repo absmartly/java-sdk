@@ -72,6 +72,13 @@ public class Context implements Closeable {
 		cassignments_ = (cassignments != null) ? new HashMap<String, Integer>(cassignments)
 				: new HashMap<String, Integer>();
 
+		dataFuture.whenComplete(new BiConsumer<ContextData, Throwable>() {
+			@Override
+			public void accept(ContextData unused, Throwable throwable) {
+				eventHandler_.onContextReady();
+			}
+		});
+
 		if (dataFuture.isDone()) {
 			dataFuture.thenAccept(new Consumer<ContextData>() {
 				@Override
@@ -150,12 +157,7 @@ public class Context implements Closeable {
 		if (data_ == null) {
 			final CompletableFuture<Void> future = readyFuture_; // cache here to avoid locking
 			if (future != null && !future.isDone()) {
-				future.whenComplete(new BiConsumer<Void, Throwable>() {
-					@Override
-					public void accept(Void unused, Throwable throwable) {
-						eventHandler_.onContextReady();
-					}
-				}).join();
+				future.join();
 			}
 		}
 		return this;
