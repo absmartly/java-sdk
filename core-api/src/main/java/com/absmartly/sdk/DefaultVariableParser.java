@@ -22,12 +22,23 @@ public class DefaultVariableParser implements VariableParser {
 		objectMapper.enable(MapperFeature.USE_STATIC_TYPING);
 		this.reader_ = objectMapper
 				.readerFor(TypeFactory.defaultInstance().constructMapType(HashMap.class, String.class, Object.class));
+		this.readerGeneric_ = objectMapper.readerFor(Object.class);
 	}
 
 	public Map<String, Object> parse(@Nonnull final Context context, @Nonnull final String experimentName,
-			@Nonnull final String variantName, @Nonnull final String config) {
+			@Nonnull final String variantName, @Nonnull final String variableValues) {
 		try {
-			return reader_.readValue(config);
+			return reader_.readValue(variableValues);
+		} catch (IOException e) {
+			log.error("", e);
+			return null;
+		}
+	}
+
+	public Object parse(@Nonnull final Context context, @Nonnull final String experimentName,
+			@Nonnull final String variableValue) {
+		try {
+			return readerGeneric_.readValue(variableValue);
 		} catch (IOException e) {
 			log.error("", e);
 			return null;
@@ -35,4 +46,5 @@ public class DefaultVariableParser implements VariableParser {
 	}
 
 	private final ObjectReader reader_;
+	private final ObjectReader readerGeneric_;
 }

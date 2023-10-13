@@ -1,0 +1,139 @@
+{
+	"experiments":[
+		{
+			"id":1,
+			"name":"exp_test_ab",
+			"iteration":1,
+			"unitType":"session_id",
+			"seedHi":3603515,
+			"seedLo":233373850,
+			"split":[
+				0.5,
+				0.5
+			],
+			"trafficSeedHi":449867249,
+			"trafficSeedLo":455443629,
+			"trafficSplit":[
+				0.0,
+				1.0
+			],
+			"fullOnVariant":0,
+			"applications":[
+				{
+					"name":"website"
+				}
+			],
+			"variants":[
+				{
+					"name":"A",
+					"config":null
+				},
+				{
+					"name":"B",
+					"config":null
+				}
+			],
+			"audience": null,
+			"customFieldValues": [
+				{
+					"name": "country",
+					"value": "US,PT,ES,DE,FR",
+					"type": "string"
+				},
+				{
+					"name": "overrides",
+					"value": "{\"123\":1,\"456\":0}",
+					"type": "json"
+				}
+			]
+		},
+		{
+			"id":2,
+			"name":"exp_test_abc",
+			"iteration":1,
+			"unitType":"session_id",
+			"seedHi":55006150,
+			"seedLo":47189152,
+			"split":[
+				0.34,
+				0.33,
+				0.33
+			],
+			"trafficSeedHi":705671872,
+			"trafficSeedLo":212903484,
+			"trafficSplit":[
+				0.0,
+				1.0
+			],
+			"fullOnVariant":0,
+			"applications":[
+				{
+					"name":"website"
+				}
+			],
+			"variants":[
+				{
+					"name":"A",
+					"config":null
+				},
+				{
+					"name":"B",
+					"config":null
+				},
+				{
+					"name":"C",
+					"config":null
+				}
+			],
+			"audience": "",
+			"customFieldValues": [
+				{
+					"name": "country",
+					"value": "US,PT,ES",
+					"type": "string"
+				},
+				{
+					"name": "languages",
+					"value": "en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX",
+					"type": "string"
+				}
+			]
+		},
+		{
+			"id":4,
+			"name":"exp_test_no_custom_fields",
+			"iteration":1,
+			"unitType":"session_id",
+			"seedHi":856061641,
+			"seedLo":990838475,
+			"split":[
+				0.5,
+				0.5
+			],
+			"trafficSeedHi":360868579,
+			"trafficSeedLo":330937933,
+			"trafficSplit":[
+				0.0,
+				1.0
+			],
+			"fullOnVariant":0,
+			"applications":[
+				{
+					"name":"website"
+				}
+			],
+			"variants":[
+				{
+					"name":"A",
+					"config":null
+				},
+				{
+					"name":"B",
+					"config":null
+				}
+			],
+			"audience": null,
+			"customFieldValues": null
+		}
+	]
+}

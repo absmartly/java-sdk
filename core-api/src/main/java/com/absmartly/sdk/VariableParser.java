@@ -7,5 +7,7 @@ import javax.annotation.Nonnull;
 public interface VariableParser {
 	Map<String, Object> parse(@Nonnull final Context context, @Nonnull final String experimentName,
 			@Nonnull final String variantName,
-			@Nonnull String variableValue);
+			@Nonnull String variableValues);
+
+	Object parse(@Nonnull final Context context, @Nonnull final String experimentName, @Nonnull String variableValue);
 }
