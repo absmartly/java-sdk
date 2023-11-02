@@ -17,8 +17,9 @@ class DefaultVariableParserTest extends TestUtils {
 
 		final VariableParser variableParser = new DefaultVariableParser();
 		final Map<String, Object> variables = variableParser.parse(context, "test_exp", "B", configValue);
+		final Object generic = variableParser.parse(context, "test_exp", configValue);
 
-		assertEquals(mapOf(
+		final Map<String, Object> expected = mapOf(
 				"a", 1,
 				"b", "test",
 				"c", mapOf(
@@ -31,7 +32,10 @@ class DefaultVariableParserTest extends TestUtils {
 								"z", 1.0)),
 				"d", true,
 				"f", listOf(9234567890L, "a", true, false),
-				"g", 9.123), variables);
+				"g", 9.123);
+
+		assertEquals(expected, variables);
+		assertEquals(expected, generic);
 	}
 
 	@Test

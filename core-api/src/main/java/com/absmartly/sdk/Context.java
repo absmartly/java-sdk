@@ -173,6 +173,57 @@ public class Context implements Closeable {
 		}
 	}
 
+	public String[] getCustomFieldKeys() {
+		final Set<String> keys = new HashSet<String>();
+
+		try {
+			dataLock_.readLock().lock();
+			for (final Experiment experiment : data_.experiments) {
+				if (experiment.customFieldValues != null) {
+					for (final CustomFieldValue customFieldValue : experiment.customFieldValues) {
+						keys.add(customFieldValue.name);
+					}
+				}
+			}
+
+			return keys.toArray(new String[0]);
+		} finally {
+			dataLock_.readLock().unlock();
+		}
+	}
+
+	public Object getCustomFieldValue(@Nonnull final String experimentName, @Nonnull final String key) {
+		try {
+			dataLock_.readLock().lock();
+			final ContextExperiment experiment = index_.get(experimentName);
+			if (experiment != null) {
+				final ContextCustomFieldValue field = experiment.customFieldValues.get(key);
+				if (field != null) {
+					return field.value;
+				}
+			}
+			return null;
+		} finally {
+			dataLock_.readLock().unlock();
+		}
+	}
+
+	public Object getCustomFieldValueType(@Nonnull final String experimentName, @Nonnull final String key) {
+		try {
+			dataLock_.readLock().lock();
+			final ContextExperiment experiment = index_.get(experimentName);
+			if (experiment != null) {
+				final ContextCustomFieldValue field = experiment.customFieldValues.get(key);
+				if (field != null) {
+					return field.type;
+				}
+			}
+			return null;
+		} finally {
+			dataLock_.readLock().unlock();
+		}
+	}
+
 	public ContextData getData() {
 		checkReady(true);
 
@@ -369,12 +420,12 @@ public class Context implements Closeable {
 
 		try {
 			dataLock_.readLock().lock();
-			for (Map.Entry<String, List<ExperimentVariables>> entry : indexVariables_.entrySet()) {
+			for (Map.Entry<String, List<ContextExperiment>> entry : indexVariables_.entrySet()) {
 				final String key = entry.getKey();
-				final List<ExperimentVariables> keyExperimentVariables = entry.getValue();
+				final List<ContextExperiment> keyExperimentVariables = entry.getValue();
 				final List<String> values = new ArrayList<String>(keyExperimentVariables.size());
 
-				for (final ExperimentVariables experimentVariables : keyExperimentVariables) {
+				for (final ContextExperiment experimentVariables : keyExperimentVariables) {
 					values.add(experimentVariables.data.name);
 				}
 				variableKeys.put(key, values);
@@ -679,7 +730,7 @@ public class Context implements Closeable {
 			if (assignment != null) {
 				final Integer custom = cassignments_.get(experimentName);
 				final Integer override = overrides_.get(experimentName);
-				final ExperimentVariables experiment = Context.this.getExperiment(experimentName);
+				final ContextExperiment experiment = Context.this.getExperiment(experimentName);
 
 				if (override != null) {
 					if (assignment.overridden && assignment.variant == override) {
@@ -709,7 +760,7 @@ public class Context implements Closeable {
 
 			final Integer custom = cassignments_.get(experimentName);
 			final Integer override = overrides_.get(experimentName);
-			final ExperimentVariables experiment = Context.this.getExperiment(experimentName);
+			final ContextExperiment experiment = Context.this.getExperiment(experimentName);
 
 			final Assignment assignment = new Assignment();
 			assignment.name = experimentName;
@@ -794,10 +845,10 @@ public class Context implements Closeable {
 	}
 
 	private Assignment getVariableAssignment(final String key) {
-		final List<ExperimentVariables> keyExperimentVariables = getVariableExperiments(key);
+		final List<ContextExperiment> keyExperimentVariables = getVariableExperiments(key);
 
 		if (keyExperimentVariables != null) {
-			for (final ExperimentVariables experimentVariables : keyExperimentVariables) {
+			for (final ContextExperiment experimentVariables : keyExperimentVariables) {
 				final Assignment assignment = getAssignment(experimentVariables.data.name);
 				if (assignment.assigned || assignment.overridden) {
 					return assignment;
@@ -807,7 +858,7 @@ public class Context implements Closeable {
 		return null;
 	}
 
-	private ExperimentVariables getExperiment(final String experimentName) {
+	private ContextExperiment getExperiment(final String experimentName) {
 		try {
 			dataLock_.readLock().lock();
 			return index_.get(experimentName);
@@ -816,7 +867,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	private List<ExperimentVariables> getVariableExperiments(final String key) {
+	private List<ContextExperiment> getVariableExperiments(final String key) {
 		return Concurrency.getRW(dataLock_, indexVariables_, key);
 	}
 
@@ -891,52 +942,79 @@ public class Context implements Closeable {
 		}
 	}
 
-	private static class ExperimentVariables {
+	private static class ContextExperiment {
 		Experiment data;
-		ArrayList<Map<String, Object>> variables;
+		List<Map<String, Object>> variables;
+		Map<String, ContextCustomFieldValue> customFieldValues;
+	}
+
+	private static class ContextCustomFieldValue {
+		String type;
+		Object value;
 	}
 
 	private void setData(final ContextData data) {
-		final Map<String, ExperimentVariables> index = new HashMap<String, ExperimentVariables>();
-		final Map<String, List<ExperimentVariables>> indexVariables = new HashMap<String, List<ExperimentVariables>>();
+		final Map<String, ContextExperiment> index = new HashMap<String, ContextExperiment>();
+		final Map<String, List<ContextExperiment>> indexVariables = new HashMap<String, List<ContextExperiment>>();
 
 		for (final Experiment experiment : data.experiments) {
-			final ExperimentVariables experimentVariables = new ExperimentVariables();
-			experimentVariables.data = experiment;
-			experimentVariables.variables = new ArrayList<Map<String, Object>>(experiment.variants.length);
+			final ContextExperiment contextExperiment = new ContextExperiment();
+			contextExperiment.data = experiment;
+			contextExperiment.variables = new ArrayList<Map<String, Object>>(experiment.variants.length);
 
 			for (final ExperimentVariant variant : experiment.variants) {
 				if ((variant.config != null) && !variant.config.isEmpty()) {
 					final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
 							variant.config);
 					for (final String key : variables.keySet()) {
-						List<ExperimentVariables> keyExperimentVariables = indexVariables.get(key);
+						List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
 						if (keyExperimentVariables == null) {
-							keyExperimentVariables = new ArrayList<ExperimentVariables>();
+							keyExperimentVariables = new ArrayList<ContextExperiment>();
 							indexVariables.put(key, keyExperimentVariables);
 						}
 
-						int at = Collections.binarySearch(keyExperimentVariables, experimentVariables,
-								new Comparator<ExperimentVariables>() {
+						int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
+								new Comparator<ContextExperiment>() {
 									@Override
-									public int compare(ExperimentVariables a, ExperimentVariables b) {
+									public int compare(ContextExperiment a, ContextExperiment b) {
 										return Integer.valueOf(a.data.id).compareTo(b.data.id);
 									}
 								});
 
 						if (at < 0) {
 							at = -at - 1;
-							keyExperimentVariables.add(at, experimentVariables);
+							keyExperimentVariables.add(at, contextExperiment);
 						}
 					}
 
-					experimentVariables.variables.add(variables);
+					contextExperiment.variables.add(variables);
 				} else {
-					experimentVariables.variables.add(Collections.<String, Object> emptyMap());
+					contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 				}
 			}
 
-			index.put(experiment.name, experimentVariables);
+			contextExperiment.customFieldValues = new HashMap<String, ContextCustomFieldValue>();
+			if (experiment.customFieldValues != null) {
+				for (final CustomFieldValue customFieldValue : experiment.customFieldValues) {
+					final ContextCustomFieldValue value = new ContextCustomFieldValue();
+					contextExperiment.customFieldValues.put(customFieldValue.name, value);
+
+					value.type = customFieldValue.type;
+					if (customFieldValue.value != null) {
+						if (customFieldValue.type.startsWith("json")) {
+							value.value = variableParser_.parse(this, experiment.name, customFieldValue.value);
+						} else if (customFieldValue.type.equals("boolean")) {
+							value.value = Boolean.parseBoolean(customFieldValue.value);
+						} else if (customFieldValue.type.equals("number")) {
+							value.value = Double.parseDouble(customFieldValue.value);
+						} else {
+							value.value = customFieldValue.value;
+						}
+					}
+				}
+			}
+
+			index.put(experiment.name, contextExperiment);
 		}
 
 		try {
@@ -955,8 +1033,8 @@ public class Context implements Closeable {
 	private void setDataFailed(final Throwable exception) {
 		try {
 			dataLock_.writeLock().lock();
-			index_ = new HashMap<String, ExperimentVariables>();
-			indexVariables_ = new HashMap<String, List<ExperimentVariables>>();
+			index_ = new HashMap<String, ContextExperiment>();
+			indexVariables_ = new HashMap<String, List<ContextExperiment>>();
 			data_ = new ContextData();
 			failed_ = true;
 		} finally {
@@ -993,9 +1071,8 @@ public class Context implements Closeable {
 
 	private final ReentrantReadWriteLock dataLock_ = new ReentrantReadWriteLock();
 	private ContextData data_;
-	private Map<String, ExperimentVariables> index_;
-	private Map<String, List<ExperimentVariables>> indexVariables_;
-
+	private Map<String, ContextExperiment> index_;
+	private Map<String, List<ContextExperiment>> indexVariables_;
 	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
 
 	private final Map<String, byte[]> hashedUnits_;

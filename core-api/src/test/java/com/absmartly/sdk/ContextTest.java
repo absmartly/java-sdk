@@ -2125,4 +2125,47 @@ class ContextTest extends TestUtils {
 
 		assertEquals(3, context.getPendingCount()); // full-on experiment triggered a new exposure
 	}
+
+	@Test
+	void getCustomFieldKeys() {
+		final byte[] customFieldsContextBytes = getResourceBytes("custom_fields_context.json");
+		final ContextData customFieldsContextData = deser.deserialize(customFieldsContextBytes, 0,
+				customFieldsContextBytes.length);
+		final Context context = createReadyContext(customFieldsContextData);
+		assertTrue(context.isReady());
+
+		assertArrayEquals(new String[]{"country", "languages", "overrides"}, context.getCustomFieldKeys());
+	}
+
+	@Test
+	void getCustomFieldValue() {
+		final byte[] customFieldsContextBytes = getResourceBytes("custom_fields_context.json");
+		final ContextData customFieldsContextData = deser.deserialize(customFieldsContextBytes, 0,
+				customFieldsContextBytes.length);
+		final Context context = createReadyContext(customFieldsContextData);
+		assertTrue(context.isReady());
+
+		assertNull(context.getCustomFieldValue("not_found", "not_found"));
+		assertNull(context.getCustomFieldValue("exp_test_ab", "not_found"));
+		assertEquals("US,PT,ES,DE,FR", context.getCustomFieldValue("exp_test_ab", "country"));
+		assertEquals("string", context.getCustomFieldValueType("exp_test_ab", "country"));
+		assertEquals(mapOf("123", 1, "456", 0), context.getCustomFieldValue("exp_test_ab", "overrides"));
+		assertEquals("json", context.getCustomFieldValueType("exp_test_ab", "overrides"));
+		assertNull(context.getCustomFieldValue("exp_test_ab", "languages"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "languages"));
+
+		assertEquals("US,PT,ES", context.getCustomFieldValue("exp_test_abc", "country"));
+		assertEquals("string", context.getCustomFieldValueType("exp_test_abc", "country"));
+		assertNull(context.getCustomFieldValue("exp_test_abc", "overrides"));
+		assertNull(context.getCustomFieldValueType("exp_test_abc", "overrides"));
+		assertEquals("en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX", context.getCustomFieldValue("exp_test_abc", "languages"));
+		assertEquals("string", context.getCustomFieldValueType("exp_test_abc", "languages"));
+
+		assertNull(context.getCustomFieldValue("exp_test_no_custom_fields", "country"));
+		assertNull(context.getCustomFieldValueType("exp_test_no_custom_fields", "country"));
+		assertNull(context.getCustomFieldValue("exp_test_no_custom_fields", "overrides"));
+		assertNull(context.getCustomFieldValueType("exp_test_no_custom_fields", "overrides"));
+		assertNull(context.getCustomFieldValue("exp_test_no_custom_fields", "languages"));
+		assertNull(context.getCustomFieldValueType("exp_test_no_custom_fields", "languages"));
+	}
 }
