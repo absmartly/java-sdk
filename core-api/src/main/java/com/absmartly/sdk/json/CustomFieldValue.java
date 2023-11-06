@@ -1,14 +1,19 @@
 package com.absmartly.sdk.json;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
+@Getter
+@Setter
 public class CustomFieldValue {
-	public String name;
-	public String type;
-	public String value;
+	private String name;
+	private String type;
+	private String value;
 
 	public CustomFieldValue() {}
 
