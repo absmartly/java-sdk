@@ -2,6 +2,8 @@ name: Java-SDK
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
   pull_request:
 
 jobs:
@@ -17,6 +19,6 @@ jobs:
           java-version: "8"
           cache: "gradle"
 
-      - name: Build Previewer
+      - name: Build Java SDK
         run: |
           ./gradlew clean build
