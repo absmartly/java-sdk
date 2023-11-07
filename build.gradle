@@ -122,6 +122,9 @@ configure(rootProject) {
 			Sonatype {
 				nexusUrl = uri("https://s01.oss.sonatype.org/service/local/")
 				snapshotRepositoryUrl = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
+
+				username = System.getenv('ORG_GRADLE_PROJECT_mavenCentralUsername')
+				password = System.getenv('ORG_GRADLE_PROJECT_mavenCentralPassword')
 			}
 		}
 	}
