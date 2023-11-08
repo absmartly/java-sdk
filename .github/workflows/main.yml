@@ -29,9 +29,10 @@ jobs:
           GRADLE_PROPERTIES: ${{ secrets.GRADLE_PROPERTIES }}
           SECRET_FILE_DATA: ${{ secrets.SECRET_FILE_DATA }}
         run: |
+          mkdir -p ~/.gradle/
+          mkdir -p /home/runner/.gnupg/
           ln -s /usr/local/bin/gpg /usr/local/bin/gpg2
           echo $SECRET_FILE_DATA | base64 --decode > /home/runner/.gnupg/pubring.kbx
-          mkdir -p ~/.gradle/
           echo "GRADLE_USER_HOME=${HOME}/.gradle" >> $GITHUB_ENV
           echo "${GRADLE_PROPERTIES}" > ~/.gradle/gradle.properties
           ./gradlew clean build publish -X test
