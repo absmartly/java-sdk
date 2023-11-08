@@ -1,0 +1,24 @@
+name: Java-SDK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Java 8
+        uses: actions/setup-java@v3
+        with:
+          distribution: "adopt"
+          java-version: "8"
+          cache: "gradle"
+
+      - name: Build Java SDK
+        run: |
+          ./gradlew clean build

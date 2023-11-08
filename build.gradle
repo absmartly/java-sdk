@@ -13,7 +13,7 @@ plugins {
 
 
 ext {
-	VERSION = "1.5.3"
+	VERSION = "1.6.1"
 	GROUP_ID = "com.absmartly.sdk"
 
 	slf4jVersion = "1.7.30"
@@ -123,8 +123,8 @@ configure(rootProject) {
 				nexusUrl = uri("https://s01.oss.sonatype.org/service/local/")
 				snapshotRepositoryUrl = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
 
-				username = findProperty("ossrh.username")
-				password = findProperty("ossrh.password")
+				username = System.getenv('ORG_GRADLE_PROJECT_mavenCentralUsername')
+				password = System.getenv('ORG_GRADLE_PROJECT_mavenCentralPassword')
 			}
 		}
 	}
