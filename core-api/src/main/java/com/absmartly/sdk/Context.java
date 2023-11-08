@@ -181,7 +181,7 @@ public class Context implements Closeable {
 			for (final Experiment experiment : data_.experiments) {
 				if (experiment.customFieldValues != null) {
 					for (final CustomFieldValue customFieldValue : experiment.customFieldValues) {
-						keys.add(customFieldValue.name);
+						keys.add(customFieldValue.getName());
 					}
 				}
 			}
@@ -997,18 +997,18 @@ public class Context implements Closeable {
 			if (experiment.customFieldValues != null) {
 				for (final CustomFieldValue customFieldValue : experiment.customFieldValues) {
 					final ContextCustomFieldValue value = new ContextCustomFieldValue();
-					contextExperiment.customFieldValues.put(customFieldValue.name, value);
+					contextExperiment.customFieldValues.put(customFieldValue.getName(), value);
 
-					value.type = customFieldValue.type;
-					if (customFieldValue.value != null) {
-						if (customFieldValue.type.startsWith("json")) {
-							value.value = variableParser_.parse(this, experiment.name, customFieldValue.value);
-						} else if (customFieldValue.type.equals("boolean")) {
-							value.value = Boolean.parseBoolean(customFieldValue.value);
-						} else if (customFieldValue.type.equals("number")) {
-							value.value = Double.parseDouble(customFieldValue.value);
+					value.type = customFieldValue.getType();
+					if (customFieldValue.getValue() != null) {
+						if (customFieldValue.getType().startsWith("json")) {
+							value.value = variableParser_.parse(this, experiment.name, customFieldValue.getValue());
+						} else if (customFieldValue.getType().equals("boolean")) {
+							value.value = Boolean.parseBoolean(customFieldValue.getValue());
+						} else if (customFieldValue.getType().equals("number")) {
+							value.value = Double.parseDouble(customFieldValue.getValue());
 						} else {
-							value.value = customFieldValue.value;
+							value.value = customFieldValue.getValue();
 						}
 					}
 				}
