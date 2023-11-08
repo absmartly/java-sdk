@@ -29,6 +29,7 @@ jobs:
           GRADLE_PROPERTIES: ${{ secrets.GRADLE_PROPERTIES }}
           SECRET_FILE_DATA: ${{ secrets.SECRET_FILE_DATA }}
         run: |
+          export GPG_TTY=$(tty)
           mkdir -p ~/.gradle/
           ln -s /usr/local/bin/gpg /usr/local/bin/gpg2
           echo -n "$SECRET_FILE_DATA" | base64 --decode | gpg --import
