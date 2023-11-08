@@ -33,7 +33,7 @@ jobs:
           export GPG_TTY=$(tty)
           mkdir -p ~/.gradle/
           ln -s /usr/local/bin/gpg /usr/local/bin/gpg2
-          echo -n "$SECRET_FILE_DATA" | base64 --decode | gpg --import --passphrase $ORG_GRADLE_PROJECT_signingInMemoryKeyPassword --batch
+          echo -n "$SECRET_FILE_DATA" | base64 --decode | gpg --import --passphrase "$ORG_GRADLE_PROJECT_signingInMemoryKeyPassword" --batch
           echo "GRADLE_USER_HOME=${HOME}/.gradle" >> $GITHUB_ENV
           echo "${GRADLE_PROPERTIES}" > ~/.gradle/gradle.properties
           ./gradlew clean build publish closeAndReleaseSonatypeStagingRepository -x test
