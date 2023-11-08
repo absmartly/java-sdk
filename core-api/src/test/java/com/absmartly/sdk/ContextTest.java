@@ -1721,9 +1721,11 @@ class ContextTest extends TestUtils {
 		context.close();
 		publisher.join();
 
-		verify(eventLogger, times(2)).handleEvent(any(), any(), any());
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Publish, expected);
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Close, null);
+		verify(eventLogger, Mockito.timeout(5000).times(2)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Publish,
+				expected);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Close,
+				null);
 	}
 
 	@Test

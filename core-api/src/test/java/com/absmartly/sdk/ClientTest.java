@@ -12,6 +12,7 @@ import java8.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
@@ -108,11 +109,13 @@ class ClientTest extends TestUtils {
 			verify(httpClient, times(1)).put("https://localhost/v1/context", null, expectedHeaders, publishBytes);
 			verify(httpClient, times(1)).close();
 
-			verify(deserCtor.constructed().get(0), times(1)).deserialize(any(), anyInt(), anyInt());
-			verify(deserCtor.constructed().get(0), times(1)).deserialize(dataBytes, 0, dataBytes.length);
+			verify(deserCtor.constructed().get(0), Mockito.timeout(5000).times(1)).deserialize(any(), anyInt(),
+					anyInt());
+			verify(deserCtor.constructed().get(0), Mockito.timeout(5000).times(1)).deserialize(dataBytes, 0,
+					dataBytes.length);
 
-			verify(serCtor.constructed().get(0), times(1)).serialize(any());
-			verify(serCtor.constructed().get(0), times(1)).serialize(event);
+			verify(serCtor.constructed().get(0), Mockito.timeout(5000).times(1)).serialize(any());
+			verify(serCtor.constructed().get(0), Mockito.timeout(5000).times(1)).serialize(event);
 		}
 	}
 
