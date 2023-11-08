@@ -6,7 +6,6 @@ on:
       - "main"
     tags:
       - v*
-    pull_request:
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,5 +27,13 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSWORD }}
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          GRADLE_PROPERTIES: ${{ secrets.GRADLE_PROPERTIES }}
+          SECRET_FILE_DATA: ${{ secrets.SECRET_FILE_DATA }}
         run: |
-          ./gradlew clean build publish closeAndReleaseSonatypeStagingRepository
+          export GPG_TTY=$(tty)
+          mkdir -p ~/.gradle/
+          ln -s /usr/local/bin/gpg /usr/local/bin/gpg2
+          echo -n "$SECRET_FILE_DATA" | base64 --decode | gpg --import --passphrase $ORG_GRADLE_PROJECT_signingInMemoryKeyPassword --batch
+          echo "GRADLE_USER_HOME=${HOME}/.gradle" >> $GITHUB_ENV
+          echo "${GRADLE_PROPERTIES}" > ~/.gradle/gradle.properties
+          ./gradlew clean build publish closeAndReleaseSonatypeStagingRepository -x test
