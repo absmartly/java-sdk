@@ -46,6 +46,14 @@ To install the ABSmartly SDK, place the following in your `pom.xml` and replace 
 #### Android 6.0 or earlier
 When targeting Android 6.0 or earlier, the default Java Security Provider will not work. Using [Conscrypt](https://github.com/google/conscrypt) is recommended. Follow these [instructions](https://github.com/google/conscrypt/blob/master/README.md) to install it as dependency.
 
+#### Proguard rules
+ProGuard is a command-line tool that reduces app size by shrinking bytecode and obfuscates the names of classes, fields and methods. 
+It’s an ideal fit for developers working with Java or Kotlin who are primarily interested in an Android optimizer.
+If you are using [Proguard](https://github.com/Guardsquare/proguard), you will need to add the following rule to your Proguard configuration file.
+This prevent proguard to change data classes used by the SDK and the missing of this rule will result in problems in the serialization/deserialization of the data.
+```proguard
+-keep public class com.absmartly.sdk.json.** { *; }
+```
 
 ## Getting Started
 
