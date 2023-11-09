@@ -1,30 +1,5 @@
 package com.absmartly.sdk;
 
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.Attribute;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Experiment;
-import com.absmartly.sdk.json.Exposure;
-import com.absmartly.sdk.json.GoalAchievement;
-import com.absmartly.sdk.json.PublishEvent;
-import com.absmartly.sdk.json.Unit;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mockito;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,8 +14,34 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
 import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
+
+import com.absmartly.sdk.java.time.Clock;
+import com.absmartly.sdk.json.Attribute;
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.Experiment;
+import com.absmartly.sdk.json.Exposure;
+import com.absmartly.sdk.json.GoalAchievement;
+import com.absmartly.sdk.json.PublishEvent;
+import com.absmartly.sdk.json.Unit;
 
 class ContextTest extends TestUtils {
 	final Map<String, String> units = mapOf(
