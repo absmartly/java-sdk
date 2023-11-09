@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
@@ -83,9 +84,9 @@ class ABSmartlyTest extends TestUtils {
 				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
 						.forClass(AudienceMatcher.class);
 
-				contextStatic.verify(times(1),
+				contextStatic.verify(Mockito.timeout(5000).times(1),
 						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-				contextStatic.verify(times(1),
+				contextStatic.verify(Mockito.timeout(5000).times(1),
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
 								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
@@ -124,7 +125,7 @@ class ABSmartlyTest extends TestUtils {
 				final Context context = absmartly.createContextWith(contextConfig, data);
 				assertSame(contextMock, context);
 
-				verify(dataProviderCtor.constructed().get(0), times(0)).getContextData();
+				verify(dataProviderCtor.constructed().get(0), Mockito.timeout(5000).times(0)).getContextData();
 
 				final ArgumentCaptor<Clock> clockCaptor = ArgumentCaptor.forClass(Clock.class);
 				final ArgumentCaptor<ContextConfig> configCaptor = ArgumentCaptor.forClass(ContextConfig.class);
@@ -143,9 +144,9 @@ class ABSmartlyTest extends TestUtils {
 				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
 						.forClass(AudienceMatcher.class);
 
-				contextStatic.verify(times(1),
+				contextStatic.verify(Mockito.timeout(5000).times(1),
 						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-				contextStatic.verify(times(1),
+				contextStatic.verify(Mockito.timeout(5000).times(1),
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
 								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
@@ -177,7 +178,7 @@ class ABSmartlyTest extends TestUtils {
 		final ABSmartly absmartly = ABSmartly.create(config);
 
 		final CompletableFuture<ContextData> contextDataFuture = absmartly.getContextData();
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		assertSame(dataFuture, contextDataFuture);
 	}
@@ -234,9 +235,9 @@ class ABSmartlyTest extends TestUtils {
 			final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor.forClass(VariableParser.class);
 			final ArgumentCaptor<AudienceMatcher> audienceMatcher = ArgumentCaptor.forClass(AudienceMatcher.class);
 
-			contextStatic.verify(times(1),
+			contextStatic.verify(Mockito.timeout(5000).times(1),
 					() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-			contextStatic.verify(times(1),
+			contextStatic.verify(Mockito.timeout(5000).times(1),
 					() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 							dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
 							eventLoggerCaptor.capture(), variableParserCaptor.capture(), audienceMatcher.capture()));
@@ -274,7 +275,7 @@ class ABSmartlyTest extends TestUtils {
 
 			absmartly.close();
 
-			verify(scheduler, times(1)).awaitTermination(anyLong(), any());
+			verify(scheduler, Mockito.timeout(5000).times(1)).awaitTermination(anyLong(), any());
 		}
 	}
 }

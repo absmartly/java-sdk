@@ -5,10 +5,10 @@ import static java.util.Collections.EMPTY_MAP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 class ValueOperatorTest extends OperatorTest {
 	final ValueOperator operator = new ValueOperator();
@@ -24,6 +24,6 @@ class ValueOperatorTest extends OperatorTest {
 		assertEquals(EMPTY_LIST, operator.evaluate(evaluator, EMPTY_LIST));
 		assertNull(operator.evaluate(evaluator, null));
 
-		verify(evaluator, times(0)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(0)).evaluate(any());
 	}
 }

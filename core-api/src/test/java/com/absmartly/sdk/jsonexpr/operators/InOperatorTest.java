@@ -21,14 +21,14 @@ class InOperatorTest extends OperatorTest {
 		assertNull(operator.evaluate(evaluator, listOf("abcdefghijk", null)));
 		assertNull(operator.evaluate(evaluator, listOf(null, "abc")));
 
-		verify(evaluator, times(4)).evaluate("abcdefghijk");
-		verify(evaluator, times(1)).evaluate("abc");
-		verify(evaluator, times(1)).evaluate("def");
-		verify(evaluator, times(1)).evaluate("xxx");
+		verify(evaluator, Mockito.timeout(5000).times(4)).evaluate("abcdefghijk");
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate("abc");
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate("def");
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate("xxx");
 
-		verify(evaluator, times(1)).stringConvert("abc");
-		verify(evaluator, times(1)).stringConvert("def");
-		verify(evaluator, times(1)).stringConvert("xxx");
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert("abc");
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert("def");
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert("xxx");
 	}
 
 	@Test
@@ -39,10 +39,10 @@ class InOperatorTest extends OperatorTest {
 		assertFalse((Boolean) operator.evaluate(evaluator, listOf(listOf(), false)));
 		assertNull(operator.evaluate(evaluator, listOf(listOf(), null)));
 
-		verify(evaluator, times(0)).booleanConvert(any());
-		verify(evaluator, times(0)).numberConvert(any());
-		verify(evaluator, times(0)).stringConvert(any());
-		verify(evaluator, times(0)).compare(any(), any());
+		verify(evaluator, Mockito.timeout(5000).times(0)).booleanConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(0)).numberConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(0)).stringConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(0)).compare(any(), any());
 	}
 
 	@Test
@@ -51,34 +51,34 @@ class InOperatorTest extends OperatorTest {
 		final List<Object> haystack12 = listOf(1, 2);
 
 		assertFalse((Boolean) operator.evaluate(evaluator, listOf(haystack01, 2)));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystack01);
-		verify(evaluator, times(1)).evaluate(2);
-		verify(evaluator, times(2)).compare(anyInt(), ArgumentMatchers.eq(2));
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystack01);
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(2);
+		verify(evaluator, Mockito.timeout(5000).times(2)).compare(anyInt(), ArgumentMatchers.eq(2));
 
 		Mockito.clearInvocations(evaluator);
 
 		assertFalse((Boolean) operator.evaluate(evaluator, listOf(haystack12, 0)));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystack12);
-		verify(evaluator, times(1)).evaluate(0);
-		verify(evaluator, times(2)).compare(anyInt(), ArgumentMatchers.eq(0));
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystack12);
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(0);
+		verify(evaluator, Mockito.timeout(5000).times(2)).compare(anyInt(), ArgumentMatchers.eq(0));
 
 		Mockito.clearInvocations(evaluator);
 
 		assertTrue((Boolean) operator.evaluate(evaluator, listOf(haystack12, 1)));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystack12);
-		verify(evaluator, times(1)).evaluate(1);
-		verify(evaluator, times(1)).compare(anyInt(), ArgumentMatchers.eq(1));
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystack12);
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(1);
+		verify(evaluator, Mockito.timeout(5000).times(1)).compare(anyInt(), ArgumentMatchers.eq(1));
 
 		Mockito.clearInvocations(evaluator);
 
 		assertTrue((Boolean) operator.evaluate(evaluator, listOf(haystack12, 2)));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystack12);
-		verify(evaluator, times(1)).evaluate(2);
-		verify(evaluator, times(2)).compare(anyInt(), ArgumentMatchers.eq(2));
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystack12);
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(2);
+		verify(evaluator, Mockito.timeout(5000).times(2)).compare(anyInt(), ArgumentMatchers.eq(2));
 
 		Mockito.clearInvocations(evaluator);
 	}
@@ -89,43 +89,43 @@ class InOperatorTest extends OperatorTest {
 		final Map<String, Object> haystackbc = mapOf("b", 2, "c", 3, "0", 100);
 
 		assertFalse((Boolean) operator.evaluate(evaluator, listOf(haystackab, "c")));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystackab);
-		verify(evaluator, times(1)).stringConvert(any());
-		verify(evaluator, times(1)).stringConvert("c");
-		verify(evaluator, times(1)).evaluate("c");
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystackab);
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert("c");
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate("c");
 		Mockito.clearInvocations(evaluator);
 
 		assertFalse((Boolean) operator.evaluate(evaluator, listOf(haystackbc, "a")));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystackbc);
-		verify(evaluator, times(1)).stringConvert(any());
-		verify(evaluator, times(1)).stringConvert("a");
-		verify(evaluator, times(1)).evaluate("a");
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystackbc);
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert("a");
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate("a");
 		Mockito.clearInvocations(evaluator);
 
 		assertTrue((Boolean) operator.evaluate(evaluator, listOf(haystackbc, "b")));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystackbc);
-		verify(evaluator, times(1)).stringConvert(any());
-		verify(evaluator, times(1)).stringConvert("b");
-		verify(evaluator, times(1)).evaluate("b");
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystackbc);
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert("b");
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate("b");
 		Mockito.clearInvocations(evaluator);
 
 		assertTrue((Boolean) operator.evaluate(evaluator, listOf(haystackbc, "c")));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystackbc);
-		verify(evaluator, times(1)).stringConvert(any());
-		verify(evaluator, times(1)).stringConvert("c");
-		verify(evaluator, times(1)).evaluate("c");
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystackbc);
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert("c");
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate("c");
 		Mockito.clearInvocations(evaluator);
 
 		assertTrue((Boolean) operator.evaluate(evaluator, listOf(haystackbc, 0)));
-		verify(evaluator, times(2)).evaluate(any());
-		verify(evaluator, times(1)).evaluate(haystackbc);
-		verify(evaluator, times(1)).stringConvert(any());
-		verify(evaluator, times(1)).stringConvert(0);
-		verify(evaluator, times(1)).evaluate(0);
+		verify(evaluator, Mockito.timeout(5000).times(2)).evaluate(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(haystackbc);
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert(any());
+		verify(evaluator, Mockito.timeout(5000).times(1)).stringConvert(0);
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(0);
 		Mockito.clearInvocations(evaluator);
 	}
 }
