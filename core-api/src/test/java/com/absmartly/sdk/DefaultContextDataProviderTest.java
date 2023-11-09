@@ -8,6 +8,7 @@ import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import com.absmartly.sdk.json.ContextData;
 
@@ -40,6 +41,6 @@ class DefaultContextDataProviderTest extends TestUtils {
 		final CompletionException actual = assertThrows(CompletionException.class, dataFuture::join);
 		assertSame(actual.getCause(), failure);
 
-		verify(client, times(1)).getContextData();
+		verify(client, Mockito.timeout(5000).times(1)).getContextData();
 	}
 }

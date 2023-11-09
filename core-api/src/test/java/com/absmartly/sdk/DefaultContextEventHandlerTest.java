@@ -8,6 +8,7 @@ import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import com.absmartly.sdk.json.PublishEvent;
 
@@ -42,6 +43,6 @@ class DefaultContextEventHandlerTest extends TestUtils {
 		final CompletionException actual = assertThrows(CompletionException.class, publishFuture::join);
 		assertSame(actual.getCause(), failure);
 
-		verify(client, times(1)).publish(event);
+		verify(client, Mockito.timeout(5000).times(1)).publish(event);
 	}
 }

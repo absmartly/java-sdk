@@ -9,6 +9,7 @@ import java.util.Set;
 import java8.util.function.Function;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
@@ -30,7 +31,7 @@ class AlgorithmTest extends TestUtils {
 		final Integer[] actual = Algorithm.mapSetToArray(ints, new Integer[0], square);
 
 		assertArrayEquals(expected, actual);
-		verify(square, times(5)).apply(anyInt());
+		verify(square, Mockito.timeout(5000).times(5)).apply(anyInt());
 	}
 
 	@Test
@@ -48,7 +49,7 @@ class AlgorithmTest extends TestUtils {
 		final Integer[] actual = Algorithm.mapSetToArray(ints, new Integer[]{0, 0, 0, 0, 0}, square);
 
 		assertArrayEquals(expected, actual);
-		verify(square, times(5)).apply(anyInt());
+		verify(square, Mockito.timeout(5000).times(5)).apply(anyInt());
 	}
 
 	@Test
@@ -66,6 +67,6 @@ class AlgorithmTest extends TestUtils {
 		final Integer[] actual = Algorithm.mapSetToArray(ints, new Integer[]{0, 0, 0, 0, 0, 0, 0}, square);
 
 		assertArrayEquals(expected, actual);
-		verify(square, times(5)).apply(anyInt());
+		verify(square, Mockito.timeout(5000).times(5)).apply(anyInt());
 	}
 }

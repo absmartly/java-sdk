@@ -9,6 +9,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java8.util.function.Function;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
@@ -32,18 +33,18 @@ class ConcurrencyTest extends TestUtils {
 		final Integer result = Concurrency.computeIfAbsentRW(rwlock, map, 1, computer);
 		assertEquals(5, result);
 
-		verify(map, times(2)).get(any());
-		verify(map, times(2)).get(1);
+		verify(map, Mockito.timeout(5000).times(2)).get(any());
+		verify(map, Mockito.timeout(5000).times(2)).get(1);
 
-		verify(rwlock, times(1)).readLock();
-		verify(rwlock, times(1)).writeLock();
-		verify(rlock, times(1)).lock();
-		verify(rlock, times(1)).unlock();
-		verify(wlock, times(1)).lock();
-		verify(wlock, times(1)).unlock();
+		verify(rwlock, Mockito.timeout(5000).times(1)).readLock();
+		verify(rwlock, Mockito.timeout(5000).times(1)).writeLock();
+		verify(rlock, Mockito.timeout(5000).times(1)).lock();
+		verify(rlock, Mockito.timeout(5000).times(1)).unlock();
+		verify(wlock, Mockito.timeout(5000).times(1)).lock();
+		verify(wlock, Mockito.timeout(5000).times(1)).unlock();
 
-		verify(computer, times(1)).apply(any());
-		verify(computer, times(1)).apply(1);
+		verify(computer, Mockito.timeout(5000).times(1)).apply(any());
+		verify(computer, Mockito.timeout(5000).times(1)).apply(1);
 	}
 
 	@Test
@@ -61,15 +62,15 @@ class ConcurrencyTest extends TestUtils {
 		final Integer result = Concurrency.computeIfAbsentRW(rwlock, map, 1, computer);
 		assertEquals(5, result);
 
-		verify(map, times(1)).get(any());
-		verify(map, times(1)).get(1);
+		verify(map, Mockito.timeout(5000).times(1)).get(any());
+		verify(map, Mockito.timeout(5000).times(1)).get(1);
 
-		verify(rwlock, times(1)).readLock();
-		verify(rwlock, times(0)).writeLock();
-		verify(rlock, times(1)).lock();
-		verify(rlock, times(1)).unlock();
+		verify(rwlock, Mockito.timeout(5000).times(1)).readLock();
+		verify(rwlock, Mockito.timeout(5000).times(0)).writeLock();
+		verify(rlock, Mockito.timeout(5000).times(1)).lock();
+		verify(rlock, Mockito.timeout(5000).times(1)).unlock();
 
-		verify(computer, times(0)).apply(any());
+		verify(computer, Mockito.timeout(5000).times(0)).apply(any());
 	}
 
 	@Test
@@ -91,17 +92,17 @@ class ConcurrencyTest extends TestUtils {
 		final Integer result = Concurrency.computeIfAbsentRW(rwlock, map, 1, computer);
 		assertEquals(5, result);
 
-		verify(map, times(2)).get(any());
-		verify(map, times(2)).get(1);
+		verify(map, Mockito.timeout(5000).times(2)).get(any());
+		verify(map, Mockito.timeout(5000).times(2)).get(1);
 
-		verify(rwlock, times(1)).readLock();
-		verify(rwlock, times(1)).writeLock();
-		verify(rlock, times(1)).lock();
-		verify(rlock, times(1)).unlock();
-		verify(wlock, times(1)).lock();
-		verify(wlock, times(1)).unlock();
+		verify(rwlock, Mockito.timeout(5000).times(1)).readLock();
+		verify(rwlock, Mockito.timeout(5000).times(1)).writeLock();
+		verify(rlock, Mockito.timeout(5000).times(1)).lock();
+		verify(rlock, Mockito.timeout(5000).times(1)).unlock();
+		verify(wlock, Mockito.timeout(5000).times(1)).lock();
+		verify(wlock, Mockito.timeout(5000).times(1)).unlock();
 
-		verify(computer, times(0)).apply(any());
+		verify(computer, Mockito.timeout(5000).times(0)).apply(any());
 	}
 
 	@Test
@@ -114,13 +115,13 @@ class ConcurrencyTest extends TestUtils {
 		final Integer result = Concurrency.getRW(rwlock, map, 1);
 		assertNull(result);
 
-		verify(map, times(1)).get(any());
-		verify(map, times(1)).get(1);
+		verify(map, Mockito.timeout(5000).times(1)).get(any());
+		verify(map, Mockito.timeout(5000).times(1)).get(1);
 
-		verify(rwlock, times(1)).readLock();
-		verify(rwlock, times(0)).writeLock();
-		verify(lock, times(1)).lock();
-		verify(lock, times(1)).unlock();
+		verify(rwlock, Mockito.timeout(5000).times(1)).readLock();
+		verify(rwlock, Mockito.timeout(5000).times(0)).writeLock();
+		verify(lock, Mockito.timeout(5000).times(1)).lock();
+		verify(lock, Mockito.timeout(5000).times(1)).unlock();
 	}
 
 	@Test
@@ -133,12 +134,12 @@ class ConcurrencyTest extends TestUtils {
 		final Integer result = Concurrency.putRW(rwlock, map, 1, 5);
 		assertNull(result);
 
-		verify(map, times(1)).put(any(), any());
-		verify(map, times(1)).put(1, 5);
+		verify(map, Mockito.timeout(5000).times(1)).put(any(), any());
+		verify(map, Mockito.timeout(5000).times(1)).put(1, 5);
 
-		verify(rwlock, times(0)).readLock();
-		verify(rwlock, times(1)).writeLock();
-		verify(lock, times(1)).lock();
-		verify(lock, times(1)).unlock();
+		verify(rwlock, Mockito.timeout(5000).times(0)).readLock();
+		verify(rwlock, Mockito.timeout(5000).times(1)).writeLock();
+		verify(lock, Mockito.timeout(5000).times(1)).lock();
+		verify(lock, Mockito.timeout(5000).times(1)).unlock();
 	}
 }

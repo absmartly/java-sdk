@@ -11,6 +11,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 
 import com.absmartly.sdk.TestUtils;
 
@@ -27,8 +28,8 @@ class ExprEvaluatorTest extends TestUtils {
 		final List<Object> args = listOf(mapOf("value", true), mapOf("value", false));
 		assertNotNull(evaluator.evaluate(args));
 
-		verify(orOperator, times(0)).evaluate(any(), any());
-		verify(andOperator, times(1)).evaluate(any(Evaluator.class), ArgumentMatchers.eq(args));
+		verify(orOperator, Mockito.timeout(5000).times(0)).evaluate(any(), any());
+		verify(andOperator, Mockito.timeout(5000).times(1)).evaluate(any(Evaluator.class), ArgumentMatchers.eq(args));
 	}
 
 	@Test
@@ -40,7 +41,7 @@ class ExprEvaluatorTest extends TestUtils {
 		final ExprEvaluator evaluator = new ExprEvaluator(mapOf("value", valueOperator), EMPTY_MAP);
 		assertNull(evaluator.evaluate(mapOf("not_found", true)));
 
-		verify(valueOperator, times(0)).evaluate(any(), any());
+		verify(valueOperator, Mockito.timeout(5000).times(0)).evaluate(any(), any());
 	}
 
 	@Test
@@ -54,7 +55,7 @@ class ExprEvaluatorTest extends TestUtils {
 		final ExprEvaluator evaluator = new ExprEvaluator(mapOf("value", valueOperator), EMPTY_MAP);
 		assertEquals(args, evaluator.evaluate(mapOf("value", args)));
 
-		verify(valueOperator, times(1)).evaluate(any(Evaluator.class), ArgumentMatchers.eq(args));
+		verify(valueOperator, Mockito.timeout(5000).times(1)).evaluate(any(Evaluator.class), ArgumentMatchers.eq(args));
 	}
 
 	@Test

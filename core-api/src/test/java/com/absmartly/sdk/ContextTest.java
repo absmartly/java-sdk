@@ -1,26 +1,45 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import com.absmartly.sdk.java.time.Clock;
+import com.absmartly.sdk.json.Attribute;
+import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.Experiment;
+import com.absmartly.sdk.json.Exposure;
+import com.absmartly.sdk.json.GoalAchievement;
+import com.absmartly.sdk.json.PublishEvent;
+import com.absmartly.sdk.json.Unit;
+import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mockito;
-
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class ContextTest extends TestUtils {
 	final Map<String, String> units = mapOf(
@@ -215,13 +234,15 @@ class ContextTest extends TestUtils {
 		dataFuture.complete(data);
 
 		context.waitUntilReady();
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Ready, data);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Ready,
+				data);
 	}
 
 	@Test
 	void callsEventLoggerWithCompletedFuture() {
 		final Context context = createReadyContext();
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Ready, data);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Ready,
+				data);
 	}
 
 	@Test
@@ -232,7 +253,8 @@ class ContextTest extends TestUtils {
 		dataFuture.completeExceptionally(error);
 
 		context.waitUntilReady();
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, error);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Error,
+				error);
 	}
 
 	@Test
@@ -457,15 +479,15 @@ class ContextTest extends TestUtils {
 		dataFuture.complete(data);
 		context.waitUntilReady();
 
-		verify(scheduler, times(1)).scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
+		verify(scheduler, Mockito.timeout(5000).times(1)).scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS));
 
-		verify(dataProvider, times(0)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(0)).getContextData();
 		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
 
 		runnable.get().run();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 	}
 
 	@Test
@@ -484,7 +506,7 @@ class ContextTest extends TestUtils {
 
 		assertTrue(context.isFailed());
 
-		verify(scheduler, times(0)).scheduleWithFixedDelay(any(), anyLong(), anyLong(), any());
+		verify(scheduler, Mockito.timeout(5000).times(0)).scheduleWithFixedDelay(any(), anyLong(), anyLong(), any());
 	}
 
 	@Test
@@ -511,12 +533,13 @@ class ContextTest extends TestUtils {
 		dataFuture.complete(data);
 		context.waitUntilReady();
 
-		verify(scheduler, times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS));
-		verify(eventHandler, times(0)).publish(any(), any());
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()),
+				eq(TimeUnit.MILLISECONDS));
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 
 		runnable.get().run();
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -559,8 +582,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	@Test
@@ -975,8 +998,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	@Test
@@ -1003,8 +1026,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	@Test
@@ -1028,10 +1051,10 @@ class ContextTest extends TestUtils {
 				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
 		};
 
-		verify(eventLogger, times(exposures.length)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(exposures.length)).handleEvent(any(), any(), any());
 
 		for (Exposure expected : exposures) {
-			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+			verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(ArgumentMatchers.same(context),
 					ArgumentMatchers.eq(ContextEventLogger.EventType.Exposure), ArgumentMatchers.eq(expected));
 		}
 
@@ -1040,7 +1063,7 @@ class ContextTest extends TestUtils {
 		context.getVariableValue("banner.border", null);
 		context.getVariableValue("banner.size", null);
 
-		verify(eventLogger, times(0)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(0)).handleEvent(any(), any(), any());
 	}
 
 	@Test
@@ -1113,8 +1136,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 
 		context.close();
 	}
@@ -1141,12 +1164,13 @@ class ContextTest extends TestUtils {
 		context.getTreatment("exp_test_ab");
 		context.getTreatment("exp_test_abc");
 
-		verify(scheduler, times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS));
-		verify(eventHandler, times(0)).publish(any(), any());
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()),
+				eq(TimeUnit.MILLISECONDS));
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 
 		runnable.get().run();
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -1183,8 +1207,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 
 		context.close();
 	}
@@ -1208,7 +1232,7 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 
 		assertEquals(0, context.getPendingCount());
 
@@ -1247,8 +1271,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	@Test
@@ -1275,8 +1299,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	@Test
@@ -1304,8 +1328,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	@Test
@@ -1322,10 +1346,10 @@ class ContextTest extends TestUtils {
 				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
 		};
 
-		verify(eventLogger, times(exposures.length)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(exposures.length)).handleEvent(any(), any(), any());
 
 		for (Exposure expected : exposures) {
-			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+			verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(ArgumentMatchers.same(context),
 					ArgumentMatchers.eq(ContextEventLogger.EventType.Exposure), ArgumentMatchers.eq(expected));
 		}
 
@@ -1334,7 +1358,7 @@ class ContextTest extends TestUtils {
 		context.getTreatment("exp_test_ab");
 		context.getTreatment("not_found");
 
-		verify(eventLogger, times(0)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(0)).handleEvent(any(), any(), any());
 	}
 
 	@Test
@@ -1367,8 +1391,8 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 
 		context.close();
 	}
@@ -1385,10 +1409,10 @@ class ContextTest extends TestUtils {
 				new GoalAchievement("goal1", clock.millis(), properties)
 		};
 
-		verify(eventLogger, times(achievements.length)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(achievements.length)).handleEvent(any(), any(), any());
 
 		for (GoalAchievement goal : achievements) {
-			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+			verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(ArgumentMatchers.same(context),
 					ArgumentMatchers.eq(ContextEventLogger.EventType.Goal), ArgumentMatchers.eq(goal));
 		}
 
@@ -1397,7 +1421,7 @@ class ContextTest extends TestUtils {
 		context.track("goal1", properties);
 
 		for (GoalAchievement goal : achievements) {
-			verify(eventLogger, times(1)).handleEvent(ArgumentMatchers.same(context),
+			verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(ArgumentMatchers.same(context),
 					ArgumentMatchers.eq(ContextEventLogger.EventType.Goal), ArgumentMatchers.eq(goal));
 		}
 	}
@@ -1424,12 +1448,13 @@ class ContextTest extends TestUtils {
 		context.track("goal1", mapOf("amount", 125));
 		context.track("goal2", mapOf("value", 999.0));
 
-		verify(scheduler, times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()), eq(TimeUnit.MILLISECONDS));
-		verify(eventHandler, times(0)).publish(any(), any());
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(config.getPublishDelay()),
+				eq(TimeUnit.MILLISECONDS));
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 
 		runnable.get().run();
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -1450,7 +1475,7 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(0)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 	}
 
 	@Test
@@ -1475,8 +1500,9 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Publish, expected);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Publish,
+				expected);
 	}
 
 	@Test
@@ -1493,8 +1519,9 @@ class ContextTest extends TestUtils {
 		final CompletionException actual = assertThrows(CompletionException.class, context::publish);
 		assertSame(failure, actual.getCause());
 
-		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, failure);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Error,
+				failure);
 	}
 
 	@Test
@@ -1551,8 +1578,8 @@ class ContextTest extends TestUtils {
 		assertEquals(3, context.getCustomAssignment("exp_test_abc"));
 		assertEquals(3, context.getOverride("not_found"));
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expected);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 
 		Mockito.clearInvocations(eventHandler);
 
@@ -1587,8 +1614,8 @@ class ContextTest extends TestUtils {
 		futureNext.join();
 		assertEquals(0, context.getPendingCount());
 
-		verify(eventHandler, times(1)).publish(any(), any());
-		verify(eventHandler, times(1)).publish(context, expectedNext);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expectedNext);
 	}
 
 	@Test
@@ -1606,7 +1633,7 @@ class ContextTest extends TestUtils {
 
 		context.publish();
 
-		verify(eventHandler, times(0)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 	}
 
 	@Test
@@ -1625,7 +1652,7 @@ class ContextTest extends TestUtils {
 		final CompletionException actual = assertThrows(CompletionException.class, context::publish);
 		assertSame(failure, actual.getCause());
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -1652,7 +1679,7 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -1677,7 +1704,7 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 
 		context.close();
 	}
@@ -1690,8 +1717,9 @@ class ContextTest extends TestUtils {
 
 		context.close();
 
-		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Close, null);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Close,
+				null);
 	}
 
 	@Test
@@ -1748,8 +1776,9 @@ class ContextTest extends TestUtils {
 
 		publisher.join();
 
-		verify(eventLogger, times(1)).handleEvent(any(), any(), any());
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, failure);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(any(), any(), any());
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Error,
+				failure);
 	}
 
 	@Test
@@ -1771,7 +1800,7 @@ class ContextTest extends TestUtils {
 
 		publisher.join();
 
-		verify(eventHandler, times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
 	}
 
 	@Test
@@ -1790,7 +1819,7 @@ class ContextTest extends TestUtils {
 
 		context.close();
 
-		verify(refreshTimer, times(1)).cancel(false);
+		verify(refreshTimer, Mockito.timeout(5000).times(1)).cancel(false);
 	}
 
 	@Test
@@ -1803,7 +1832,7 @@ class ContextTest extends TestUtils {
 
 		context.refresh();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		final String[] experiments = Arrays.stream(refreshData.experiments).map(x -> x.name).toArray(String[]::new);
 		assertArrayEquals(experiments, context.getExperiments());
@@ -1819,7 +1848,8 @@ class ContextTest extends TestUtils {
 
 		context.refresh();
 
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Refresh, refreshData);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Refresh,
+				refreshData);
 	}
 
 	@Test
@@ -1834,7 +1864,8 @@ class ContextTest extends TestUtils {
 		final CompletionException actual = assertThrows(CompletionException.class, context::refresh);
 		assertSame(failure, actual.getCause());
 
-		verify(eventLogger, times(1)).handleEvent(context, ContextEventLogger.EventType.Error, failure);
+		verify(eventLogger, Mockito.timeout(5000).times(1)).handleEvent(context, ContextEventLogger.EventType.Error,
+				failure);
 	}
 
 	@Test
@@ -1853,7 +1884,7 @@ class ContextTest extends TestUtils {
 		final CompletionException actual = assertThrows(CompletionException.class, context::refresh);
 		assertSame(failure, actual.getCause());
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 	}
 
 	@Test
@@ -1870,7 +1901,7 @@ class ContextTest extends TestUtils {
 		refreshDataFuture.complete(refreshData);
 		refreshFuture.join();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		final String[] experiments = Arrays.stream(refreshData.experiments).map(x -> x.name).toArray(String[]::new);
 		assertArrayEquals(experiments, context.getExperiments());
@@ -1890,7 +1921,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		refreshDataFuture.complete(refreshData);
 		refreshFuture.join();
@@ -1913,7 +1944,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		refreshFuture.join();
 
@@ -1935,7 +1966,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		refreshFuture.join();
 
@@ -1959,7 +1990,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		refreshData.experiments = Arrays.stream(refreshData.experiments).filter(x -> !x.name.equals(experimentName))
 				.toArray(Experiment[]::new);
@@ -1988,7 +2019,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		refreshDataFuture.complete(refreshData);
 		refreshFuture.join();
@@ -2014,7 +2045,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName)).forEach(experiment -> {
 			assertEquals(0, experiment.fullOnVariant);
@@ -2046,7 +2077,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName))
 				.forEach(experiment -> experiment.trafficSplit = new double[]{0.0, 1.0});
@@ -2075,7 +2106,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName)).forEach(experiment -> {
 			experiment.iteration = 2;
@@ -2109,7 +2140,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> refreshFuture = context.refreshAsync();
 
-		verify(dataProvider, times(1)).getContextData();
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
 
 		Arrays.stream(refreshData.experiments).filter(x -> x.name.equals(experimentName)).forEach(experiment -> {
 			experiment.id = 11;

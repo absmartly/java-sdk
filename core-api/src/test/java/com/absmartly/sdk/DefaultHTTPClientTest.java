@@ -50,20 +50,23 @@ class DefaultHTTPClientTest extends TestUtils {
 
 			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
-			verify(asyncHTTPClientBuilder, times(1)).disableCookieManagement();
-			verify(asyncHTTPClientBuilder, times(1)).evictExpiredConnections();
-			verify(asyncHTTPClientBuilder, times(1)).evictIdleConnections(TimeValue.ofSeconds(30));
-			verify(asyncHTTPClientBuilder, times(1))
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1)).disableCookieManagement();
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1)).evictExpiredConnections();
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
+					.evictIdleConnections(TimeValue.ofSeconds(30));
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
 					.setConnectionManager(any(PoolingAsyncClientConnectionManager.class));
-			verify(asyncHTTPClientBuilder, times(1)).setVersionPolicy(HttpVersionPolicy.NEGOTIATE);
-			verify(asyncHTTPClientBuilder, times(1)).setRetryStrategy(any(DefaultHTTPClientRetryStrategy.class));
-			verify(asyncHTTPClientBuilder, times(1)).build();
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
+					.setVersionPolicy(HttpVersionPolicy.NEGOTIATE);
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
+					.setRetryStrategy(any(DefaultHTTPClientRetryStrategy.class));
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1)).build();
 
-			verify(asyncHTTPClient, times(1)).start();
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).start();
 
 			httpClient.close();
 
-			verify(asyncHTTPClient, times(1)).close(CloseMode.GRACEFUL);
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).close(CloseMode.GRACEFUL);
 		}
 	}
 
@@ -77,20 +80,23 @@ class DefaultHTTPClientTest extends TestUtils {
 			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create()
 					.setHTTPVersionPolicy(HTTPVersionPolicy.FORCE_HTTP_2));
 
-			verify(asyncHTTPClientBuilder, times(1)).disableCookieManagement();
-			verify(asyncHTTPClientBuilder, times(1)).evictExpiredConnections();
-			verify(asyncHTTPClientBuilder, times(1)).evictIdleConnections(TimeValue.ofSeconds(30));
-			verify(asyncHTTPClientBuilder, times(1))
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1)).disableCookieManagement();
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1)).evictExpiredConnections();
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
+					.evictIdleConnections(TimeValue.ofSeconds(30));
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
 					.setConnectionManager(any(PoolingAsyncClientConnectionManager.class));
-			verify(asyncHTTPClientBuilder, times(1)).setRetryStrategy(any(DefaultHTTPClientRetryStrategy.class));
-			verify(asyncHTTPClientBuilder, times(1)).setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_2);
-			verify(asyncHTTPClientBuilder, times(1)).build();
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
+					.setRetryStrategy(any(DefaultHTTPClientRetryStrategy.class));
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1))
+					.setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_2);
+			verify(asyncHTTPClientBuilder, Mockito.timeout(5000).times(1)).build();
 
-			verify(asyncHTTPClient, times(1)).start();
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).start();
 
 			httpClient.close();
 
-			verify(asyncHTTPClient, times(1)).close(CloseMode.GRACEFUL);
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).close(CloseMode.GRACEFUL);
 		}
 	}
 
@@ -174,7 +180,7 @@ class DefaultHTTPClientTest extends TestUtils {
 			assertEquals("application/json", response.getContentType());
 			assertArrayEquals(new byte[]{123, 0}, response.getContent());
 
-			verify(asyncHTTPClient, times(1)).execute(any(), any());
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).execute(any(), any());
 		}
 	}
 
@@ -201,7 +207,7 @@ class DefaultHTTPClientTest extends TestUtils {
 					.get("https://api.absmartly.com/v1/context", null, null);
 			assertSame(failure, assertThrows(CompletionException.class, responseFuture::join).getCause());
 
-			verify(asyncHTTPClient, times(1)).execute(any(), any());
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).execute(any(), any());
 		}
 	}
 
@@ -239,7 +245,7 @@ class DefaultHTTPClientTest extends TestUtils {
 			assertEquals("application/json", response.getContentType());
 			assertArrayEquals(new byte[]{123, 0}, response.getContent());
 
-			verify(asyncHTTPClient, times(1)).execute(any(), any());
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).execute(any(), any());
 		}
 	}
 
@@ -277,7 +283,7 @@ class DefaultHTTPClientTest extends TestUtils {
 			assertEquals("application/json", response.getContentType());
 			assertArrayEquals(new byte[]{123, 0}, response.getContent());
 
-			verify(asyncHTTPClient, times(1)).execute(any(), any());
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).execute(any(), any());
 		}
 	}
 }
