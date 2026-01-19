@@ -343,6 +343,7 @@ public class Context implements Closeable {
 		checkNotClosed();
 
 		Concurrency.addRW(contextLock_, attributes_, new Attribute(name, value, clock_.millis()));
+		attrsSeq_.incrementAndGet();
 	}
 
 	public Map<String, Object> getAttributes() {
@@ -700,6 +701,27 @@ public class Context implements Closeable {
 				Arrays.equals(experiment.trafficSplit, assignment.trafficSplit);
 	}
 
+	private boolean audienceMatches(final Experiment experiment, final Assignment assignment) {
+		if (experiment.audience != null && experiment.audience.length() > 0) {
+			if (attrsSeq_.get() > assignment.attrsSeq) {
+				final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
+				for (final Attribute attr : attributes_) {
+					attrs.put(attr.name, attr.value);
+				}
+
+				final AudienceMatcher.Result match = audienceMatcher_.evaluate(experiment.audience, attrs);
+				final boolean newAudienceMismatch = (match != null) ? !match.get() : false;
+
+				if (newAudienceMismatch != assignment.audienceMismatch) {
+					return false;
+				}
+
+				assignment.attrsSeq = attrsSeq_.get();
+			}
+		}
+		return true;
+	}
+
 	private static class Assignment {
 		int id;
 		int iteration;
@@ -715,7 +737,8 @@ public class Context implements Closeable {
 		boolean custom;
 
 		boolean audienceMismatch;
-		Map<String, Object> variables = Collections.emptyMap();
+		Map<String, Object> variables = null;
+		int attrsSeq;
 
 		final AtomicBoolean exposed = new AtomicBoolean(false);
 	}
@@ -743,7 +766,7 @@ public class Context implements Closeable {
 						return assignment;
 					}
 				} else if ((custom == null) || custom == assignment.variant) {
-					if (experimentMatches(experiment.data, assignment)) {
+					if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
 						// assignment up-to-date
 						return assignment;
 					}
@@ -829,10 +852,11 @@ public class Context implements Closeable {
 					assignment.iteration = experiment.data.iteration;
 					assignment.trafficSplit = experiment.data.trafficSplit;
 					assignment.fullOnVariant = experiment.data.fullOnVariant;
+					assignment.attrsSeq = attrsSeq_.get();
 				}
 			}
 
-			if ((experiment != null) && (assignment.variant < experiment.data.variants.length)) {
+			if ((experiment != null) && assignment.variant >= 0 && (assignment.variant < experiment.data.variants.length)) {
 				assignment.variables = experiment.variables.get(assignment.variant);
 			}
 
@@ -891,7 +915,7 @@ public class Context implements Closeable {
 	}
 
 	private void setTimeout() {
-		if (isReady()) {
+		if (isReady() && publishDelay_ >= 0) {
 			if (timeout_ == null) {
 				try {
 					timeoutLock_.lock();
@@ -1086,6 +1110,7 @@ public class Context implements Closeable {
 	private final List<Attribute> attributes_ = new ArrayList<Attribute>();
 	private final Map<String, Integer> overrides_;
 	private final Map<String, Integer> cassignments_;
+	private final AtomicInteger attrsSeq_ = new AtomicInteger(0);
 
 	private final AtomicInteger pendingCount_ = new AtomicInteger(0);
 	private final AtomicBoolean closing_ = new AtomicBoolean(false);
