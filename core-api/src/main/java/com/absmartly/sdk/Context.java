@@ -715,8 +715,6 @@ public class Context implements Closeable {
 				if (newAudienceMismatch != assignment.audienceMismatch) {
 					return false;
 				}
-
-				assignment.attrsSeq = attrsSeq_.get();
 			}
 		}
 		return true;
