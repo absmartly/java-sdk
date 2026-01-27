@@ -123,4 +123,115 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 			assertNull(data);
 		});
 	}
+
+	@Test
+	void testMalformedJsonResponse() {
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+
+		final byte[] malformedJson = "{\"experiments\": [".getBytes();
+		final ContextData result = deser.deserialize(malformedJson, 0, malformedJson.length);
+		assertNull(result);
+
+		final byte[] invalidJson = "not a json at all".getBytes();
+		final ContextData result2 = deser.deserialize(invalidJson, 0, invalidJson.length);
+		assertNull(result2);
+
+		final byte[] emptyBraces = "{}".getBytes();
+		final ContextData result3 = deser.deserialize(emptyBraces, 0, emptyBraces.length);
+		assertNotNull(result3);
+
+		final byte[] emptyArray = "[]".getBytes();
+		final ContextData result4 = deser.deserialize(emptyArray, 0, emptyArray.length);
+		assertNull(result4);
+	}
+
+	@Test
+	void testEmptyExperimentsArray() {
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+
+		final byte[] emptyExperiments = "{\"experiments\": []}".getBytes();
+		final ContextData result = deser.deserialize(emptyExperiments, 0, emptyExperiments.length);
+		assertNotNull(result);
+		assertNotNull(result.experiments);
+		assertEquals(0, result.experiments.length);
+	}
+
+	@Test
+	void testPartialResponseHandling() {
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+
+		final byte[] partialExperiment = "{\"experiments\": [{\"id\": 1, \"name\": \"test\"}]}".getBytes();
+		final ContextData result = deser.deserialize(partialExperiment, 0, partialExperiment.length);
+		assertNotNull(result);
+		assertNotNull(result.experiments);
+		assertEquals(1, result.experiments.length);
+		assertEquals(1, result.experiments[0].id);
+		assertEquals("test", result.experiments[0].name);
+		assertNull(result.experiments[0].unitType);
+		assertNull(result.experiments[0].variants);
+		assertNull(result.experiments[0].split);
+
+		final byte[] missingVariants = ("{\"experiments\": [{" +
+				"\"id\": 1, " +
+				"\"name\": \"exp_test\", " +
+				"\"unitType\": \"session_id\", " +
+				"\"iteration\": 1, " +
+				"\"seedHi\": 100, " +
+				"\"seedLo\": 200" +
+				"}]}").getBytes();
+		final ContextData result2 = deser.deserialize(missingVariants, 0, missingVariants.length);
+		assertNotNull(result2);
+		assertNotNull(result2.experiments);
+		assertEquals(1, result2.experiments.length);
+		assertNull(result2.experiments[0].variants);
+	}
+
+	@Test
+	void testNullFieldsInExperiment() {
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+
+		final byte[] withNulls = ("{\"experiments\": [{" +
+				"\"id\": 1, " +
+				"\"name\": \"exp_test\", " +
+				"\"unitType\": \"session_id\", " +
+				"\"iteration\": 1, " +
+				"\"seedHi\": 100, " +
+				"\"seedLo\": 200, " +
+				"\"split\": null, " +
+				"\"trafficSplit\": null, " +
+				"\"variants\": null, " +
+				"\"audience\": null" +
+				"}]}").getBytes();
+		final ContextData result = deser.deserialize(withNulls, 0, withNulls.length);
+		assertNotNull(result);
+		assertNotNull(result.experiments);
+		assertEquals(1, result.experiments.length);
+		assertNull(result.experiments[0].split);
+		assertNull(result.experiments[0].trafficSplit);
+		assertNull(result.experiments[0].variants);
+		assertNull(result.experiments[0].audience);
+	}
+
+	@Test
+	void testEmptyByteArray() {
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+
+		final byte[] empty = new byte[0];
+		final ContextData result = deser.deserialize(empty, 0, 0);
+		assertNull(result);
+	}
+
+	@Test
+	void testOffsetAndLength() {
+		final byte[] bytes = getResourceBytes("context.json");
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+
+		final ContextData partialResult = deser.deserialize(bytes, 0, 10);
+		assertNull(partialResult);
+
+		final ContextData fullResult = deser.deserialize(bytes, 0, bytes.length);
+		assertNotNull(fullResult);
+		assertNotNull(fullResult.experiments);
+		assertTrue(fullResult.experiments.length > 0);
+	}
 }

@@ -333,4 +333,124 @@ class ExprEvaluatorTest extends TestUtils {
 		assertEquals(8, evaluator.compare("9", "100"));
 		assertEquals(-8, evaluator.compare("100", "9"));
 	}
+
+	@Test
+	void testNumberConvertNaN() {
+		final ExprEvaluator evaluator = new ExprEvaluator(EMPTY_MAP, EMPTY_MAP);
+
+		final Double nanResult = evaluator.numberConvert(Double.NaN);
+		assertNotNull(nanResult);
+		assertTrue(Double.isNaN(nanResult));
+
+		final Double nanFromString = evaluator.numberConvert("NaN");
+		assertNotNull(nanFromString);
+		assertTrue(Double.isNaN(nanFromString));
+	}
+
+	@Test
+	void testNumberConvertInfinity() {
+		final ExprEvaluator evaluator = new ExprEvaluator(EMPTY_MAP, EMPTY_MAP);
+
+		final Double posInfResult = evaluator.numberConvert(Double.POSITIVE_INFINITY);
+		assertNotNull(posInfResult);
+		assertTrue(Double.isInfinite(posInfResult));
+		assertTrue(posInfResult > 0);
+
+		final Double negInfResult = evaluator.numberConvert(Double.NEGATIVE_INFINITY);
+		assertNotNull(negInfResult);
+		assertTrue(Double.isInfinite(negInfResult));
+		assertTrue(negInfResult < 0);
+
+		final Double infFromString = evaluator.numberConvert("Infinity");
+		assertNotNull(infFromString);
+		assertTrue(Double.isInfinite(infFromString));
+
+		final Double negInfFromString = evaluator.numberConvert("-Infinity");
+		assertNotNull(negInfFromString);
+		assertTrue(Double.isInfinite(negInfFromString));
+		assertTrue(negInfFromString < 0);
+	}
+
+	@Test
+	void testLargeNumberPrecision() {
+		final ExprEvaluator evaluator = new ExprEvaluator(EMPTY_MAP, EMPTY_MAP);
+
+		assertEquals(Double.MAX_VALUE, evaluator.numberConvert(Double.MAX_VALUE));
+		assertEquals(Double.MIN_VALUE, evaluator.numberConvert(Double.MIN_VALUE));
+		assertEquals(-Double.MAX_VALUE, evaluator.numberConvert(-Double.MAX_VALUE));
+
+		assertEquals(Long.MAX_VALUE, (long) evaluator.numberConvert(Long.MAX_VALUE).doubleValue());
+
+		final String largeNumberString = "12345678901234567890";
+		final Double largeNumber = evaluator.numberConvert(largeNumberString);
+		assertNotNull(largeNumber);
+		assertEquals(1.2345678901234568E19, largeNumber, 1e4);
+
+		assertEquals(1E308, evaluator.numberConvert(1E308));
+		assertEquals(-1E308, evaluator.numberConvert(-1E308));
+	}
+
+	@Test
+	void testUnicodeStringComparison() {
+		final ExprEvaluator evaluator = new ExprEvaluator(EMPTY_MAP, EMPTY_MAP);
+
+		assertEquals(0, evaluator.compare("\u00E9", "\u00E9"));
+		assertEquals(0, evaluator.compare("\u4E2D\u6587", "\u4E2D\u6587"));
+		assertEquals(0, evaluator.compare("\uD83D\uDE00", "\uD83D\uDE00"));
+
+		assertTrue(evaluator.compare("a", "\u00E1") < 0);
+		assertTrue(evaluator.compare("\u00E1", "a") > 0);
+
+		assertTrue(evaluator.compare("\u4E00", "\u4E01") < 0);
+		assertTrue(evaluator.compare("\u4E01", "\u4E00") > 0);
+
+		assertEquals(0, evaluator.compare("", ""));
+		assertTrue(evaluator.compare("", "\u4E2D") < 0);
+		assertTrue(evaluator.compare("\u4E2D", "") > 0);
+
+		assertEquals(0, evaluator.compare("\u0041\u0042\u0043", "ABC"));
+	}
+
+	@Test
+	void testStringConvertSpecialNumbers() {
+		final ExprEvaluator evaluator = new ExprEvaluator(EMPTY_MAP, EMPTY_MAP);
+
+		final String nanString = evaluator.stringConvert(Double.NaN);
+		assertNotNull(nanString);
+		assertEquals("NaN", nanString);
+
+		final String posInfString = evaluator.stringConvert(Double.POSITIVE_INFINITY);
+		assertNotNull(posInfString);
+		assertEquals("\u221E", posInfString);
+
+		final String negInfString = evaluator.stringConvert(Double.NEGATIVE_INFINITY);
+		assertNotNull(negInfString);
+		assertEquals("-\u221E", negInfString);
+	}
+
+	@Test
+	void testBooleanConvertEdgeCases() {
+		final ExprEvaluator evaluator = new ExprEvaluator(EMPTY_MAP, EMPTY_MAP);
+
+		assertEquals(true, evaluator.booleanConvert(" "));
+		assertEquals(true, evaluator.booleanConvert("  "));
+		assertEquals(true, evaluator.booleanConvert("\t"));
+		assertEquals(true, evaluator.booleanConvert("\n"));
+
+		assertEquals(true, evaluator.booleanConvert("FALSE"));
+		assertEquals(true, evaluator.booleanConvert("False"));
+		assertEquals(true, evaluator.booleanConvert("TRUE"));
+		assertEquals(true, evaluator.booleanConvert("True"));
+
+		assertEquals(false, evaluator.booleanConvert(0.1));
+		assertEquals(false, evaluator.booleanConvert(-0.1));
+		assertEquals(false, evaluator.booleanConvert(0.9));
+		assertEquals(true, evaluator.booleanConvert(1.0));
+		assertEquals(true, evaluator.booleanConvert(1.5));
+		assertEquals(true, evaluator.booleanConvert(Long.MAX_VALUE));
+		assertEquals(true, evaluator.booleanConvert(Long.MIN_VALUE));
+
+		assertEquals(false, evaluator.booleanConvert(0.0));
+		assertEquals(false, evaluator.booleanConvert(-0.0));
+	}
 }
