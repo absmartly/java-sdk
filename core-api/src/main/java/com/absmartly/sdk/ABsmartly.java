@@ -93,31 +93,3 @@ public class ABsmartly implements Closeable {
 	private AudienceDeserializer audienceDeserializer_;
 	private ScheduledExecutorService scheduler_;
 }
-
-/**
- * @deprecated Use {@link ABsmartly} instead. The uppercase 'S' in ABSmartly is a typo.
- */
-@Deprecated
-public class ABSmartly extends ABsmartly {
-	public static ABSmartly create(@Nonnull ABSmartlyConfig config) {
-		return new ABSmartly(config);
-	}
-
-	public ABSmartly(@Nonnull ABSmartlyConfig config) {
-		super(config);
-	}
-}
-
-/**
- * @deprecated Use {@link ABsmartly} instead. The uppercase 'S' in ABSmartly is a typo.
- */
-@Deprecated
-public class ABSmartly extends ABsmartly {
-	public static ABSmartly create(@Nonnull ABSmartlyConfig config) {
-		return new ABSmartly(config);
-	}
-
-	public ABSmartly(@Nonnull ABSmartlyConfig config) {
-		super(config);
-	}
-}

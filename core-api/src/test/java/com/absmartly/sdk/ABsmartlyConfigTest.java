@@ -7,39 +7,39 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import org.junit.jupiter.api.Test;
 
-class ABSmartlyConfigTest extends TestUtils {
+class ABsmartlyConfigTest extends TestUtils {
 	@Test
 	void setContextDataProvider() {
 		final ContextDataProvider provider = mock(ContextDataProvider.class);
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setContextDataProvider(provider);
+		final ABsmartlyConfig config = ABsmartlyConfig.create().setContextDataProvider(provider);
 		assertSame(provider, config.getContextDataProvider());
 	}
 
 	@Test
 	void setContextEventHandler() {
 		final ContextEventHandler handler = mock(ContextEventHandler.class);
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setContextEventHandler(handler);
+		final ABsmartlyConfig config = ABsmartlyConfig.create().setContextEventHandler(handler);
 		assertSame(handler, config.getContextEventHandler());
 	}
 
 	@Test
 	void setVariableParser() {
 		final VariableParser variableParser = mock(VariableParser.class);
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setVariableParser(variableParser);
+		final ABsmartlyConfig config = ABsmartlyConfig.create().setVariableParser(variableParser);
 		assertSame(variableParser, config.getVariableParser());
 	}
 
 	@Test
 	void setScheduler() {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setScheduler(scheduler);
+		final ABsmartlyConfig config = ABsmartlyConfig.create().setScheduler(scheduler);
 		assertSame(scheduler, config.getScheduler());
 	}
 
 	@Test
 	void setContextEventLogger() {
 		final ContextEventLogger logger = mock(ContextEventLogger.class);
-		final ABSmartlyConfig config = ABSmartlyConfig.create().setContextEventLogger(logger);
+		final ABsmartlyConfig config = ABsmartlyConfig.create().setContextEventLogger(logger);
 		assertSame(logger, config.getContextEventLogger());
 	}
 
@@ -50,7 +50,7 @@ class ABSmartlyConfigTest extends TestUtils {
 		final VariableParser parser = mock(VariableParser.class);
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
 		final Client client = mock(Client.class);
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setVariableParser(parser)
 				.setContextDataProvider(provider)
 				.setContextEventHandler(handler)

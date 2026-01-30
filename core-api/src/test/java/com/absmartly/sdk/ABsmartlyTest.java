@@ -18,7 +18,7 @@ import org.mockito.Mockito;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
 
-class ABSmartlyTest extends TestUtils {
+class ABsmartlyTest extends TestUtils {
 	Client client;
 
 	@BeforeEach
@@ -28,25 +28,25 @@ class ABSmartlyTest extends TestUtils {
 
 	@Test
 	void create() {
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setClient(client);
 
-		final ABSmartly absmartly = ABSmartly.create(config);
+		final ABsmartly absmartly = ABsmartly.create(config);
 		assertNotNull(absmartly);
 	}
 
 	@Test
 	void createThrowsWithInvalidConfig() {
 		assertThrows(IllegalArgumentException.class, () -> {
-			final ABSmartlyConfig config = ABSmartlyConfig.create();
+			final ABsmartlyConfig config = ABsmartlyConfig.create();
 
-			final ABSmartly absmartly = ABSmartly.create(config);
+			final ABsmartly absmartly = ABsmartly.create(config);
 		}, "Missing Client instance configuration");
 	}
 
 	@Test
 	void createContext() {
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setClient(client);
 
 		final CompletableFuture<ContextData> dataFuture = (CompletableFuture<ContextData>) mock(
@@ -55,7 +55,7 @@ class ABSmartlyTest extends TestUtils {
 				DefaultContextDataProvider.class, (mock, context) -> {
 					when(mock.getContextData()).thenReturn(dataFuture);
 				})) {
-			final ABSmartly absmartly = ABSmartly.create(config);
+			final ABsmartly absmartly = ABsmartly.create(config);
 			assertEquals(1, dataProviderCtor.constructed().size());
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
@@ -107,13 +107,13 @@ class ABSmartlyTest extends TestUtils {
 
 	@Test
 	void createContextWith() {
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setClient(client);
 
 		final ContextData data = new ContextData();
 		try (final MockedConstruction<DefaultContextDataProvider> dataProviderCtor = mockConstruction(
 				DefaultContextDataProvider.class)) {
-			final ABSmartly absmartly = ABSmartly.create(config);
+			final ABsmartly absmartly = ABsmartly.create(config);
 			assertEquals(1, dataProviderCtor.constructed().size());
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
@@ -171,11 +171,11 @@ class ABSmartlyTest extends TestUtils {
 		final ContextDataProvider dataProvider = mock(ContextDataProvider.class);
 		when(dataProvider.getContextData()).thenReturn(dataFuture);
 
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setClient(client)
 				.setContextDataProvider(dataProvider);
 
-		final ABSmartly absmartly = ABSmartly.create(config);
+		final ABsmartly absmartly = ABsmartly.create(config);
 
 		final CompletableFuture<ContextData> contextDataFuture = absmartly.getContextData();
 		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
@@ -195,7 +195,7 @@ class ABSmartlyTest extends TestUtils {
 		final AudienceDeserializer audienceDeserializer = mock(AudienceDeserializer.class);
 		final VariableParser variableParser = mock(VariableParser.class);
 
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setClient(client)
 				.setContextDataProvider(dataProvider)
 				.setContextEventHandler(eventHandler)
@@ -204,7 +204,7 @@ class ABSmartlyTest extends TestUtils {
 				.setAudienceDeserializer(audienceDeserializer)
 				.setVariableParser(variableParser);
 
-		final ABSmartly absmartly = ABSmartly.create(config);
+		final ABsmartly absmartly = ABsmartly.create(config);
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class);
 				final MockedConstruction<AudienceMatcher> audienceMatcherCtor = mockConstruction(AudienceMatcher.class,
@@ -258,11 +258,11 @@ class ABSmartlyTest extends TestUtils {
 	void close() throws IOException, InterruptedException {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
 
-		final ABSmartlyConfig config = ABSmartlyConfig.create()
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setClient(client)
 				.setScheduler(scheduler);
 
-		final ABSmartly absmartly = ABSmartly.create(config);
+		final ABsmartly absmartly = ABsmartly.create(config);
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 			final Context contextMock = mock(Context.class);

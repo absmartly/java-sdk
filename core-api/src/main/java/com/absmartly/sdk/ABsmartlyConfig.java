@@ -4,18 +4,18 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import javax.annotation.Nonnull;
 
-public class ABSmartlyConfig {
-	public static ABSmartlyConfig create() {
-		return new ABSmartlyConfig();
+public class ABsmartlyConfig {
+	public static ABsmartlyConfig create() {
+		return new ABsmartlyConfig();
 	}
 
-	private ABSmartlyConfig() {}
+	protected ABsmartlyConfig() {}
 
 	public ContextDataProvider getContextDataProvider() {
 		return contextDataProvider_;
 	}
 
-	public ABSmartlyConfig setContextDataProvider(@Nonnull final ContextDataProvider contextDataProvider) {
+	public ABsmartlyConfig setContextDataProvider(@Nonnull final ContextDataProvider contextDataProvider) {
 		contextDataProvider_ = contextDataProvider;
 		return this;
 	}
@@ -24,7 +24,7 @@ public class ABSmartlyConfig {
 		return contextEventHandler_;
 	}
 
-	public ABSmartlyConfig setContextEventHandler(@Nonnull final ContextEventHandler contextEventHandler) {
+	public ABsmartlyConfig setContextEventHandler(@Nonnull final ContextEventHandler contextEventHandler) {
 		contextEventHandler_ = contextEventHandler;
 		return this;
 	}
@@ -33,7 +33,7 @@ public class ABSmartlyConfig {
 		return variableParser_;
 	}
 
-	public ABSmartlyConfig setVariableParser(@Nonnull final VariableParser variableParser) {
+	public ABsmartlyConfig setVariableParser(@Nonnull final VariableParser variableParser) {
 		variableParser_ = variableParser;
 		return this;
 	}
@@ -42,7 +42,7 @@ public class ABSmartlyConfig {
 		return scheduler_;
 	}
 
-	public ABSmartlyConfig setScheduler(@Nonnull final ScheduledExecutorService scheduler) {
+	public ABsmartlyConfig setScheduler(@Nonnull final ScheduledExecutorService scheduler) {
 		scheduler_ = scheduler;
 		return this;
 	}
@@ -51,7 +51,7 @@ public class ABSmartlyConfig {
 		return contextEventLogger_;
 	}
 
-	public ABSmartlyConfig setContextEventLogger(@Nonnull final ContextEventLogger logger) {
+	public ABsmartlyConfig setContextEventLogger(@Nonnull final ContextEventLogger logger) {
 		contextEventLogger_ = logger;
 		return this;
 	}
@@ -60,7 +60,7 @@ public class ABSmartlyConfig {
 		return audienceDeserializer_;
 	}
 
-	public ABSmartlyConfig setAudienceDeserializer(@Nonnull final AudienceDeserializer audienceDeserializer) {
+	public ABsmartlyConfig setAudienceDeserializer(@Nonnull final AudienceDeserializer audienceDeserializer) {
 		audienceDeserializer_ = audienceDeserializer;
 		return this;
 	}
@@ -69,7 +69,7 @@ public class ABSmartlyConfig {
 		return client_;
 	}
 
-	public ABSmartlyConfig setClient(Client client) {
+	public ABsmartlyConfig setClient(Client client) {
 		client_ = client;
 		return this;
 	}
