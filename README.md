@@ -583,17 +583,17 @@ public class MainActivity extends AppCompatActivity {
         final ContextConfig contextConfig = ContextConfig.create()
             .setUnit("device_id", deviceId);
 
-        absmartlyContext = sdk.createContext(contextConfig)
-            .waitUntilReadyAsync()
-            .thenApply(ctx -> {
+        final Context contextInstance = sdk.createContext(contextConfig);
+        absmartlyContext = contextInstance;
+
+        contextInstance.waitUntilReadyAsync()
+            .thenAccept(ctx -> {
                 runOnUiThread(() -> setupUI(ctx));
-                return ctx;
             })
             .exceptionally(throwable -> {
                 runOnUiThread(() -> setupUIWithDefault());
                 return null;
-            })
-            .join();
+            });
     }
 
     private void setupUI(Context context) {
@@ -619,7 +619,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String getDeviceId() {
-        // Retrieve or generate device ID
+        // IMPORTANT: Device ID must be persisted across app sessions in SharedPreferences
+        // to ensure consistent experiment assignments for the same user/device.
+        // This example uses a random UUID for demonstration purposes only.
         return UUID.randomUUID().toString();
     }
 }
@@ -722,6 +724,7 @@ import java8.util.concurrent.CompletableFuture;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static ABsmartly sdk; // Initialize SDK once (typically in Application class)
     private CompletableFuture<Context> contextFuture;
     private Context absmartlyContext;
 
