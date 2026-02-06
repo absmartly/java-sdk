@@ -84,13 +84,15 @@ class ABsmartlyTest extends TestUtils {
 				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
 						.forClass(AudienceMatcher.class);
 
-				contextStatic.verify(Mockito.timeout(5000).times(1),
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-				contextStatic.verify(Mockito.timeout(5000).times(1),
+				contextStatic.verify(
+						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()),
+						Mockito.times(1));
+				contextStatic.verify(
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
 								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
-								audienceMatcherCaptor.capture()));
+								audienceMatcherCaptor.capture()),
+						Mockito.times(1));
 
 				assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 				assertSame(contextConfig, configCaptor.getValue());
@@ -144,13 +146,15 @@ class ABsmartlyTest extends TestUtils {
 				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
 						.forClass(AudienceMatcher.class);
 
-				contextStatic.verify(Mockito.timeout(5000).times(1),
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-				contextStatic.verify(Mockito.timeout(5000).times(1),
+				contextStatic.verify(
+						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()),
+						Mockito.times(1));
+				contextStatic.verify(
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
 								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
-								audienceMatcherCaptor.capture()));
+								audienceMatcherCaptor.capture()),
+						Mockito.times(1));
 
 				assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 				assertSame(contextConfig, configCaptor.getValue());
@@ -235,12 +239,14 @@ class ABsmartlyTest extends TestUtils {
 			final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor.forClass(VariableParser.class);
 			final ArgumentCaptor<AudienceMatcher> audienceMatcher = ArgumentCaptor.forClass(AudienceMatcher.class);
 
-			contextStatic.verify(Mockito.timeout(5000).times(1),
-					() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-			contextStatic.verify(Mockito.timeout(5000).times(1),
+			contextStatic.verify(
+					() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()),
+					Mockito.times(1));
+			contextStatic.verify(
 					() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 							dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
-							eventLoggerCaptor.capture(), variableParserCaptor.capture(), audienceMatcher.capture()));
+							eventLoggerCaptor.capture(), variableParserCaptor.capture(), audienceMatcher.capture()),
+					Mockito.times(1));
 
 			assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 			assertSame(contextConfig, configCaptor.getValue());

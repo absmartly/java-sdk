@@ -360,7 +360,7 @@ class ContextTest extends TestUtils {
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setAttributes(mapOf("attr1", "value1")))
-								.getMessage());
+						.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
 		assertEquals(closingMessage,
@@ -375,7 +375,7 @@ class ContextTest extends TestUtils {
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
-								.getMessage());
+						.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
 		assertEquals(closingMessage,
@@ -416,7 +416,7 @@ class ContextTest extends TestUtils {
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setAttributes(mapOf("attr1", "value1")))
-								.getMessage());
+						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
 		assertEquals(closedMessage,
@@ -431,7 +431,7 @@ class ContextTest extends TestUtils {
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
-								.getMessage());
+						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
 		assertEquals(closedMessage,
@@ -473,10 +473,10 @@ class ContextTest extends TestUtils {
 		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
 		when(scheduler.scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
-						.thenAnswer(invokation -> {
-							runnable.set(invokation.getArgument(0));
-							return mock(ScheduledFuture.class);
-						});
+				.thenAnswer(invokation -> {
+					runnable.set(invokation.getArgument(0));
+					return mock(ScheduledFuture.class);
+				});
 
 		dataFuture.complete(data);
 		context.waitUntilReady();
@@ -1814,7 +1814,7 @@ class ContextTest extends TestUtils {
 		final ScheduledFuture refreshTimer = mock(ScheduledFuture.class);
 		when(scheduler.scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
-						.thenReturn(refreshTimer);
+				.thenReturn(refreshTimer);
 
 		final Context context = createContext(config, dataFutureReady);
 		assertTrue(context.isReady());
@@ -2202,5 +2202,467 @@ class ContextTest extends TestUtils {
 		assertNull(context.getCustomFieldValueType("exp_test_no_custom_fields", "overrides"));
 		assertNull(context.getCustomFieldValue("exp_test_no_custom_fields", "languages"));
 		assertNull(context.getCustomFieldValueType("exp_test_no_custom_fields", "languages"));
+	}
+
+	@Test
+	void getTreatmentQueuesExposureAfterPeek() {
+		final Context context = createReadyContext();
+
+		Arrays.stream(data.experiments).forEach(experiment -> context.peekTreatment(experiment.name));
+		context.peekTreatment("not_found");
+
+		assertEquals(0, context.getPendingCount());
+
+		Arrays.stream(data.experiments).forEach(experiment -> context.getTreatment(experiment.name));
+		context.getTreatment("not_found");
+
+		assertEquals(1 + data.experiments.length, context.getPendingCount());
+	}
+
+	@Test
+	void getTreatmentQueuesExposureWithBaseVariantOnUnknownExperiment() {
+		final Context context = createReadyContext();
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getTreatmentDoesNotReQueueExposureOnUnknownExperiment() {
+		final Context context = createReadyContext();
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(1, context.getPendingCount());
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void getTreatmentQueuesExposureWithCustomAssignmentVariant() {
+		final Context context = createReadyContext();
+
+		context.setCustomAssignment("exp_test_ab", 2);
+
+		assertEquals(2, context.getTreatment("exp_test_ab"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 2, clock.millis(), true, true, false, false, true, false),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getVariableValueReturnsDefaultValueWhenUnassigned() {
+		final Context context = createReadyContext();
+
+		assertEquals(17, context.getVariableValue("card.width", 17));
+	}
+
+	@Test
+	void getVariableValueReturnsDefaultValueOnUnknownVariable() {
+		final Context context = createReadyContext();
+
+		assertEquals("default", context.getVariableValue("unknown_variable", "default"));
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void getVariableValueReturnsVariableValuesWhenOverridden() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 0);
+
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+	}
+
+	@Test
+	void getVariableValueQueuesExposureAfterPeekVariableValue() {
+		final Context context = createReadyContext();
+
+		context.peekVariableValue("banner.border", 17);
+		context.peekVariableValue("banner.size", 17);
+
+		assertEquals(0, context.getPendingCount());
+
+		context.getVariableValue("banner.border", 17);
+		context.getVariableValue("banner.size", 17);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void getVariableValueQueuesExposureOnce() {
+		final Context context = createReadyContext();
+
+		context.getVariableValue("banner.border", 17);
+		context.getVariableValue("banner.size", 17);
+
+		assertEquals(1, context.getPendingCount());
+
+		context.getVariableValue("banner.border", 17);
+		context.getVariableValue("banner.size", 17);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void peekVariableValueReturnsDefaultValueWhenUnassigned() {
+		final Context context = createReadyContext();
+
+		assertEquals(17, context.peekVariableValue("card.width", 17));
+	}
+
+	@Test
+	void peekVariableValueReturnsVariableValuesWhenOverridden() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 0);
+
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+	}
+
+	@Test
+	void peekVariableValueReturnsDefaultValueOnUnknownOverrideVariant() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 15);
+
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+	}
+
+	@Test
+	void refreshKeepsOverrides() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 5);
+		assertEquals(5, context.getOverride("exp_test_ab"));
+
+		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
+
+		context.refresh();
+
+		assertEquals(5, context.getOverride("exp_test_ab"));
+		assertEquals(5, context.getTreatment("exp_test_ab"));
+	}
+
+	@Test
+	void refreshKeepsCustomAssignments() {
+		final Context context = createReadyContext();
+
+		context.setCustomAssignment("exp_test_ab", 2);
+		assertEquals(2, context.getCustomAssignment("exp_test_ab"));
+
+		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
+
+		context.refresh();
+
+		assertEquals(2, context.getCustomAssignment("exp_test_ab"));
+		assertEquals(2, context.getTreatment("exp_test_ab"));
+	}
+
+	@Test
+	void refreshDoesNotCallPublishWhenFailed() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isReady());
+		assertTrue(context.isFailed());
+
+		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
+
+		context.refresh();
+
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
+	}
+
+	@Test
+	void publishIncludesExposureData() {
+		final Context context = createReadyContext();
+
+		context.getTreatment("exp_test_ab");
+
+		assertEquals(1, context.getPendingCount());
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+		};
+
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void publishIncludesGoalData() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
+
+		assertEquals(1, context.getPendingCount());
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.goals = new GoalAchievement[]{
+				new GoalAchievement("goal1", clock.millis(), new TreeMap<>(mapOf("amount", 125, "hours", 245))),
+		};
+
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void publishIncludesAttributeData() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setAttributes(mapOf("attr1", "value1"));
+
+		final Context context = createContext(config, dataFutureReady);
+
+		context.track("goal1", null);
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.goals = new GoalAchievement[]{
+				new GoalAchievement("goal1", clock.millis(), null),
+		};
+		expected.attributes = new Attribute[]{
+				new Attribute("attr1", "value1", clock.millis()),
+		};
+
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void publishClearsQueueOnSuccess() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void publishPropagatesClientErrorOnFailure() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		final Exception failure = new Exception("publish error");
+		when(eventHandler.publish(any(), any())).thenReturn(failedFuture(failure));
+
+		final CompletionException actual = assertThrows(CompletionException.class, context::publish);
+		assertSame(failure, actual.getCause());
+	}
+
+	@Test
+	void closeDoesNotCallEventHandlerWhenQueueIsEmpty() {
+		final Context context = createReadyContext();
+		assertEquals(0, context.getPendingCount());
+
+		context.close();
+
+		assertTrue(context.isClosed());
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
+	}
+
+	@Test
+	void closeCallsEventHandlerWithPendingData() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.close();
+
+		assertTrue(context.isClosed());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+	}
+
+	@Test
+	void closeDoesNotCallEventHandlerWhenFailed() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isReady());
+		assertTrue(context.isFailed());
+
+		context.getTreatment("exp_test_abc");
+		context.track("goal1", mapOf("amount", 125));
+
+		context.close();
+
+		assertTrue(context.isClosed());
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
+	}
+
+	@Test
+	void closeAsyncReturnsSameFutureWhenCalledTwice() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> closeFuture1 = context.closeAsync();
+		final CompletableFuture<Void> closeFuture2 = context.closeAsync();
+
+		assertSame(closeFuture1, closeFuture2);
+
+		publishFuture.complete(null);
+		closeFuture1.join();
+
+		assertTrue(context.isClosed());
+	}
+
+	@Test
+	void closeAsyncReturnsCompletedFutureWhenAlreadyClosed() {
+		final Context context = createReadyContext();
+
+		context.close();
+		assertTrue(context.isClosed());
+
+		final CompletableFuture<Void> closeFuture = context.closeAsync();
+		assertTrue(closeFuture.isDone());
+	}
+
+	@Test
+	void trackQueuesGoalWithProperties() {
+		final Context context = createReadyContext();
+
+		final Map<String, Object> properties = mapOf("amount", 125, "hours", 245);
+		context.track("goal1", properties);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void trackQueuesGoalWithNullProperties() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", null);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void getVariableValueConflictingKeyOverlappingAudiences() {
+		for (final Experiment experiment : data.experiments) {
+			switch (experiment.name) {
+			case "exp_test_ab":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"arrow\"}";
+				break;
+			case "exp_test_abc":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			default:
+				break;
+			}
+		}
+
+		final Context context = createReadyContext(data);
+		context.setAttribute("age", 25);
+		assertEquals("arrow", context.getVariableValue("icon", "square"));
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void peekVariableValueConflictingKeyOverlappingAudiences() {
+		for (final Experiment experiment : data.experiments) {
+			switch (experiment.name) {
+			case "exp_test_ab":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"arrow\"}";
+				break;
+			case "exp_test_abc":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			default:
+				break;
+			}
+		}
+
+		final Context context = createReadyContext(data);
+		context.setAttribute("age", 25);
+		assertEquals("arrow", context.peekVariableValue("icon", "square"));
+		assertEquals(0, context.getPendingCount());
 	}
 }

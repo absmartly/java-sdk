@@ -88,8 +88,8 @@ class DefaultContextDataProviderTest extends TestUtils {
 		final Client client = mock(Client.class);
 		final ContextDataProvider provider = new DefaultContextDataProvider(client);
 
-		final java.util.concurrent.TimeoutException timeoutException =
-				new java.util.concurrent.TimeoutException("Request timed out");
+		final java.util.concurrent.TimeoutException timeoutException = new java.util.concurrent.TimeoutException(
+				"Request timed out");
 		final CompletableFuture<ContextData> failedFuture = failedFuture(timeoutException);
 		when(client.getContextData()).thenReturn(failedFuture);
 

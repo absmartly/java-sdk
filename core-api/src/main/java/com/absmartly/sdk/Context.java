@@ -764,7 +764,8 @@ public class Context implements Closeable {
 						return assignment;
 					}
 				} else if ((custom == null) || custom == assignment.variant) {
-					if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
+					if (experimentMatches(experiment.data, assignment)
+							&& audienceMatches(experiment.data, assignment)) {
 						// assignment up-to-date
 						return assignment;
 					}
@@ -854,7 +855,8 @@ public class Context implements Closeable {
 				}
 			}
 
-			if ((experiment != null) && assignment.variant >= 0 && (assignment.variant < experiment.data.variants.length)) {
+			if ((experiment != null) && assignment.variant >= 0
+					&& (assignment.variant < experiment.data.variants.length)) {
 				assignment.variables = experiment.variables.get(assignment.variant);
 			}
 

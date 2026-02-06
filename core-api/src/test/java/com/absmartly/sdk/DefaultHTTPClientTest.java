@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
 
@@ -401,8 +400,8 @@ class DefaultHTTPClientTest extends TestUtils {
 
 			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
 
-			final javax.net.ssl.SSLHandshakeException sslException =
-					new javax.net.ssl.SSLHandshakeException("Certificate validation failed");
+			final javax.net.ssl.SSLHandshakeException sslException = new javax.net.ssl.SSLHandshakeException(
+					"Certificate validation failed");
 			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
 				final FutureCallback<SimpleHttpResponse> callback = invocation.getArgument(1);
 				callback.failed(sslException);
