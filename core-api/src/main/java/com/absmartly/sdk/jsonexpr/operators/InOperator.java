@@ -10,7 +10,8 @@ public class InOperator extends BinaryOperator {
 	public Object binary(Evaluator evaluator, Object haystack, Object needle) {
 		if (haystack instanceof List) {
 			for (final Object item : (List<Object>) haystack) {
-				if (evaluator.compare(item, needle) == 0) {
+				final Integer cmp = evaluator.compare(item, needle);
+				if (cmp != null && cmp == 0) {
 					return true;
 				}
 			}

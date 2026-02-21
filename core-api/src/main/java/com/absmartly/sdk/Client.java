@@ -31,6 +31,16 @@ public class Client implements Closeable {
 			throw new IllegalArgumentException("Missing Endpoint configuration");
 		}
 
+		if (!endpoint.startsWith("https://")) {
+			if (endpoint.startsWith("http://")) {
+				System.err.println(
+						"WARNING: ABSmartly SDK endpoint is not using HTTPS. API keys will be transmitted in plaintext: "
+								+ endpoint);
+			} else {
+				throw new IllegalArgumentException("Endpoint must use http:// or https:// protocol: " + endpoint);
+			}
+		}
+
 		final String apiKey = config.getAPIKey();
 		if ((apiKey == null) || apiKey.isEmpty()) {
 			throw new IllegalArgumentException("Missing APIKey configuration");
@@ -86,8 +96,13 @@ public class Client implements Closeable {
 								final int code = response.getStatusCode();
 								if ((code / 100) == 2) {
 									final byte[] content = response.getContent();
-									dataFuture.complete(
-											deserializer_.deserialize(response.getContent(), 0, content.length));
+									if (content == null || content.length == 0) {
+										dataFuture.completeExceptionally(new IllegalStateException(
+												"Empty response body from context data endpoint"));
+									} else {
+										dataFuture.complete(
+												deserializer_.deserialize(content, 0, content.length));
+									}
 								} else {
 									dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
 								}

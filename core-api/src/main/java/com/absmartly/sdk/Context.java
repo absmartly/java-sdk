@@ -7,6 +7,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java8.util.concurrent.CompletableFuture;
@@ -17,6 +18,9 @@ import java8.util.function.Function;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.absmartly.sdk.internal.Algorithm;
 import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.VariantAssigner;
@@ -26,6 +30,8 @@ import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.*;
 
 public class Context implements Closeable {
+	private static final Logger log = LoggerFactory.getLogger(Context.class);
+
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
@@ -87,13 +93,16 @@ public class Context implements Closeable {
 				}
 			});
 		} else {
-			readyFuture_ = new CompletableFuture<Void>();
+			final CompletableFuture<Void> newReadyFuture = new CompletableFuture<Void>();
+			readyFuture_.set(newReadyFuture);
 			dataFuture.thenAccept(new Consumer<ContextData>() {
 				@Override
 				public void accept(ContextData data) {
 					Context.this.setData(data);
-					readyFuture_.complete(null);
-					readyFuture_ = null;
+					final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
+					if (rf != null) {
+						rf.complete(null);
+					}
 
 					Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
 
@@ -105,8 +114,10 @@ public class Context implements Closeable {
 				@Override
 				public Void apply(Throwable exception) {
 					Context.this.setDataFailed(exception);
-					readyFuture_.complete(null);
-					readyFuture_ = null;
+					final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
+					if (rf != null) {
+						rf.complete(null);
+					}
 
 					Context.this.logError(exception);
 
@@ -136,18 +147,22 @@ public class Context implements Closeable {
 		if (data_ != null) {
 			return CompletableFuture.completedFuture(this);
 		} else {
-			return readyFuture_.thenApply(new Function<Void, Context>() {
-				@Override
-				public Context apply(Void k) {
-					return Context.this;
-				}
-			});
+			final CompletableFuture<Void> rf = readyFuture_.get();
+			if (rf != null) {
+				return rf.thenApply(new Function<Void, Context>() {
+					@Override
+					public Context apply(Void k) {
+						return Context.this;
+					}
+				});
+			}
+			return CompletableFuture.completedFuture(this);
 		}
 	}
 
 	public Context waitUntilReady() {
 		if (data_ == null) {
-			final CompletableFuture<Void> future = readyFuture_; // cache here to avoid locking
+			final CompletableFuture<Void> future = readyFuture_.get(); // cache here to avoid locking
 			if (future != null && !future.isDone()) {
 				future.join();
 			}
@@ -508,14 +523,15 @@ public class Context implements Closeable {
 		checkNotClosed();
 
 		if (refreshing_.compareAndSet(false, true)) {
-			refreshFuture_ = new CompletableFuture<Void>();
+			final CompletableFuture<Void> newRefreshFuture = new CompletableFuture<Void>();
+			refreshFuture_.set(newRefreshFuture);
 
 			dataProvider_.getContextData().thenAccept(new Consumer<ContextData>() {
 				@Override
 				public void accept(ContextData data) {
 					Context.this.setData(data);
 					refreshing_.set(false);
-					refreshFuture_.complete(null);
+					newRefreshFuture.complete(null);
 
 					Context.this.logEvent(ContextEventLogger.EventType.Refresh, data);
 				}
@@ -523,7 +539,7 @@ public class Context implements Closeable {
 				@Override
 				public Void apply(Throwable exception) {
 					refreshing_.set(false);
-					refreshFuture_.completeExceptionally(exception);
+					newRefreshFuture.completeExceptionally(exception);
 
 					Context.this.logError(exception);
 					return null;
@@ -531,7 +547,7 @@ public class Context implements Closeable {
 			});
 		}
 
-		final CompletableFuture<Void> future = refreshFuture_;
+		final CompletableFuture<Void> future = refreshFuture_.get();
 		if (future != null) {
 			return future;
 		}
@@ -549,14 +565,15 @@ public class Context implements Closeable {
 				clearRefreshTimer();
 
 				if (pendingCount_.get() > 0) {
-					closingFuture_ = new CompletableFuture<Void>();
+					final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
+					closingFuture_.set(newClosingFuture);
 
 					flush().thenAccept(new Consumer<Void>() {
 						@Override
 						public void accept(Void x) {
 							closed_.set(true);
 							closing_.set(false);
-							closingFuture_.complete(null);
+							newClosingFuture.complete(null);
 
 							Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 						}
@@ -565,14 +582,13 @@ public class Context implements Closeable {
 						public Void apply(Throwable exception) {
 							closed_.set(true);
 							closing_.set(false);
-							closingFuture_.completeExceptionally(exception);
-							// event logger gets this error during publish
+							newClosingFuture.completeExceptionally(exception);
 
 							return null;
 						}
 					});
 
-					return closingFuture_;
+					return newClosingFuture;
 				} else {
 					closed_.set(true);
 					closing_.set(false);
@@ -581,7 +597,7 @@ public class Context implements Closeable {
 				}
 			}
 
-			final CompletableFuture<Void> future = closingFuture_;
+			final CompletableFuture<Void> future = closingFuture_.get();
 			if (future != null) {
 				return future;
 			}
@@ -629,16 +645,22 @@ public class Context implements Closeable {
 					final PublishEvent event = new PublishEvent();
 					event.hashed = true;
 					event.publishedAt = clock_.millis();
-					event.units = Algorithm.mapSetToArray(units_.entrySet(), new Unit[0],
-							new Function<Map.Entry<String, String>, Unit>() {
-								@Override
-								public Unit apply(Map.Entry<String, String> entry) {
-									return new Unit(entry.getKey(),
-											new String(getUnitHash(entry.getKey(), entry.getValue()),
-													StandardCharsets.US_ASCII));
-								}
-							});
-					event.attributes = attributes_.isEmpty() ? null : attributes_.toArray(new Attribute[0]);
+
+					try {
+						contextLock_.writeLock().lock();
+						event.units = Algorithm.mapSetToArray(units_.entrySet(), new Unit[0],
+								new Function<Map.Entry<String, String>, Unit>() {
+									@Override
+									public Unit apply(Map.Entry<String, String> entry) {
+										return new Unit(entry.getKey(),
+												new String(getUnitHash(entry.getKey(), entry.getValue()),
+														StandardCharsets.US_ASCII));
+									}
+								});
+						event.attributes = attributes_.isEmpty() ? null : attributes_.toArray(new Attribute[0]);
+					} finally {
+						contextLock_.writeLock().unlock();
+					}
 					event.exposures = exposures;
 					event.goals = achievements;
 
@@ -695,7 +717,7 @@ public class Context implements Closeable {
 
 	private boolean experimentMatches(final Experiment experiment, final Assignment assignment) {
 		return experiment.id == assignment.id &&
-				experiment.unitType.equals(assignment.unitType) &&
+				(experiment.unitType != null && experiment.unitType.equals(assignment.unitType)) &&
 				experiment.iteration == assignment.iteration &&
 				experiment.fullOnVariant == assignment.fullOnVariant &&
 				Arrays.equals(experiment.trafficSplit, assignment.trafficSplit);
@@ -704,10 +726,7 @@ public class Context implements Closeable {
 	private boolean audienceMatches(final Experiment experiment, final Assignment assignment) {
 		if (experiment.audience != null && experiment.audience.length() > 0) {
 			if (attrsSeq_.get() > assignment.attrsSeq) {
-				final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
-				for (final Attribute attr : attributes_) {
-					attrs.put(attr.name, attr.value);
-				}
+				final Map<String, Object> attrs = buildAttributesMap();
 
 				final AudienceMatcher.Result match = audienceMatcher_.evaluate(experiment.audience, attrs);
 				final boolean newAudienceMismatch = (match != null) ? !match.get() : false;
@@ -801,10 +820,7 @@ public class Context implements Closeable {
 					final String unitType = experiment.data.unitType;
 
 					if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
-						final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
-						for (final Attribute attr : attributes_) {
-							attrs.put(attr.name, attr.value);
-						}
+						final Map<String, Object> attrs = buildAttributesMap();
 
 						final AudienceMatcher.Result match = audienceMatcher_
 								.evaluate(experiment.data.audience, attrs);
@@ -923,7 +939,13 @@ public class Context implements Closeable {
 						timeout_ = scheduler_.schedule(new Runnable() {
 							@Override
 							public void run() {
-								Context.this.flush();
+								Context.this.flush().exceptionally(new Function<Throwable, Void>() {
+									@Override
+									public Void apply(Throwable exception) {
+										Context.this.logError(exception);
+										return null;
+									}
+								});
 							}
 						}, publishDelay_, TimeUnit.MILLISECONDS);
 					}
@@ -978,6 +1000,10 @@ public class Context implements Closeable {
 	}
 
 	private void setData(final ContextData data) {
+		if (data == null) {
+			throw new IllegalArgumentException("Context data cannot be null");
+		}
+
 		final Map<String, ContextExperiment> index = new HashMap<String, ContextExperiment>();
 		final Map<String, List<ContextExperiment>> indexVariables = new HashMap<String, List<ContextExperiment>>();
 
@@ -988,30 +1014,40 @@ public class Context implements Closeable {
 
 			for (final ExperimentVariant variant : experiment.variants) {
 				if ((variant.config != null) && !variant.config.isEmpty()) {
-					final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
-							variant.config);
-					for (final String key : variables.keySet()) {
-						List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
-						if (keyExperimentVariables == null) {
-							keyExperimentVariables = new ArrayList<ContextExperiment>();
-							indexVariables.put(key, keyExperimentVariables);
-						}
+					try {
+						final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
+								variant.config);
+						if (variables != null) {
+							for (final String key : variables.keySet()) {
+								List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
+								if (keyExperimentVariables == null) {
+									keyExperimentVariables = new ArrayList<ContextExperiment>();
+									indexVariables.put(key, keyExperimentVariables);
+								}
 
-						int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
-								new Comparator<ContextExperiment>() {
-									@Override
-									public int compare(ContextExperiment a, ContextExperiment b) {
-										return Integer.valueOf(a.data.id).compareTo(b.data.id);
-									}
-								});
+								int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
+										new Comparator<ContextExperiment>() {
+											@Override
+											public int compare(ContextExperiment a, ContextExperiment b) {
+												return Integer.valueOf(a.data.id).compareTo(b.data.id);
+											}
+										});
 
-						if (at < 0) {
-							at = -at - 1;
-							keyExperimentVariables.add(at, contextExperiment);
+								if (at < 0) {
+									at = -at - 1;
+									keyExperimentVariables.add(at, contextExperiment);
+								}
+							}
+
+							contextExperiment.variables.add(variables);
+						} else {
+							contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 						}
+					} catch (Exception e) {
+						log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
+								experiment.name, variant.name, e.getMessage());
+						contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 					}
-
-					contextExperiment.variables.add(variables);
 				} else {
 					contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 				}
@@ -1025,13 +1061,24 @@ public class Context implements Closeable {
 
 					value.type = customFieldValue.getType();
 					if (customFieldValue.getValue() != null) {
-						if (customFieldValue.getType().startsWith("json")) {
-							value.value = variableParser_.parse(this, experiment.name, customFieldValue.getValue());
-						} else if (customFieldValue.getType().equals("boolean")) {
-							value.value = Boolean.parseBoolean(customFieldValue.getValue());
-						} else if (customFieldValue.getType().equals("number")) {
-							value.value = Double.parseDouble(customFieldValue.getValue());
-						} else {
+						try {
+							final String type = customFieldValue.getType();
+							if (type != null && type.startsWith("json")) {
+								value.value = variableParser_.parse(this, experiment.name, customFieldValue.getValue());
+							} else if (type != null && type.equals("boolean")) {
+								value.value = Boolean.parseBoolean(customFieldValue.getValue());
+							} else if (type != null && type.equals("number")) {
+								value.value = Double.parseDouble(customFieldValue.getValue());
+							} else {
+								value.value = customFieldValue.getValue();
+							}
+						} catch (NumberFormatException e) {
+							log.warn("Failed to parse custom field number value for experiment '{}': {}",
+									experiment.name, e.getMessage());
+							value.value = customFieldValue.getValue();
+						} catch (Exception e) {
+							log.warn("Failed to parse custom field value for experiment '{}': {}", experiment.name,
+									e.getMessage());
 							value.value = customFieldValue.getValue();
 						}
 					}
@@ -1081,6 +1128,14 @@ public class Context implements Closeable {
 		}
 	}
 
+	private Map<String, Object> buildAttributesMap() {
+		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
+		for (final Attribute attr : attributes_) {
+			attrs.put(attr.name, attr.value);
+		}
+		return attrs;
+	}
+
 	private final Clock clock_;
 	private final long publishDelay_;
 	private final long refreshInterval_;
@@ -1091,10 +1146,10 @@ public class Context implements Closeable {
 	private final AudienceMatcher audienceMatcher_;
 	private final ScheduledExecutorService scheduler_;
 	private final Map<String, String> units_;
-	private boolean failed_;
+	private volatile boolean failed_;
 
 	private final ReentrantReadWriteLock dataLock_ = new ReentrantReadWriteLock();
-	private ContextData data_;
+	private volatile ContextData data_;
 	private Map<String, ContextExperiment> index_;
 	private Map<String, List<ContextExperiment>> indexVariables_;
 	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
@@ -1117,9 +1172,10 @@ public class Context implements Closeable {
 	private final AtomicBoolean closed_ = new AtomicBoolean(false);
 	private final AtomicBoolean refreshing_ = new AtomicBoolean(false);
 
-	private volatile CompletableFuture<Void> readyFuture_;
-	private volatile CompletableFuture<Void> closingFuture_;
-	private volatile CompletableFuture<Void> refreshFuture_;
+	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
+	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
 
 	private final ReentrantLock timeoutLock_ = new ReentrantLock();
 	private volatile ScheduledFuture<?> timeout_ = null;

@@ -25,6 +25,9 @@ public class AudienceMatcher {
 	}
 
 	public Result evaluate(String audience, Map<String, Object> attributes) {
+		if (audience == null || audience.isEmpty()) {
+			return null;
+		}
 		final byte[] bytes = audience.getBytes(StandardCharsets.UTF_8);
 		final Map<String, Object> audienceMap = deserializer_.deserialize(bytes, 0, bytes.length);
 		if (audienceMap != null) {

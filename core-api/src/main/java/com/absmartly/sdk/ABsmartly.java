@@ -77,9 +77,15 @@ public class ABsmartly implements Closeable {
 		}
 
 		if (scheduler_ != null) {
+			scheduler_.shutdown();
 			try {
-				scheduler_.awaitTermination(5000, TimeUnit.MILLISECONDS);
-			} catch (InterruptedException ignored) {}
+				if (!scheduler_.awaitTermination(5000, TimeUnit.MILLISECONDS)) {
+					scheduler_.shutdownNow();
+				}
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				scheduler_.shutdownNow();
+			}
 			scheduler_ = null;
 		}
 	}

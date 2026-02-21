@@ -6,7 +6,12 @@ import java.text.DecimalFormat;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class ExprEvaluator implements Evaluator {
+	private static final Logger log = LoggerFactory.getLogger(ExprEvaluator.class);
+
 	final static ThreadLocal<DecimalFormat> formatter = new ThreadLocal<DecimalFormat>() {
 		@Override
 		public DecimalFormat initialValue() {
@@ -34,6 +39,10 @@ public class ExprEvaluator implements Evaluator {
 				final Operator op = operators.get(entry.getKey());
 				if (op != null) {
 					return op.evaluate(this, entry.getValue());
+				} else {
+					log.warn(
+							"Unknown operator in audience expression: '{}'. This may be a forward compatibility issue with newer server versions.",
+							entry.getKey());
 				}
 				break;
 			}
@@ -63,7 +72,7 @@ public class ExprEvaluator implements Evaluator {
 		} else if (x instanceof String) {
 			try {
 				return Double.parseDouble((String) x); // use javascript semantics: numbers are doubles
-			} catch (Throwable ignored) {}
+			} catch (NumberFormatException ignored) {}
 		}
 
 		return null;
@@ -93,7 +102,7 @@ public class ExprEvaluator implements Evaluator {
 				final List<Object> list = (List<Object>) target;
 				try {
 					value = list.get(Integer.parseInt(frag));
-				} catch (Throwable ignored) {}
+				} catch (NumberFormatException ignored) {} catch (IndexOutOfBoundsException ignored) {}
 			} else if (target instanceof Map) {
 				final Map<String, Object> map = (Map<String, Object>) target;
 				value = map.get(frag);
