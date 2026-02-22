@@ -7,7 +7,7 @@ import com.absmartly.sdk.jsonexpr.Evaluator;
 
 public class InOperator extends BinaryOperator {
 	@Override
-	public Object binary(Evaluator evaluator, Object haystack, Object needle) {
+	public Object binary(Evaluator evaluator, Object needle, Object haystack) {
 		if (haystack instanceof List) {
 			for (final Object item : (List<Object>) haystack) {
 				final Integer cmp = evaluator.compare(item, needle);
