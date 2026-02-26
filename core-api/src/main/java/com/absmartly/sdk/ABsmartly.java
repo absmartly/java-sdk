@@ -17,6 +17,20 @@ public class ABsmartly implements Closeable {
 		return new ABsmartly(config);
 	}
 
+	public static ABsmartly create(@Nonnull String endpoint, @Nonnull String apiKey,
+			@Nonnull String application, @Nonnull String environment) {
+		final ClientConfig clientConfig = ClientConfig.create()
+				.setEndpoint(endpoint)
+				.setAPIKey(apiKey)
+				.setApplication(application)
+				.setEnvironment(environment);
+
+		final ABsmartlyConfig config = ABsmartlyConfig.create()
+				.setClient(Client.create(clientConfig));
+
+		return create(config);
+	}
+
 	protected ABsmartly(@Nonnull ABsmartlyConfig config) {
 		contextDataProvider_ = config.getContextDataProvider();
 		contextEventHandler_ = config.getContextEventHandler();

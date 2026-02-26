@@ -63,38 +63,19 @@ Please follow the [installation](#installation) instructions before trying the f
 
 This example assumes an Api Key, an Application, and an Environment have been created in the A/B Smartly web console.
 
-#### Recommended: Builder Pattern
+#### Quickstart
 
 ```java
 import com.absmartly.sdk.*;
 
-public class Example {
-    static public void main(String[] args) {
-        final ABsmartly sdk = ABsmartly.builder()
-            .endpoint("https://your-company.absmartly.io/v1")
-            .apiKey("YOUR-API-KEY")
-            .application("website")
-            .environment("development")
-            .build();
-        // ...
-    }
-}
+final ABsmartly sdk = ABsmartly.create(
+    "https://your-company.absmartly.io/v1",
+    System.getenv("ABSMARTLY_APIKEY"),
+    "website",
+    "production");
 ```
 
-The builder pattern provides a clean, fluent API with named parameters. This is the recommended approach for initializing the SDK.
-
-#### With Optional Parameters
-
-```java
-final ABsmartly sdk = ABsmartly.builder()
-    .endpoint("https://your-company.absmartly.io/v1")
-    .apiKey("YOUR-API-KEY")
-    .application("website")
-    .environment("development")
-    .timeout(5000)      // connection timeout in milliseconds
-    .retries(3)          // max retry attempts
-    .build();
-```
+This convenience factory accepts `endpoint`, `apiKey`, `application`, and `environment` directly, removing the need to configure `ClientConfig` and `ABsmartlyConfig` manually.
 
 #### Advanced Configuration
 

@@ -45,6 +45,28 @@ class ABsmartlyTest extends TestUtils {
 	}
 
 	@Test
+	void createWithConnectionParams() {
+		try (final MockedStatic<Client> clientStatic = mockStatic(Client.class);
+				final MockedConstruction<DefaultContextDataProvider> dataProviderCtor = mockConstruction(
+						DefaultContextDataProvider.class)) {
+			clientStatic.when(() -> Client.create(any(ClientConfig.class))).thenReturn(client);
+
+			final ABsmartly absmartly = ABsmartly.create("https://test.absmartly.io/v1", "test-api-key", "website",
+					"production");
+			assertNotNull(absmartly);
+
+			final ArgumentCaptor<ClientConfig> clientConfigCaptor = ArgumentCaptor.forClass(ClientConfig.class);
+			clientStatic.verify(() -> Client.create(clientConfigCaptor.capture()), Mockito.times(1));
+
+			final ClientConfig capturedClientConfig = clientConfigCaptor.getValue();
+			assertEquals("https://test.absmartly.io/v1", capturedClientConfig.getEndpoint());
+			assertEquals("test-api-key", capturedClientConfig.getAPIKey());
+			assertEquals("website", capturedClientConfig.getApplication());
+			assertEquals("production", capturedClientConfig.getEnvironment());
+		}
+	}
+
+	@Test
 	void createContext() {
 		final ABsmartlyConfig config = ABsmartlyConfig.create()
 				.setClient(client);
