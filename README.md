@@ -68,14 +68,15 @@ This example assumes an Api Key, an Application, and an Environment have been cr
 ```java
 import com.absmartly.sdk.*;
 
-final ABsmartly sdk = ABsmartly.create(
-    "https://your-company.absmartly.io/v1",
-    System.getenv("ABSMARTLY_APIKEY"),
-    "website",
-    "production");
+final ABsmartly sdk = ABsmartly.builder()
+    .endpoint("https://your-company.absmartly.io/v1")
+    .apiKey(System.getenv("ABSMARTLY_APIKEY"))
+    .application("website")
+    .environment("production")
+    .build();
 ```
 
-This convenience factory accepts `endpoint`, `apiKey`, `application`, and `environment` directly, removing the need to configure `ClientConfig` and `ABsmartlyConfig` manually.
+The builder pattern lets you configure the SDK with named parameters, removing the need to configure `ClientConfig` and `ABsmartlyConfig` manually.
 
 #### Advanced Configuration
 

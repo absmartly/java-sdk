@@ -45,14 +45,18 @@ class ABsmartlyTest extends TestUtils {
 	}
 
 	@Test
-	void createWithConnectionParams() {
+	void builderCreatesWithConnectionParams() {
 		try (final MockedStatic<Client> clientStatic = mockStatic(Client.class);
 				final MockedConstruction<DefaultContextDataProvider> dataProviderCtor = mockConstruction(
 						DefaultContextDataProvider.class)) {
 			clientStatic.when(() -> Client.create(any(ClientConfig.class))).thenReturn(client);
 
-			final ABsmartly absmartly = ABsmartly.create("https://test.absmartly.io/v1", "test-api-key", "website",
-					"production");
+			final ABsmartly absmartly = ABsmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.apiKey("test-api-key")
+					.application("website")
+					.environment("production")
+					.build();
 			assertNotNull(absmartly);
 
 			final ArgumentCaptor<ClientConfig> clientConfigCaptor = ArgumentCaptor.forClass(ClientConfig.class);
@@ -64,6 +68,50 @@ class ABsmartlyTest extends TestUtils {
 			assertEquals("website", capturedClientConfig.getApplication());
 			assertEquals("production", capturedClientConfig.getEnvironment());
 		}
+	}
+
+	@Test
+	void builderThrowsWithMissingEndpoint() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABsmartly.builder()
+					.apiKey("test-api-key")
+					.application("website")
+					.environment("production")
+					.build();
+		});
+	}
+
+	@Test
+	void builderThrowsWithMissingApiKey() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABsmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.application("website")
+					.environment("production")
+					.build();
+		});
+	}
+
+	@Test
+	void builderThrowsWithMissingApplication() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABsmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.apiKey("test-api-key")
+					.environment("production")
+					.build();
+		});
+	}
+
+	@Test
+	void builderThrowsWithMissingEnvironment() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABsmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.apiKey("test-api-key")
+					.application("website")
+					.build();
+		});
 	}
 
 	@Test

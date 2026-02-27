@@ -17,18 +17,65 @@ public class ABsmartly implements Closeable {
 		return new ABsmartly(config);
 	}
 
-	public static ABsmartly create(@Nonnull String endpoint, @Nonnull String apiKey,
-			@Nonnull String application, @Nonnull String environment) {
-		final ClientConfig clientConfig = ClientConfig.create()
-				.setEndpoint(endpoint)
-				.setAPIKey(apiKey)
-				.setApplication(application)
-				.setEnvironment(environment);
+	public static Builder builder() {
+		return new Builder();
+	}
 
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
-				.setClient(Client.create(clientConfig));
+	public static class Builder {
+		private String endpoint;
+		private String apiKey;
+		private String application;
+		private String environment;
+		private ContextEventLogger eventLogger;
 
-		return create(config);
+		Builder() {}
+
+		public Builder endpoint(@Nonnull String endpoint) {
+			this.endpoint = endpoint;
+			return this;
+		}
+
+		public Builder apiKey(@Nonnull String apiKey) {
+			this.apiKey = apiKey;
+			return this;
+		}
+
+		public Builder application(@Nonnull String application) {
+			this.application = application;
+			return this;
+		}
+
+		public Builder environment(@Nonnull String environment) {
+			this.environment = environment;
+			return this;
+		}
+
+		public Builder eventLogger(@Nonnull ContextEventLogger eventLogger) {
+			this.eventLogger = eventLogger;
+			return this;
+		}
+
+		public ABsmartly build() {
+			if (endpoint == null) throw new IllegalArgumentException("endpoint is required");
+			if (apiKey == null) throw new IllegalArgumentException("apiKey is required");
+			if (application == null) throw new IllegalArgumentException("application is required");
+			if (environment == null) throw new IllegalArgumentException("environment is required");
+
+			final ClientConfig clientConfig = ClientConfig.create()
+					.setEndpoint(endpoint)
+					.setAPIKey(apiKey)
+					.setApplication(application)
+					.setEnvironment(environment);
+
+			final ABsmartlyConfig config = ABsmartlyConfig.create()
+					.setClient(Client.create(clientConfig));
+
+			if (eventLogger != null) {
+				config.setContextEventLogger(eventLogger);
+			}
+
+			return create(config);
+		}
 	}
 
 	protected ABsmartly(@Nonnull ABsmartlyConfig config) {
