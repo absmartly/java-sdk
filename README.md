@@ -78,9 +78,9 @@ final ABsmartly sdk = ABsmartly.builder()
 
 The builder pattern lets you configure the SDK with named parameters, removing the need to configure `ClientConfig` and `ABsmartlyConfig` manually.
 
-#### Advanced Configuration
+#### Alternative: Using Configuration Objects
 
-For advanced use cases where you need full control over the Client and configuration:
+For use cases where you need full control over the Client and configuration:
 
 ```java
 final ClientConfig clientConfig = ClientConfig.create()
