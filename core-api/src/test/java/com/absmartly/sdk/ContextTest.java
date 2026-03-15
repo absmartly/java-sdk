@@ -321,7 +321,7 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
-		final String notReadyMessage = "ABSmartly Context is not yet ready";
+		final String notReadyMessage = "ABsmartly Context is not yet ready";
 		assertEquals(notReadyMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
 		assertEquals(notReadyMessage,
@@ -354,17 +354,12 @@ class ContextTest extends TestUtils {
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
 
-		final String closingMessage = "ABSmartly Context is closing";
+		final String closingMessage = "ABsmartly Context is closing";
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setAttributes(mapOf("attr1", "value1")))
-						.getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
@@ -410,17 +405,12 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		final String closedMessage = "ABSmartly Context is closed";
+		final String closedMessage = "ABsmartly Context is closed";
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setAttributes(mapOf("attr1", "value1")))
-						.getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
@@ -2637,6 +2627,44 @@ class ContextTest extends TestUtils {
 		context.setAttribute("age", 25);
 		assertEquals("arrow", context.getVariableValue("icon", "square"));
 		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void publishKeepsEventsPendingOnFailure() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		final Exception failure = new Exception("PUBLISH_FAILED");
+		when(eventHandler.publish(any(), any())).thenReturn(failedFuture(failure));
+
+		assertThrows(CompletionException.class, context::publish);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void setOverrideSucceedsAfterClose() {
+		final Context context = createReadyContext();
+
+		context.close();
+		assertTrue(context.isClosed());
+
+		context.setOverride("exp_test_ab", 2);
+		assertEquals(2, context.getOverride("exp_test_ab"));
+	}
+
+	@Test
+	void setOverridesSucceedsAfterClose() {
+		final Context context = createReadyContext();
+
+		context.close();
+		assertTrue(context.isClosed());
+
+		context.setOverrides(mapOf("exp_test_ab", 2, "exp_test_abc", 1));
+		assertEquals(2, context.getOverride("exp_test_ab"));
+		assertEquals(1, context.getOverride("exp_test_abc"));
 	}
 
 	@Test

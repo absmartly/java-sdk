@@ -251,8 +251,6 @@ public class Context implements Closeable {
 	}
 
 	public void setOverride(@Nonnull final String experimentName, final int variant) {
-		checkNotClosed();
-
 		Concurrency.putRW(contextLock_, overrides_, experimentName, variant);
 	}
 
@@ -666,6 +664,10 @@ public class Context implements Closeable {
 
 					final CompletableFuture<Void> result = new CompletableFuture<Void>();
 
+					final Exposure[] finalExposures = exposures;
+					final GoalAchievement[] finalAchievements = achievements;
+					final int finalEventCount = eventCount;
+
 					eventHandler_.publish(this, event).thenRunAsync(new Runnable() {
 						@Override
 						public void run() {
@@ -675,6 +677,23 @@ public class Context implements Closeable {
 					}).exceptionally(new Function<Throwable, Void>() {
 						@Override
 						public Void apply(Throwable throwable) {
+							try {
+								eventLock_.lock();
+								if (finalExposures != null) {
+									for (int i = finalExposures.length - 1; i >= 0; i--) {
+										exposures_.add(0, finalExposures[i]);
+									}
+								}
+								if (finalAchievements != null) {
+									for (int i = finalAchievements.length - 1; i >= 0; i--) {
+										achievements_.add(0, finalAchievements[i]);
+									}
+								}
+								pendingCount_.set(finalEventCount);
+							} finally {
+								eventLock_.unlock();
+							}
+
 							Context.this.logError(throwable);
 
 							result.completeExceptionally(throwable);
@@ -701,15 +720,15 @@ public class Context implements Closeable {
 
 	private void checkNotClosed() {
 		if (closed_.get()) {
-			throw new IllegalStateException("ABSmartly Context is closed");
+			throw new IllegalStateException("ABsmartly Context is closed");
 		} else if (closing_.get()) {
-			throw new IllegalStateException("ABSmartly Context is closing");
+			throw new IllegalStateException("ABsmartly Context is closing");
 		}
 	}
 
 	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
-			throw new IllegalStateException("ABSmartly Context is not yet ready");
+			throw new IllegalStateException("ABsmartly Context is not yet ready");
 		} else if (expectNotClosed) {
 			checkNotClosed();
 		}
@@ -871,7 +890,7 @@ public class Context implements Closeable {
 				}
 			}
 
-			if ((experiment != null) && assignment.variant >= 0
+			if ((experiment != null) && experiment.data.variants != null && assignment.variant >= 0
 					&& (assignment.variant < experiment.data.variants.length)) {
 				assignment.variables = experiment.variables.get(assignment.variant);
 			}
@@ -1010,8 +1029,10 @@ public class Context implements Closeable {
 		for (final Experiment experiment : data.experiments) {
 			final ContextExperiment contextExperiment = new ContextExperiment();
 			contextExperiment.data = experiment;
-			contextExperiment.variables = new ArrayList<Map<String, Object>>(experiment.variants.length);
+			contextExperiment.variables = new ArrayList<Map<String, Object>>(
+					experiment.variants != null ? experiment.variants.length : 0);
 
+			if (experiment.variants != null)
 			for (final ExperimentVariant variant : experiment.variants) {
 				if ((variant.config != null) && !variant.config.isEmpty()) {
 					try {
