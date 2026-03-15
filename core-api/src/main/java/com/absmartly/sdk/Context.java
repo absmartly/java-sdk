@@ -179,7 +179,9 @@ public class Context implements Closeable {
 	}
 
 	public String[] getExperiments() {
-		checkReady(true);
+		if (!isReady() || isClosed() || isClosing()) {
+			return new String[0];
+		}
 
 		try {
 			dataLock_.readLock().lock();
@@ -197,6 +199,10 @@ public class Context implements Closeable {
 	}
 
 	public String[] getCustomFieldKeys() {
+		if (!isReady() || isClosed() || isClosing()) {
+			return new String[0];
+		}
+
 		final Set<String> keys = new HashSet<String>();
 
 		try {
@@ -216,6 +222,10 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValue(@Nonnull final String experimentName, @Nonnull final String key) {
+		if (!isReady() || isClosed() || isClosing()) {
+			return null;
+		}
+
 		try {
 			dataLock_.readLock().lock();
 			final ContextExperiment experiment = index_.get(experimentName);
@@ -232,6 +242,10 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValueType(@Nonnull final String experimentName, @Nonnull final String key) {
+		if (!isReady() || isClosed() || isClosing()) {
+			return null;
+		}
+
 		try {
 			dataLock_.readLock().lock();
 			final ContextExperiment experiment = index_.get(experimentName);
@@ -390,7 +404,13 @@ public class Context implements Closeable {
 	}
 
 	public int getTreatment(@Nonnull final String experimentName) {
-		checkReady(true);
+		if (!isReady()) {
+			return 0;
+		}
+
+		if (isClosed() || isClosing()) {
+			return 0;
+		}
 
 		final Assignment assignment = getAssignment(experimentName);
 		if (!assignment.exposed.get()) {
@@ -430,13 +450,17 @@ public class Context implements Closeable {
 	}
 
 	public int peekTreatment(@Nonnull final String experimentName) {
-		checkReady(true);
+		if (!isReady() || isClosed() || isClosing()) {
+			return 0;
+		}
 
 		return getAssignment(experimentName).variant;
 	}
 
 	public Map<String, List<String>> getVariableKeys() {
-		checkReady(true);
+		if (!isReady() || isClosed() || isClosing()) {
+			return new HashMap<String, List<String>>();
+		}
 
 		final Map<String, List<String>> variableKeys = new HashMap<String, List<String>>(indexVariables_.size());
 
@@ -459,7 +483,9 @@ public class Context implements Closeable {
 	}
 
 	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
-		checkReady(true);
+		if (!isReady() || isClosed() || isClosing()) {
+			return defaultValue;
+		}
 
 		final Assignment assignment = getVariableAssignment(key);
 		if (assignment != null) {
@@ -477,7 +503,9 @@ public class Context implements Closeable {
 	}
 
 	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
-		checkReady(true);
+		if (!isReady() || isClosed() || isClosing()) {
+			return defaultValue;
+		}
 
 		final Assignment assignment = getVariableAssignment(key);
 		if (assignment != null) {

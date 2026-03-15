@@ -346,20 +346,33 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isFailed());
 
 		final String notReadyMessage = "ABsmartly Context is not yet ready.";
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
 		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
-		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+		assertEquals(new HashMap<>(), context.getVariableKeys());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
+	}
+
+	@Test
+	void returnsDefaultsWhenNotReady() {
+		final Context context = createContext(dataFuture);
+		assertFalse(context.isReady());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals("default", context.getVariableValue("banner.border", "default"));
+		assertEquals("default", context.peekVariableValue("banner.border", "default"));
+		assertTrue(context.getVariableKeys().isEmpty());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
 	}
 
 	@Test
@@ -396,22 +409,19 @@ class ContextTest extends TestUtils {
 						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
-		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.track("goal1", null)).getMessage());
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::publish).getMessage());
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
-		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+		assertEquals(new HashMap<>(), context.getVariableKeys());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
 	}
 
 	@Test
@@ -447,22 +457,19 @@ class ContextTest extends TestUtils {
 						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
-		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.track("goal1", null)).getMessage());
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::publish).getMessage());
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
-		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+		assertEquals(new HashMap<>(), context.getVariableKeys());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
 	}
 
 	@Test
