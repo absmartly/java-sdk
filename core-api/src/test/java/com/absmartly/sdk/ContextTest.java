@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -227,6 +228,29 @@ class ContextTest extends TestUtils {
 
 		assertTrue(context.isReady());
 		assertTrue(context.isFailed());
+	}
+
+	@Test
+	void readyErrorReturnsNullOnSuccess() {
+		final Context context = createReadyContext();
+		assertNull(context.readyError());
+	}
+
+	@Test
+	void readyErrorReturnsExceptionOnFailedFuture() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isFailed());
+		assertNotNull(context.readyError());
+	}
+
+	@Test
+	void readyErrorReturnsExceptionOnAsyncFailure() {
+		final Context context = createContext(dataFuture);
+		final Exception error = new Exception("FAILED");
+		dataFuture.completeExceptionally(error);
+		context.waitUntilReady();
+		assertTrue(context.isFailed());
+		assertNotNull(context.readyError());
 	}
 
 	@Test

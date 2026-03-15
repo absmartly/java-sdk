@@ -1122,6 +1122,10 @@ public class Context implements Closeable {
 		}
 	}
 
+	public Throwable readyError() {
+		return readyError_;
+	}
+
 	private void setDataFailed(final Throwable exception) {
 		try {
 			dataLock_.writeLock().lock();
@@ -1129,6 +1133,7 @@ public class Context implements Closeable {
 			indexVariables_ = new HashMap<String, List<ContextExperiment>>();
 			data_ = new ContextData();
 			failed_ = true;
+			readyError_ = exception;
 		} finally {
 			dataLock_.writeLock().unlock();
 		}
@@ -1168,6 +1173,7 @@ public class Context implements Closeable {
 	private final ScheduledExecutorService scheduler_;
 	private final Map<String, String> units_;
 	private volatile boolean failed_;
+	private volatile Throwable readyError_;
 
 	private final ReentrantReadWriteLock dataLock_ = new ReentrantReadWriteLock();
 	private volatile ContextData data_;
