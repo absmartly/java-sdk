@@ -345,7 +345,7 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
-		final String notReadyMessage = "ABsmartly Context is not yet ready";
+		final String notReadyMessage = "ABsmartly Context is not yet ready.";
 		assertEquals(notReadyMessage,
 				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
 		assertEquals(notReadyMessage,
@@ -378,7 +378,7 @@ class ContextTest extends TestUtils {
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
 
-		final String closingMessage = "ABsmartly Context is closing";
+		final String closingMessage = "ABsmartly Context is closing.";
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closingMessage,
@@ -429,7 +429,7 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		final String closedMessage = "ABsmartly Context is closed";
+		final String closedMessage = "ABsmartly Context is finalized.";
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closedMessage,
@@ -463,6 +463,41 @@ class ContextTest extends TestUtils {
 						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+	}
+
+	@Test
+	void finalizeIsAliasForClose() {
+		final Context context = createReadyContext();
+		assertFalse(context.isFinalized());
+		assertFalse(context.isFinalizing());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.finalize();
+
+		assertTrue(context.isFinalized());
+		assertTrue(context.isClosed());
+	}
+
+	@Test
+	void finalizeAsyncIsAliasForCloseAsync() {
+		final Context context = createReadyContext();
+		assertFalse(context.isFinalized());
+
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
+
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> finalizeFuture = context.finalizeAsync();
+		assertTrue(context.isFinalizing());
+		assertFalse(context.isFinalized());
+
+		publishFuture.complete(null);
+		finalizeFuture.join();
+
+		assertTrue(context.isFinalized());
+		assertFalse(context.isFinalizing());
 	}
 
 	@Test

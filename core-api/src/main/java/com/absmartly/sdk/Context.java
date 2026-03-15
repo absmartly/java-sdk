@@ -143,6 +143,14 @@ public class Context implements Closeable {
 		return !closed_.get() && closing_.get();
 	}
 
+	public boolean isFinalized() {
+		return isClosed();
+	}
+
+	public boolean isFinalizing() {
+		return isClosing();
+	}
+
 	public CompletableFuture<Context> waitUntilReadyAsync() {
 		if (data_ != null) {
 			return CompletableFuture.completedFuture(this);
@@ -303,7 +311,7 @@ public class Context implements Closeable {
 
 			final String previous = units_.get(unitType);
 			if ((previous != null) && !previous.equals(uid)) {
-				throw new IllegalArgumentException(String.format("Unit '%s' already set.", unitType));
+				throw new IllegalArgumentException(String.format("Unit '%s' UID already set.", unitType));
 			}
 
 			final String trimmed = uid.trim();
@@ -609,6 +617,16 @@ public class Context implements Closeable {
 		closeAsync().join();
 	}
 
+	@Deprecated
+	public CompletableFuture<Void> finalizeAsync() {
+		return closeAsync();
+	}
+
+	@Deprecated
+	public void finalize() {
+		close();
+	}
+
 	private CompletableFuture<Void> flush() {
 		clearTimeout();
 
@@ -720,15 +738,15 @@ public class Context implements Closeable {
 
 	private void checkNotClosed() {
 		if (closed_.get()) {
-			throw new IllegalStateException("ABsmartly Context is closed");
+			throw new IllegalStateException("ABsmartly Context is finalized.");
 		} else if (closing_.get()) {
-			throw new IllegalStateException("ABsmartly Context is closing");
+			throw new IllegalStateException("ABsmartly Context is closing.");
 		}
 	}
 
 	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
-			throw new IllegalStateException("ABsmartly Context is not yet ready");
+			throw new IllegalStateException("ABsmartly Context is not yet ready.");
 		} else if (expectNotClosed) {
 			checkNotClosed();
 		}
