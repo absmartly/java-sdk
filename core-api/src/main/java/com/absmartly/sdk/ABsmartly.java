@@ -115,26 +115,39 @@ public class ABsmartly implements Closeable {
 	}
 
 	public Context createContext(@Nonnull ContextConfig config) {
+		checkNotClosed();
 		return Context.create(Clock.systemUTC(), config, scheduler_, contextDataProvider_.getContextData(),
 				contextDataProvider_, contextEventHandler_, contextEventLogger_, variableParser_,
 				new AudienceMatcher(audienceDeserializer_));
 	}
 
 	public Context createContextWith(@Nonnull ContextConfig config, ContextData data) {
+		checkNotClosed();
 		return Context.create(Clock.systemUTC(), config, scheduler_, CompletableFuture.completedFuture(data),
 				contextDataProvider_, contextEventHandler_, contextEventLogger_, variableParser_,
 				new AudienceMatcher(audienceDeserializer_));
 	}
 
 	public CompletableFuture<ContextData> getContextData() {
+		checkNotClosed();
 		return contextDataProvider_.getContextData();
+	}
+
+	private void checkNotClosed() {
+		if (closed_) {
+			throw new IllegalStateException("ABsmartly instance is closed");
+		}
 	}
 
 	@Override
 	public void close() throws IOException {
+		if (closed_) {
+			return;
+		}
+		closed_ = true;
+
 		if (client_ != null) {
 			client_.close();
-			client_ = null;
 		}
 
 		if (scheduler_ != null) {
@@ -147,10 +160,10 @@ public class ABsmartly implements Closeable {
 				Thread.currentThread().interrupt();
 				scheduler_.shutdownNow();
 			}
-			scheduler_ = null;
 		}
 	}
 
+	private volatile boolean closed_;
 	private Client client_;
 	private ContextDataProvider contextDataProvider_;
 	private ContextEventHandler contextEventHandler_;

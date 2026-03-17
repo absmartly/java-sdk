@@ -4,6 +4,9 @@ import javax.annotation.Nonnull;
 
 import com.absmartly.sdk.ABsmartly;
 
+/**
+ * @deprecated Use {@link com.absmartly.sdk.ABsmartly} instead.
+ */
 @Deprecated
 public class ABSmartly extends ABsmartly {
 	public static ABSmartly create(@Nonnull ABSmartlyConfig config) {

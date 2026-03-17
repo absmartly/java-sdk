@@ -12,6 +12,9 @@ import com.absmartly.sdk.ContextEventHandler;
 import com.absmartly.sdk.ContextEventLogger;
 import com.absmartly.sdk.VariableParser;
 
+/**
+ * @deprecated Use {@link com.absmartly.sdk.ABsmartlyConfig} instead.
+ */
 @Deprecated
 public class ABSmartlyConfig extends ABsmartlyConfig {
 	public static ABSmartlyConfig create() {
