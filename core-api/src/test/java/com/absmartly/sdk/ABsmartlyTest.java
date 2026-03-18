@@ -145,8 +145,8 @@ class ABsmartlyTest extends TestUtils {
 						.forClass(CompletableFuture.class);
 				final ArgumentCaptor<ContextDataProvider> dataProviderCaptor = ArgumentCaptor
 						.forClass(ContextDataProvider.class);
-				final ArgumentCaptor<ContextEventHandler> eventHandlerCaptor = ArgumentCaptor
-						.forClass(ContextEventHandler.class);
+				final ArgumentCaptor<ContextPublisher> eventHandlerCaptor = ArgumentCaptor
+						.forClass(ContextPublisher.class);
 				final ArgumentCaptor<ContextEventLogger> eventLoggerCaptor = ArgumentCaptor
 						.forClass(ContextEventLogger.class);
 				final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor
@@ -169,7 +169,7 @@ class ABsmartlyTest extends TestUtils {
 				assertTrue(schedulerCaptor.getValue() instanceof ScheduledThreadPoolExecutor);
 				assertSame(dataFuture, dataFutureCaptor.getValue());
 				assertTrue(dataProviderCaptor.getValue() instanceof DefaultContextDataProvider);
-				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextEventHandler);
+				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextPublisher);
 				assertNull(eventLoggerCaptor.getValue());
 				assertTrue(variableParserCaptor.getValue() instanceof DefaultVariableParser);
 				assertNotNull(audienceMatcherCaptor.getValue());
@@ -207,8 +207,8 @@ class ABsmartlyTest extends TestUtils {
 						.forClass(CompletableFuture.class);
 				final ArgumentCaptor<ContextDataProvider> dataProviderCaptor = ArgumentCaptor
 						.forClass(ContextDataProvider.class);
-				final ArgumentCaptor<ContextEventHandler> eventHandlerCaptor = ArgumentCaptor
-						.forClass(ContextEventHandler.class);
+				final ArgumentCaptor<ContextPublisher> eventHandlerCaptor = ArgumentCaptor
+						.forClass(ContextPublisher.class);
 				final ArgumentCaptor<ContextEventLogger> eventLoggerCaptor = ArgumentCaptor
 						.forClass(ContextEventLogger.class);
 				final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor
@@ -231,7 +231,7 @@ class ABsmartlyTest extends TestUtils {
 				assertTrue(schedulerCaptor.getValue() instanceof ScheduledThreadPoolExecutor);
 				assertDoesNotThrow(() -> assertSame(data, dataFutureCaptor.getValue().get()));
 				assertTrue(dataProviderCaptor.getValue() instanceof DefaultContextDataProvider);
-				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextEventHandler);
+				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextPublisher);
 				assertNull(eventLoggerCaptor.getValue());
 				assertTrue(variableParserCaptor.getValue() instanceof DefaultVariableParser);
 				assertNotNull(audienceMatcherCaptor.getValue());
@@ -302,8 +302,8 @@ class ABsmartlyTest extends TestUtils {
 					.forClass(CompletableFuture.class);
 			final ArgumentCaptor<ContextDataProvider> dataProviderCaptor = ArgumentCaptor
 					.forClass(ContextDataProvider.class);
-			final ArgumentCaptor<ContextEventHandler> eventHandlerCaptor = ArgumentCaptor
-					.forClass(ContextEventHandler.class);
+			final ArgumentCaptor<ContextPublisher> eventHandlerCaptor = ArgumentCaptor
+					.forClass(ContextPublisher.class);
 			final ArgumentCaptor<ContextEventLogger> eventLoggerCaptor = ArgumentCaptor
 					.forClass(ContextEventLogger.class);
 			final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor.forClass(VariableParser.class);

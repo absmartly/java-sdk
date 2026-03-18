@@ -35,7 +35,7 @@ public class Context implements Closeable {
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
-			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
+			@Nonnull final ContextPublisher eventHandler, @Nullable final ContextEventLogger eventLogger,
 			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher) {
 		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
 				variableParser, audienceMatcher);
@@ -43,7 +43,7 @@ public class Context implements Closeable {
 
 	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
 			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
-			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,
+			ContextPublisher eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,
 			AudienceMatcher audienceMatcher) {
 		clock_ = clock;
 		publishDelay_ = config.getPublishDelay();
@@ -1211,7 +1211,7 @@ public class Context implements Closeable {
 	private final Clock clock_;
 	private final long publishDelay_;
 	private final long refreshInterval_;
-	private final ContextEventHandler eventHandler_;
+	private final ContextPublisher eventHandler_;
 	private final ContextEventLogger eventLogger_;
 	private final ContextDataProvider dataProvider_;
 	private final VariableParser variableParser_;

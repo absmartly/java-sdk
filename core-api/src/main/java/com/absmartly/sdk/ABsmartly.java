@@ -80,7 +80,7 @@ public class ABsmartly implements Closeable {
 
 	protected ABsmartly(@Nonnull ABsmartlyConfig config) {
 		contextDataProvider_ = config.getContextDataProvider();
-		contextEventHandler_ = config.getContextEventHandler();
+		contextEventHandler_ = config.getContextPublisher();
 		contextEventLogger_ = config.getContextEventLogger();
 		variableParser_ = config.getVariableParser();
 		audienceDeserializer_ = config.getAudienceDeserializer();
@@ -97,7 +97,7 @@ public class ABsmartly implements Closeable {
 			}
 
 			if (contextEventHandler_ == null) {
-				contextEventHandler_ = new DefaultContextEventHandler(client_);
+				contextEventHandler_ = new DefaultContextPublisher(client_);
 			}
 		}
 
@@ -166,7 +166,7 @@ public class ABsmartly implements Closeable {
 	private volatile boolean closed_;
 	private Client client_;
 	private ContextDataProvider contextDataProvider_;
-	private ContextEventHandler contextEventHandler_;
+	private ContextPublisher contextEventHandler_;
 	private ContextEventLogger contextEventLogger_;
 	private VariableParser variableParser_;
 
