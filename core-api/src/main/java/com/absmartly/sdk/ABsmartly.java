@@ -146,19 +146,21 @@ public class ABsmartly implements Closeable {
 		}
 		closed_ = true;
 
-		if (client_ != null) {
-			client_.close();
-		}
-
-		if (scheduler_ != null) {
-			scheduler_.shutdown();
-			try {
-				if (!scheduler_.awaitTermination(5000, TimeUnit.MILLISECONDS)) {
+		try {
+			if (client_ != null) {
+				client_.close();
+			}
+		} finally {
+			if (scheduler_ != null) {
+				scheduler_.shutdown();
+				try {
+					if (!scheduler_.awaitTermination(5000, TimeUnit.MILLISECONDS)) {
+						scheduler_.shutdownNow();
+					}
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
 					scheduler_.shutdownNow();
 				}
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				scheduler_.shutdownNow();
 			}
 		}
 	}

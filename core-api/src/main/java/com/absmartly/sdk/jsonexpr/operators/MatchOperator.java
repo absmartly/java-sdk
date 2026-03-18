@@ -66,7 +66,7 @@ public class MatchOperator extends BinaryOperator {
 							log.warn("Regex pattern interrupted after timeout, possible ReDoS attack: {}", pattern);
 							return null;
 						}
-						log.warn("Regex execution failed: {}", cause.getMessage());
+						log.warn("Regex execution failed: {}", cause != null ? cause.getMessage() : e.getMessage());
 						return null;
 					}
 				} catch (PatternSyntaxException e) {
