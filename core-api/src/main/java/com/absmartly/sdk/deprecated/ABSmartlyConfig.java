@@ -10,6 +10,7 @@ import com.absmartly.sdk.Client;
 import com.absmartly.sdk.ContextDataProvider;
 import com.absmartly.sdk.ContextEventHandler;
 import com.absmartly.sdk.ContextEventLogger;
+import com.absmartly.sdk.ContextPublisher;
 import com.absmartly.sdk.VariableParser;
 
 /**
@@ -28,6 +29,12 @@ public class ABSmartlyConfig extends ABsmartlyConfig {
 	@Override
 	public ABSmartlyConfig setContextDataProvider(@Nonnull final ContextDataProvider contextDataProvider) {
 		super.setContextDataProvider(contextDataProvider);
+		return this;
+	}
+
+	@Override
+	public ABSmartlyConfig setContextPublisher(@Nonnull final ContextPublisher contextPublisher) {
+		super.setContextPublisher(contextPublisher);
 		return this;
 	}
 
