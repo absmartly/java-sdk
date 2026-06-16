@@ -35,7 +35,8 @@ class EqualsOperatorTest extends OperatorTest {
 
 		Mockito.clearInvocations(evaluator);
 
-		assertTrue((Boolean) operator.evaluate(evaluator, listOf(null, null)));
+		assertNull(operator.evaluate(evaluator, listOf(null, null)));
+		verify(evaluator, Mockito.timeout(5000).times(1)).evaluate(any());
 		verify(evaluator, Mockito.timeout(5000).times(0)).compare(any(), any());
 
 		Mockito.clearInvocations(evaluator);
