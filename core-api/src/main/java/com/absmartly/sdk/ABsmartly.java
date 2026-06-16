@@ -56,10 +56,14 @@ public class ABsmartly implements Closeable {
 		}
 
 		public ABsmartly build() {
-			if (endpoint == null) throw new IllegalArgumentException("endpoint is required");
-			if (apiKey == null) throw new IllegalArgumentException("apiKey is required");
-			if (application == null) throw new IllegalArgumentException("application is required");
-			if (environment == null) throw new IllegalArgumentException("environment is required");
+			if (endpoint == null)
+				throw new IllegalArgumentException("endpoint is required");
+			if (apiKey == null)
+				throw new IllegalArgumentException("apiKey is required");
+			if (application == null)
+				throw new IllegalArgumentException("application is required");
+			if (environment == null)
+				throw new IllegalArgumentException("environment is required");
 
 			final ClientConfig clientConfig = ClientConfig.create()
 					.setEndpoint(endpoint)

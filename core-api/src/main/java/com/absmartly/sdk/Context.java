@@ -1079,46 +1079,47 @@ public class Context implements Closeable {
 					experiment.variants != null ? experiment.variants.length : 0);
 
 			if (experiment.variants != null)
-			for (final ExperimentVariant variant : experiment.variants) {
-				if ((variant.config != null) && !variant.config.isEmpty()) {
-					try {
-						final Map<String, Object> variables = variableParser_.parse(this, experiment.name, variant.name,
-								variant.config);
-						if (variables != null) {
-							for (final String key : variables.keySet()) {
-								List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
-								if (keyExperimentVariables == null) {
-									keyExperimentVariables = new ArrayList<ContextExperiment>();
-									indexVariables.put(key, keyExperimentVariables);
+				for (final ExperimentVariant variant : experiment.variants) {
+					if ((variant.config != null) && !variant.config.isEmpty()) {
+						try {
+							final Map<String, Object> variables = variableParser_.parse(this, experiment.name,
+									variant.name,
+									variant.config);
+							if (variables != null) {
+								for (final String key : variables.keySet()) {
+									List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
+									if (keyExperimentVariables == null) {
+										keyExperimentVariables = new ArrayList<ContextExperiment>();
+										indexVariables.put(key, keyExperimentVariables);
+									}
+
+									int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
+											new Comparator<ContextExperiment>() {
+												@Override
+												public int compare(ContextExperiment a, ContextExperiment b) {
+													return Integer.valueOf(a.data.id).compareTo(b.data.id);
+												}
+											});
+
+									if (at < 0) {
+										at = -at - 1;
+										keyExperimentVariables.add(at, contextExperiment);
+									}
 								}
 
-								int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
-										new Comparator<ContextExperiment>() {
-											@Override
-											public int compare(ContextExperiment a, ContextExperiment b) {
-												return Integer.valueOf(a.data.id).compareTo(b.data.id);
-											}
-										});
-
-								if (at < 0) {
-									at = -at - 1;
-									keyExperimentVariables.add(at, contextExperiment);
-								}
+								contextExperiment.variables.add(variables);
+							} else {
+								contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 							}
-
-							contextExperiment.variables.add(variables);
-						} else {
+						} catch (Exception e) {
+							log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
+									experiment.name, variant.name, e.getMessage());
 							contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 						}
-					} catch (Exception e) {
-						log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
-								experiment.name, variant.name, e.getMessage());
+					} else {
 						contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 					}
-				} else {
-					contextExperiment.variables.add(Collections.<String, Object> emptyMap());
 				}
-			}
 
 			contextExperiment.customFieldValues = new HashMap<String, ContextCustomFieldValue>();
 			if (experiment.customFieldValues != null) {

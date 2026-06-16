@@ -21,6 +21,7 @@ import com.absmartly.sdk.json.PublishEvent;
 
 public class Client implements Closeable {
 	private static final Logger log = LoggerFactory.getLogger(Client.class);
+
 	static public Client create(@Nonnull final ClientConfig config) {
 		return new Client(config, DefaultHTTPClient.create(DefaultHTTPClientConfig.create()));
 	}
@@ -38,7 +39,7 @@ public class Client implements Closeable {
 		if (!endpoint.startsWith("https://")) {
 			if (endpoint.startsWith("http://")) {
 				log.warn("ABsmartly SDK endpoint is not using HTTPS. API keys will be transmitted in plaintext: {}",
-								endpoint);
+						endpoint);
 			} else {
 				throw new IllegalArgumentException("Endpoint must use http:// or https:// protocol: " + endpoint);
 			}
@@ -59,7 +60,8 @@ public class Client implements Closeable {
 			throw new IllegalArgumentException("Missing Environment configuration");
 		}
 
-		final String normalizedEndpoint = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint;
+		final String normalizedEndpoint = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1)
+				: endpoint;
 		url_ = normalizedEndpoint + "/context";
 		httpClient_ = httpClient;
 		deserializer_ = config.getContextDataDeserializer();
@@ -104,7 +106,8 @@ public class Client implements Closeable {
 										dataFuture.completeExceptionally(new IllegalStateException(
 												"Empty response body from context data endpoint"));
 									} else {
-										final ContextData result = deserializer_.deserialize(content, 0, content.length);
+										final ContextData result = deserializer_.deserialize(content, 0,
+												content.length);
 										if (result != null) {
 											dataFuture.complete(result);
 										} else {

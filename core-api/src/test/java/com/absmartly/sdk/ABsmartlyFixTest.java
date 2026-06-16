@@ -9,7 +9,6 @@ import java8.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
 
 import com.absmartly.sdk.json.ContextData;
 
