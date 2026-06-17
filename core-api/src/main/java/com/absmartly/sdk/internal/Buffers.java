@@ -28,22 +28,14 @@ public abstract class Buffers {
 	}
 
 	static public int encodeUTF8(byte[] buf, int offset, CharSequence value) {
-		final int n = value.length();
-
-		int out = offset;
-		for (int i = 0; i < n; ++i) {
-			final char c = value.charAt(i);
-			if (c < 0x80) {
-				buf[out++] = (byte) c;
-			} else if (c < 0x800) {
-				buf[out++] = (byte) ((c >> 6) | 192);
-				buf[out++] = (byte) ((c & 63) | 128);
-			} else {
-				buf[out++] = (byte) ((c >> 12) | 224);
-				buf[out++] = (byte) (((c >> 6) & 63) | 128);
-				buf[out++] = (byte) ((c & 63) | 128);
-			}
-		}
-		return out - offset;
+		// Delegate to the platform UTF-8 encoder so characters outside the Basic
+		// Multilingual Plane (e.g. emoji, encoded in Java strings as UTF-16
+		// surrogate pairs) produce correct 4-byte UTF-8 sequences. The previous
+		// hand-rolled loop processed each UTF-16 code unit independently and
+		// emitted invalid CESU-8 for surrogate pairs, yielding a different unit
+		// hash than the other SDKs and the collector.
+		final byte[] bytes = value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		System.arraycopy(bytes, 0, buf, offset, bytes.length);
+		return bytes.length;
 	}
 }

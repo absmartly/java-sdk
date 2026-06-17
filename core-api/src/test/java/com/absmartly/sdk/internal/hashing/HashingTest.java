@@ -32,4 +32,20 @@ class HashingTest {
 
 		assertEquals("Rxnq-eM9eE1SEoMnkEMOIw", new String(Hashing.hashUnit(sb.toString()), StandardCharsets.US_ASCII));
 	}
+
+	@Test
+	void testHashUnitAstralAndMultibyte() {
+		// Characters outside the Basic Multilingual Plane are stored as UTF-16
+		// surrogate pairs and must encode to 4-byte UTF-8. These canonical hashes
+		// are shared across all SDKs (computed from correct UTF-8 bytes); a buggy
+		// per-code-unit encoder produces a different hash and fails here.
+		assertEquals("KgLqw51xanDs83V5GFkntg",
+				new String(Hashing.hashUnit("😀"), StandardCharsets.US_ASCII)); // 😀
+		assertEquals("ZJuDalvUWRJnVtkspj-2bQ",
+				new String(Hashing.hashUnit("😀😁"), StandardCharsets.US_ASCII)); // 😀😁
+		assertEquals("v2CJG7YcjjWncKOSCzF2GA",
+				new String(Hashing.hashUnit("世界你好"), StandardCharsets.US_ASCII)); // 世界你好
+		assertEquals("SCgk4OzXlFMvo1UMsP88fA",
+				new String(Hashing.hashUnit("user_世界_123"), StandardCharsets.US_ASCII)); // user_世界_123
+	}
 }
