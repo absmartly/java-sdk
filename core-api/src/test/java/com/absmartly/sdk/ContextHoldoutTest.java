@@ -382,4 +382,58 @@ class ContextHoldoutTest extends TestUtils {
 
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
+
+	@Test
+	void exposureCarriesNotHeldOutFieldsWhenUnitNotInHoldout() {
+		final Experiment experiment = newExperiment(1, "exp_holdout_out_exposure");
+		experiment.holdoutIds = new int[]{11};
+
+		// holdout evaluated but unit is NOT in it -> normal assignment, heldOut=false, holdoutId=0
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{newHoldout(11, HOLDOUT_OUT_SEED_HI, HOLDOUT_OUT_SEED_LO)}, experiment));
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_holdout_out_exposure"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = new Unit[]{
+				new Unit(UNIT_TYPE, new String(Hashing.hashUnit(UID), StandardCharsets.US_ASCII))
+		};
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_holdout_out_exposure", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						false, false, false, false, 0),
+		};
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void assignsNormallyWhenHoldoutIdsIsEmpty() {
+		final Experiment experiment = newExperiment(1, "exp_empty_holdout_ids");
+		experiment.holdoutIds = new int[0];
+
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{newHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO)}, experiment));
+
+		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_empty_holdout_ids"));
+	}
+
+	@Test
+	void skipsHoldoutWithEmptySplit() {
+		final Experiment experiment = newExperiment(1, "exp_empty_split_holdout");
+		experiment.holdoutIds = new int[]{11};
+
+		// a holdout with an empty split must be dropped, not hold the unit out
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{new ExperimentHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO,
+						new double[0])},
+				experiment));
+
+		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_empty_split_holdout"));
+	}
 }
