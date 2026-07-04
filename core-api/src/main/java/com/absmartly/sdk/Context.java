@@ -392,6 +392,8 @@ public class Context implements Closeable {
 			exposure.fullOn = assignment.fullOn;
 			exposure.custom = assignment.custom;
 			exposure.audienceMismatch = assignment.audienceMismatch;
+			exposure.heldOut = assignment.heldOut;
+			exposure.holdoutId = assignment.holdoutId;
 
 			try {
 				eventLock_.lock();
@@ -692,12 +694,14 @@ public class Context implements Closeable {
 		}
 	}
 
-	private boolean experimentMatches(final Experiment experiment, final Assignment assignment) {
-		return experiment.id == assignment.id &&
-				experiment.unitType.equals(assignment.unitType) &&
-				experiment.iteration == assignment.iteration &&
-				experiment.fullOnVariant == assignment.fullOnVariant &&
-				Arrays.equals(experiment.trafficSplit, assignment.trafficSplit);
+	private boolean experimentMatches(final ContextExperiment experiment, final Assignment assignment) {
+		return experiment.data.id == assignment.id &&
+				experiment.data.unitType.equals(assignment.unitType) &&
+				experiment.data.iteration == assignment.iteration &&
+				experiment.data.fullOnVariant == assignment.fullOnVariant &&
+				Arrays.equals(experiment.data.trafficSplit, assignment.trafficSplit) &&
+				Arrays.equals(experiment.data.holdoutIds, assignment.holdoutIds) &&
+				Arrays.equals(experiment.holdouts, assignment.holdouts);
 	}
 
 	private static class Assignment {
@@ -715,6 +719,10 @@ public class Context implements Closeable {
 		boolean custom;
 
 		boolean audienceMismatch;
+		boolean heldOut;
+		int holdoutId;
+		int[] holdoutIds;
+		ExperimentHoldout[] holdouts;
 		Map<String, Object> variables = Collections.emptyMap();
 
 		final AtomicBoolean exposed = new AtomicBoolean(false);
@@ -743,7 +751,7 @@ public class Context implements Closeable {
 						return assignment;
 					}
 				} else if ((custom == null) || custom == assignment.variant) {
-					if (experimentMatches(experiment.data, assignment)) {
+					if (experimentMatches(experiment, assignment)) {
 						// assignment up-to-date
 						return assignment;
 					}
@@ -778,50 +786,73 @@ public class Context implements Closeable {
 				if (experiment != null) {
 					final String unitType = experiment.data.unitType;
 
-					if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
-						final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
-						for (final Attribute attr : attributes_) {
-							attrs.put(attr.name, attr.value);
-						}
+					assignment.holdoutIds = experiment.data.holdoutIds;
+					assignment.holdouts = experiment.holdouts;
 
-						final AudienceMatcher.Result match = audienceMatcher_
-								.evaluate(experiment.data.audience, attrs);
-						if (match != null) {
-							assignment.audienceMismatch = !match.get();
+					if (experiment.holdouts != null && experiment.holdouts.length > 0) {
+						final String uid = units_.get(unitType);
+						if (uid != null) {
+							final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
+							final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
+									unitHash);
+							for (final ExperimentHoldout holdout : experiment.holdouts) {
+								if (assigner.assign(holdout.split, holdout.seedHi, holdout.seedLo) == 0) {
+									assignment.heldOut = true;
+									assignment.holdoutId = holdout.id;
+									assignment.variant = 0;
+									assignment.assigned = true;
+									break;
+								}
+							}
 						}
 					}
 
-					if (experiment.data.audienceStrict && assignment.audienceMismatch) {
-						assignment.variant = 0;
-					} else if (experiment.data.fullOnVariant == 0) {
-						final String uid = units_.get(experiment.data.unitType);
-						if (uid != null) {
-							final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
-
-							final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
-									unitHash);
-							final boolean eligible = assigner.assign(experiment.data.trafficSplit,
-									experiment.data.trafficSeedHi,
-									experiment.data.trafficSeedLo) == 1;
-							if (eligible) {
-								if (custom != null) {
-									assignment.variant = custom;
-									assignment.custom = true;
-								} else {
-									assignment.variant = assigner.assign(experiment.data.split,
-											experiment.data.seedHi,
-											experiment.data.seedLo);
-								}
-							} else {
-								assignment.eligible = false;
-								assignment.variant = 0;
+					if (!assignment.heldOut) {
+						if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
+							final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
+							for (final Attribute attr : attributes_) {
+								attrs.put(attr.name, attr.value);
 							}
-							assignment.assigned = true;
+
+							final AudienceMatcher.Result match = audienceMatcher_
+									.evaluate(experiment.data.audience, attrs);
+							if (match != null) {
+								assignment.audienceMismatch = !match.get();
+							}
 						}
-					} else {
-						assignment.assigned = true;
-						assignment.variant = experiment.data.fullOnVariant;
-						assignment.fullOn = true;
+
+						if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+							assignment.variant = 0;
+						} else if (experiment.data.fullOnVariant == 0) {
+							final String uid = units_.get(experiment.data.unitType);
+							if (uid != null) {
+								final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
+
+								final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
+										unitHash);
+								final boolean eligible = assigner.assign(experiment.data.trafficSplit,
+										experiment.data.trafficSeedHi,
+										experiment.data.trafficSeedLo) == 1;
+								if (eligible) {
+									if (custom != null) {
+										assignment.variant = custom;
+										assignment.custom = true;
+									} else {
+										assignment.variant = assigner.assign(experiment.data.split,
+												experiment.data.seedHi,
+												experiment.data.seedLo);
+									}
+								} else {
+									assignment.eligible = false;
+									assignment.variant = 0;
+								}
+								assignment.assigned = true;
+							}
+						} else {
+							assignment.assigned = true;
+							assignment.variant = experiment.data.fullOnVariant;
+							assignment.fullOn = true;
+						}
 					}
 
 					assignment.unitType = unitType;
@@ -944,6 +975,7 @@ public class Context implements Closeable {
 
 	private static class ContextExperiment {
 		Experiment data;
+		ExperimentHoldout[] holdouts;
 		List<Map<String, Object>> variables;
 		Map<String, ContextCustomFieldValue> customFieldValues;
 	}
@@ -953,13 +985,44 @@ public class Context implements Closeable {
 		Object value;
 	}
 
+	private static ExperimentHoldout[] resolveHoldouts(final int[] holdoutIds,
+			final Map<Integer, ExperimentHoldout> holdoutIndex) {
+		if (holdoutIds == null || holdoutIds.length == 0) {
+			return null;
+		}
+
+		final List<ExperimentHoldout> resolved = new ArrayList<ExperimentHoldout>(holdoutIds.length);
+		for (final int holdoutId : holdoutIds) {
+			final ExperimentHoldout holdout = holdoutIndex.get(holdoutId);
+			if (holdout != null && holdout.split != null && holdout.split.length > 0) {
+				resolved.add(holdout);
+			}
+		}
+
+		if (resolved.isEmpty()) {
+			return null;
+		}
+
+		return resolved.toArray(new ExperimentHoldout[0]);
+	}
+
 	private void setData(final ContextData data) {
 		final Map<String, ContextExperiment> index = new HashMap<String, ContextExperiment>();
 		final Map<String, List<ContextExperiment>> indexVariables = new HashMap<String, List<ContextExperiment>>();
 
+		final Map<Integer, ExperimentHoldout> holdoutIndex = new HashMap<Integer, ExperimentHoldout>();
+		if (data.holdouts != null) {
+			for (final ExperimentHoldout holdout : data.holdouts) {
+				if (holdout != null) {
+					holdoutIndex.put(holdout.id, holdout);
+				}
+			}
+		}
+
 		for (final Experiment experiment : data.experiments) {
 			final ContextExperiment contextExperiment = new ContextExperiment();
 			contextExperiment.data = experiment;
+			contextExperiment.holdouts = resolveHoldouts(experiment.holdoutIds, holdoutIndex);
 			contextExperiment.variables = new ArrayList<Map<String, Object>>(experiment.variants.length);
 
 			for (final ExperimentVariant variant : experiment.variants) {

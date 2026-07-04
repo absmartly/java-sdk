@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.ExperimentApplication;
+import com.absmartly.sdk.json.ExperimentHoldout;
 import com.absmartly.sdk.json.ExperimentVariant;
 
 class DefaultContextDataDeserializerTest extends TestUtils {
@@ -122,5 +123,44 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 			final ContextData data = deser.deserialize(bytes, 0, 14);
 			assertNull(data);
 		});
+	}
+
+	@Test
+	void deserializeHoldouts() {
+		final byte[] bytes = getResourceBytes("holdouts_context.json");
+
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+		final ContextData data = deser.deserialize(bytes, 0, bytes.length);
+
+		final Experiment experiment = new Experiment();
+		experiment.id = 1;
+		experiment.name = "exp_test_holdout";
+		experiment.unitType = "session_id";
+		experiment.iteration = 1;
+		experiment.seedHi = 3603515;
+		experiment.seedLo = 233373850;
+		experiment.split = new double[]{0.5, 0.5};
+		experiment.trafficSeedHi = 449867249;
+		experiment.trafficSeedLo = 455443629;
+		experiment.trafficSplit = new double[]{0.0, 1.0};
+		experiment.fullOnVariant = 0;
+		experiment.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
+		experiment.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", "{\"banner.border\":1,\"banner.size\":\"large\"}")
+		};
+		experiment.audienceStrict = false;
+		experiment.audience = null;
+		experiment.holdoutIds = new int[]{11, 12};
+
+		final ContextData expected = new ContextData(
+				new Experiment[]{experiment},
+				new ExperimentHoldout[]{
+						new ExperimentHoldout(11, 13, 111, new double[]{0.1, 0.9}),
+						new ExperimentHoldout(12, 1, 222, new double[]{0.05, 0.95})
+				});
+
+		assertNotNull(data);
+		assertEquals(expected, data);
 	}
 }

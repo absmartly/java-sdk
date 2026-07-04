@@ -24,6 +24,7 @@ public class Experiment {
 	public boolean audienceStrict;
 	public String audience;
 	public CustomFieldValue[] customFieldValues;
+	public int[] holdoutIds;
 
 	public Experiment() {}
 
@@ -66,7 +67,9 @@ public class Experiment {
 			return false;
 		if (audience != null ? !audience.equals(that.audience) : that.audience != null)
 			return false;
-		return Arrays.equals(customFieldValues, that.customFieldValues);
+		if (!Arrays.equals(customFieldValues, that.customFieldValues))
+			return false;
+		return Arrays.equals(holdoutIds, that.holdoutIds);
 	}
 
 	@Override
@@ -87,6 +90,7 @@ public class Experiment {
 		result = 31 * result + (audienceStrict ? 1 : 0);
 		result = 31 * result + (audience != null ? audience.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(customFieldValues);
+		result = 31 * result + Arrays.hashCode(holdoutIds);
 		return result;
 	}
 
@@ -109,6 +113,7 @@ public class Experiment {
 				", audienceStrict=" + audienceStrict +
 				", audience='" + audience + '\'' +
 				", customFieldValues=" + Arrays.toString(customFieldValues) +
+				", holdoutIds=" + Arrays.toString(holdoutIds) +
 				'}';
 	}
 }

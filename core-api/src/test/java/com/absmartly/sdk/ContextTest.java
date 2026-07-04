@@ -577,7 +577,7 @@ class ContextTest extends TestUtils {
 		expected.publishedAt = clock.millis();
 		expected.units = publishUnits;
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -993,7 +993,7 @@ class ContextTest extends TestUtils {
 		};
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1021,7 +1021,7 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1050,7 +1050,7 @@ class ContextTest extends TestUtils {
 		context.getVariableValue("banner.size", null);
 
 		final Exposure[] exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false, false, 0),
 		};
 
 		verify(eventLogger, Mockito.timeout(5000).times(exposures.length)).handleEvent(any(), any(), any());
@@ -1124,14 +1124,14 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false, false, 0),
 				new Exposure(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false,
-						false),
+						false, false, 0),
 				new Exposure(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false,
-						false, false),
+						false, false, false, 0),
 				new Exposure(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false,
-						false),
-				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
+						false, false, 0),
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1195,14 +1195,14 @@ class ContextTest extends TestUtils {
 
 		expected.exposures = new Exposure[]{
 				new Exposure(1, "exp_test_ab", "session_id", 12, clock.millis(), false, true, true, false, false,
-						false),
+						false, false, 0),
 				new Exposure(2, "exp_test_abc", "session_id", 13, clock.millis(), false, true, true, false, false,
-						false),
+						false, false, 0),
 				new Exposure(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), false, true, true, false, false,
-						false),
+						false, false, 0),
 				new Exposure(4, "exp_test_fullon", "session_id", 13, clock.millis(), false, true, true, false, false,
-						false),
-				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false),
+						false, false, 0),
+				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1266,7 +1266,7 @@ class ContextTest extends TestUtils {
 		};
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1294,7 +1294,7 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1323,7 +1323,7 @@ class ContextTest extends TestUtils {
 
 		expected.exposures = new Exposure[]{
 				new Exposure(1, "exp_test_ab", "session_id", 0, clock.millis(), false, true, false, false, false,
-						true),
+						true, false, 0),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1344,8 +1344,8 @@ class ContextTest extends TestUtils {
 		context.getTreatment("not_found");
 
 		final Exposure[] exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
-				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false, false, 0),
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false, false, 0),
 		};
 
 		verify(eventLogger, Mockito.timeout(5000).times(exposures.length)).handleEvent(any(), any(), any());
@@ -1553,9 +1553,9 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
-				new Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true, false),
-				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false),
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false, false, 0),
+				new Exposure(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true, false, false, 0),
+				new Exposure(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false, false, 0),
 		};
 
 		expected.goals = new GoalAchievement[]{
