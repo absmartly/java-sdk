@@ -824,7 +824,7 @@ public class Context implements Closeable {
 						if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 							assignment.variant = 0;
 						} else if (experiment.data.fullOnVariant == 0) {
-							final String uid = units_.get(experiment.data.unitType);
+							final String uid = units_.get(unitType);
 							if (uid != null) {
 								final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
 
