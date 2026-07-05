@@ -1,7 +1,6 @@
 package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -405,7 +404,8 @@ class ContextHoldoutTest extends TestUtils {
 				new Unit(UNIT_TYPE, new String(Hashing.hashUnit(UID), StandardCharsets.US_ASCII))
 		};
 		expected.exposures = new Exposure[]{
-				new Exposure(1, "exp_holdout_out_exposure", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+				new Exposure(1, "exp_holdout_out_exposure", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+						false,
 						false, false, false, false, 0),
 		};
 
