@@ -303,6 +303,35 @@ class ContextHoldoutTest extends TestUtils {
 	}
 
 	@Test
+	void reusesCachedHeldOutAssignmentWithCustomAssignment() {
+		final Experiment experiment = newExperiment(1, "exp_holdout_custom_cache");
+		experiment.holdoutIds = new int[]{11};
+
+		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID).setCustomAssignment(
+				"exp_holdout_custom_cache", 3);
+		final Context context = createReadyContext(config, contextDataOf(
+				new ExperimentHoldout[]{newHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO)}, experiment));
+
+		// the custom assignment can never apply while held out; repeated calls must hit the
+		// cache and not queue duplicate exposures
+		assertEquals(0, context.getTreatment("exp_holdout_custom_cache"));
+		assertEquals(0, context.getTreatment("exp_holdout_custom_cache"));
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void holdoutTakesPrecedenceOverFullOn() {
+		final Experiment experiment = newExperiment(1, "exp_holdout_fullon");
+		experiment.fullOnVariant = 2;
+		experiment.holdoutIds = new int[]{11};
+
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{newHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO)}, experiment));
+
+		assertEquals(0, context.peekTreatment("exp_holdout_fullon"));
+	}
+
+	@Test
 	void refreshReassignsWhenHoldoutsChange() {
 		final Experiment experiment = newExperiment(1, "exp_holdout_refresh");
 

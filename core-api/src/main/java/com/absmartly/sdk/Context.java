@@ -750,7 +750,7 @@ public class Context implements Closeable {
 						// previously not-running experiment
 						return assignment;
 					}
-				} else if ((custom == null) || custom == assignment.variant) {
+				} else if ((custom == null) || assignment.heldOut || custom == assignment.variant) {
 					if (experimentMatches(experiment, assignment)) {
 						// assignment up-to-date
 						return assignment;
