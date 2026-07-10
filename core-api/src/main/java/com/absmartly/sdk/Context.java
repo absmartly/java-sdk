@@ -704,6 +704,20 @@ public class Context implements Closeable {
 				Arrays.equals(experiment.holdouts, assignment.holdouts);
 	}
 
+	// A custom assignment can only take effect on the normal, traffic-eligible assignment path.
+	// When the cached variant was forced by a higher-precedence rule — a holdout, a full-on
+	// variant, traffic ineligibility, or a strict audience mismatch — the custom value can never
+	// equal that variant, so comparing the two would spuriously invalidate the cache and re-expose
+	// on every getTreatment call. Treat those forced assignments as cache-valid regardless of the
+	// custom assignment. (A held-out or forced assignment always has assigned=true except for the
+	// strict-mismatch and no-unit cases, where assigned stays false.)
+	private static boolean variantForcedRegardlessOfCustom(final Assignment assignment) {
+		return assignment.heldOut
+				|| assignment.fullOn
+				|| !assignment.eligible
+				|| !assignment.assigned;
+	}
+
 	private static class Assignment {
 		int id;
 		int iteration;
@@ -750,7 +764,8 @@ public class Context implements Closeable {
 						// previously not-running experiment
 						return assignment;
 					}
-				} else if ((custom == null) || assignment.heldOut || custom == assignment.variant) {
+				} else if ((custom == null) || variantForcedRegardlessOfCustom(assignment)
+						|| custom == assignment.variant) {
 					if (experimentMatches(experiment, assignment)) {
 						// assignment up-to-date
 						return assignment;

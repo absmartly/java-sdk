@@ -320,6 +320,40 @@ class ContextHoldoutTest extends TestUtils {
 	}
 
 	@Test
+	void reusesCachedAudienceMismatchAssignmentWithCustomAssignment() {
+		final Experiment experiment = newExperiment(1, "exp_audience_custom_cache");
+		experiment.audienceStrict = true;
+		experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+
+		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID).setCustomAssignment(
+				"exp_audience_custom_cache", 3);
+		final Context context = createReadyContext(config, contextDataOf(experiment));
+		context.setAttribute("age", 5); // mismatches the strict audience -> variant forced to 0
+
+		// strict audience mismatch forces variant 0; the custom assignment can never apply, so
+		// repeated calls must hit the cache and not queue duplicate exposures
+		assertEquals(0, context.getTreatment("exp_audience_custom_cache"));
+		assertEquals(0, context.getTreatment("exp_audience_custom_cache"));
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void reusesCachedTrafficIneligibleAssignmentWithCustomAssignment() {
+		final Experiment experiment = newExperiment(1, "exp_traffic_custom_cache");
+		experiment.trafficSplit = new double[]{1.0, 0.0}; // unit is NOT in the experiment traffic
+
+		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID).setCustomAssignment(
+				"exp_traffic_custom_cache", 3);
+		final Context context = createReadyContext(config, contextDataOf(experiment));
+
+		// traffic ineligibility forces variant 0; the custom assignment can never apply, so repeated
+		// calls must hit the cache and not queue duplicate exposures
+		assertEquals(0, context.getTreatment("exp_traffic_custom_cache"));
+		assertEquals(0, context.getTreatment("exp_traffic_custom_cache"));
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
 	void holdoutTakesPrecedenceOverFullOn() {
 		final Experiment experiment = newExperiment(1, "exp_holdout_fullon");
 		experiment.fullOnVariant = 2;
