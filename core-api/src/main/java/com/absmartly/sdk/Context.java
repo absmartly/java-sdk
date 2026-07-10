@@ -801,6 +801,9 @@ public class Context implements Closeable {
 				if (experiment != null) {
 					final String unitType = experiment.data.unitType;
 
+					// Share the experiment's holdout arrays by reference rather than copying: they are
+					// only read here (and via Arrays.equals in experimentMatches) and experiment data is
+					// treated as immutable once installed by setData, so the aliasing is safe.
 					assignment.holdoutIds = experiment.data.holdoutIds;
 					assignment.holdouts = experiment.holdouts;
 
