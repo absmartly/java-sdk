@@ -155,6 +155,36 @@ class ContextHoldoutTest extends TestUtils {
 	}
 
 	@Test
+	void evaluatesMultipleHoldoutsInCanonicalIdOrder() {
+		final Experiment experiment = newExperiment(1, "exp_ordered_holdouts");
+		experiment.holdoutIds = new int[]{42, 11};
+
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{
+						newHoldout(42, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO),
+						newHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO),
+				}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_ordered_holdouts"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = new Unit[]{
+				new Unit(UNIT_TYPE, new String(Hashing.hashUnit(UID), StandardCharsets.US_ASCII))
+		};
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_ordered_holdouts", UNIT_TYPE, 0, clock.millis(), true, true, false, false,
+						false, false, true, 11),
+		};
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
 	void assignsNormallyWhenNotInAnyHoldout() {
 		final Experiment experiment = newExperiment(1, "exp_multi_holdout_miss");
 		experiment.holdoutIds = new int[]{11, 12};

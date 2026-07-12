@@ -1021,6 +1021,13 @@ public class Context implements Closeable {
 			return null;
 		}
 
+		Collections.sort(resolved, new Comparator<ExperimentHoldout>() {
+			@Override
+			public int compare(ExperimentHoldout a, ExperimentHoldout b) {
+				return Integer.valueOf(a.id).compareTo(b.id);
+			}
+		});
+
 		return resolved.toArray(new ExperimentHoldout[0]);
 	}
 
