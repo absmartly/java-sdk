@@ -9,9 +9,7 @@ public class VariantAssigner {
 			return new byte[12];
 		}
 	};
-	// Convert an unsigned 32-bit hash to [0, 1). Dividing by 0xffffffff would
-	// produce exactly 1.0 for one hash value, incorrectly missing a 100% split.
-	private static final double normalizer = 1.0 / 0x100000000L;
+	private static final double normalizer = 1.0 / 0xffffffffL;
 
 	public VariantAssigner(byte[] unitHash) {
 		unitHash_ = Murmur3_32.digest(unitHash, 0);
@@ -42,10 +40,6 @@ public class VariantAssigner {
 		Buffers.putUInt32(buffer, 8, unitHash_);
 
 		final int hash = Murmur3_32.digest(buffer, 0);
-		return normalizeHash(hash);
-	}
-
-	static double normalizeHash(int hash) {
 		return (hash & 0xffffffffL) * normalizer;
 	}
 

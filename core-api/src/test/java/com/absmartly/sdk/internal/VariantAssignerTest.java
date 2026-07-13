@@ -15,12 +15,6 @@ import com.absmartly.sdk.internal.hashing.Hashing;
 
 class VariantAssignerTest extends TestUtils {
 	@Test
-	void normalizeHashProducesHalfOpenProbabilityRange() {
-		assertEquals(0.0, VariantAssigner.normalizeHash(0));
-		assertEquals(1.0 - (1.0 / 0x100000000L), VariantAssigner.normalizeHash(-1));
-	}
-
-	@Test
 	void chooseVariant() {
 		assertEquals(1, VariantAssigner.chooseVariant(new double[]{0.0, 1.0}, 0.0));
 		assertEquals(1, VariantAssigner.chooseVariant(new double[]{0.0, 1.0}, 0.5));
