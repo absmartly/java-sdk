@@ -98,6 +98,10 @@ class ContextHoldoutTest extends TestUtils {
 		return new ExperimentHoldout(id, seedHi, seedLo, new double[]{0.1, 0.9});
 	}
 
+	static ExperimentHoldout newFullOnHoldout(int id, int seedHi, int seedLo) {
+		return new ExperimentHoldout(id, seedHi, seedLo, new double[]{0.1, 0.9}, true);
+	}
+
 	static ContextData contextDataOf(Experiment... experiments) {
 		return contextDataOf(new ExperimentHoldout[0], experiments);
 	}
@@ -528,5 +532,110 @@ class ContextHoldoutTest extends TestUtils {
 				experiment));
 
 		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_empty_split_holdout"));
+	}
+
+	@Test
+	void fullOnHoldoutAppliesToFullOnExperiment() {
+		final Experiment experiment = newExperiment(1, "exp_fullon_holdout_fullon_exp");
+		experiment.fullOnVariant = 2;
+		experiment.holdoutIds = new int[]{11};
+
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{newFullOnHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO)}, experiment));
+
+		assertEquals(0, context.peekTreatment("exp_fullon_holdout_fullon_exp"));
+	}
+
+	@Test
+	void fullOnHoldoutIsSkippedForRegularExperiment() {
+		final Experiment experiment = newExperiment(1, "exp_fullon_holdout_regular_exp");
+		experiment.holdoutIds = new int[]{11};
+
+		// the unit would be held out (matches the holdout's split), but fullOn holdouts only
+		// apply to full-on experiments (fullOnVariant != 0), so it must be skipped entirely and
+		// normal assignment must proceed.
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{newFullOnHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO)}, experiment));
+
+		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_fullon_holdout_regular_exp"));
+	}
+
+	@Test
+	void absentFullOnBehavesAsFullHoldoutOnFullOnExperiment() {
+		final Experiment experiment = newExperiment(1, "exp_absent_fullon_holdout_fullon_exp");
+		experiment.fullOnVariant = 2;
+		experiment.holdoutIds = new int[]{11};
+
+		// fullOn absent (null) -> treated as a regular (full) holdout, applies regardless of
+		// whether the experiment is full-on.
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{newHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO)}, experiment));
+
+		assertEquals(0, context.peekTreatment("exp_absent_fullon_holdout_fullon_exp"));
+	}
+
+	@Test
+	void mixedFullAndFullOnHoldoutsOnRegularExperiment() {
+		final Experiment experiment = newExperiment(1, "exp_mixed_full_fullon_regular");
+		experiment.holdoutIds = new int[]{11, 12};
+
+		// 11 is a full_on holdout that would match but must be skipped (regular experiment);
+		// 12 is a regular (full) holdout that matches -> unit is held out via 12.
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{
+						newFullOnHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO),
+						newHoldout(12, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO),
+				}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_mixed_full_fullon_regular"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = new Unit[]{
+				new Unit(UNIT_TYPE, new String(Hashing.hashUnit(UID), StandardCharsets.US_ASCII))
+		};
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_mixed_full_fullon_regular", UNIT_TYPE, 0, clock.millis(), true, true, false,
+						false, false, false, true, 12),
+		};
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void mixedFullAndFullOnHoldoutsOnFullOnExperiment() {
+		final Experiment experiment = newExperiment(1, "exp_mixed_full_fullon_fullon_exp");
+		experiment.fullOnVariant = 2;
+		experiment.holdoutIds = new int[]{11, 12};
+
+		// on a full-on experiment both holdouts apply; iteration order is by payload id, so the
+		// full_on holdout (11) matches first.
+		final Context context = createReadyContext(contextDataOf(
+				new ExperimentHoldout[]{
+						newFullOnHoldout(11, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO),
+						newHoldout(12, HOLDOUT_IN_SEED_HI, HOLDOUT_IN_SEED_LO),
+				}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_mixed_full_fullon_fullon_exp"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = new Unit[]{
+				new Unit(UNIT_TYPE, new String(Hashing.hashUnit(UID), StandardCharsets.US_ASCII))
+		};
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_mixed_full_fullon_fullon_exp", UNIT_TYPE, 0, clock.millis(), true, true, false,
+						false, false, false, true, 11),
+		};
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 }

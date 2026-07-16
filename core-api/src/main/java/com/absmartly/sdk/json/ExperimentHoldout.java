@@ -14,15 +14,22 @@ public class ExperimentHoldout {
 	public int seedHi;
 	public int seedLo;
 	public double[] split;
+	public Boolean fullOn;
 
 	public ExperimentHoldout() {}
 
 	@SuppressFBWarnings(value = "EI_EXPOSE_REP2")
 	public ExperimentHoldout(int id, int seedHi, int seedLo, double[] split) {
+		this(id, seedHi, seedLo, split, null);
+	}
+
+	@SuppressFBWarnings(value = "EI_EXPOSE_REP2")
+	public ExperimentHoldout(int id, int seedHi, int seedLo, double[] split, Boolean fullOn) {
 		this.id = id;
 		this.seedHi = seedHi;
 		this.seedLo = seedLo;
 		this.split = split;
+		this.fullOn = fullOn;
 	}
 
 	@Override
@@ -40,6 +47,8 @@ public class ExperimentHoldout {
 			return false;
 		if (seedLo != that.seedLo)
 			return false;
+		if (fullOn != null ? !fullOn.equals(that.fullOn) : that.fullOn != null)
+			return false;
 		return Arrays.equals(split, that.split);
 	}
 
@@ -49,6 +58,7 @@ public class ExperimentHoldout {
 		result = 31 * result + seedHi;
 		result = 31 * result + seedLo;
 		result = 31 * result + Arrays.hashCode(split);
+		result = 31 * result + (fullOn != null ? fullOn.hashCode() : 0);
 		return result;
 	}
 
@@ -59,6 +69,7 @@ public class ExperimentHoldout {
 				", seedHi=" + seedHi +
 				", seedLo=" + seedLo +
 				", split=" + Arrays.toString(split) +
+				", fullOn=" + fullOn +
 				'}';
 	}
 }

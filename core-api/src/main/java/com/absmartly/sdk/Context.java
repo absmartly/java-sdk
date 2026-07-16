@@ -814,6 +814,12 @@ public class Context implements Closeable {
 							final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
 									unitHash);
 							for (final ExperimentHoldout holdout : experiment.holdouts) {
+								if (Boolean.TRUE.equals(holdout.fullOn) && experiment.data.fullOnVariant == 0) {
+									// a full_on holdout only applies to full-on experiments; the
+									// collector skips it server-side for non-full-on experiments too.
+									continue;
+								}
+
 								if (assigner.assign(holdout.split, holdout.seedHi, holdout.seedLo) == 0) {
 									assignment.heldOut = true;
 									assignment.holdoutId = holdout.id;
