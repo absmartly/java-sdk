@@ -19,14 +19,11 @@ public class Exposure {
 	public boolean fullOn;
 	public boolean custom;
 	public boolean audienceMismatch;
-	public boolean heldOut;
-	public int holdoutId;
 
 	public Exposure() {}
 
 	public Exposure(int id, String name, String unit, int variant, long exposedAt, boolean assigned, boolean eligible,
-			boolean overridden, boolean fullOn, boolean custom, boolean audienceMismatch, boolean heldOut,
-			int holdoutId) {
+			boolean overridden, boolean fullOn, boolean custom, boolean audienceMismatch) {
 		this.id = id;
 		this.name = name;
 		this.unit = unit;
@@ -38,8 +35,6 @@ public class Exposure {
 		this.fullOn = fullOn;
 		this.custom = custom;
 		this.audienceMismatch = audienceMismatch;
-		this.heldOut = heldOut;
-		this.holdoutId = holdoutId;
 	}
 
 	@Override
@@ -53,14 +48,13 @@ public class Exposure {
 				&& assigned == exposure.assigned && eligible == exposure.eligible && overridden == exposure.overridden
 				&& fullOn == exposure.fullOn && custom == exposure.custom
 				&& Objects.equals(audienceMismatch, exposure.audienceMismatch) && Objects.equals(name, exposure.name)
-				&& Objects.equals(unit, exposure.unit) && heldOut == exposure.heldOut
-				&& holdoutId == exposure.holdoutId;
+				&& Objects.equals(unit, exposure.unit);
 	}
 
 	@Override
 	public int hashCode() {
 		return Objects.hash(id, name, unit, variant, exposedAt, assigned, eligible, overridden, fullOn, custom,
-				audienceMismatch, heldOut, holdoutId);
+				audienceMismatch);
 	}
 
 	@Override
@@ -77,8 +71,6 @@ public class Exposure {
 				", fullOn=" + fullOn +
 				", custom=" + custom +
 				", audienceMismatch=" + audienceMismatch +
-				", heldOut=" + heldOut +
-				", holdoutId=" + holdoutId +
 				'}';
 	}
 }

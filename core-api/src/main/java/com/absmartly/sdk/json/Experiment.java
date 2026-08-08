@@ -24,7 +24,10 @@ public class Experiment {
 	public boolean audienceStrict;
 	public String audience;
 	public CustomFieldValue[] customFieldValues;
-	public int[] holdoutIds;
+
+	// Set only for entries served in the top-level `holdouts` array; null for ordinary experiments.
+	public String holdoutType;
+	public int[] excludedExperimentIds;
 
 	public Experiment() {}
 
@@ -69,7 +72,9 @@ public class Experiment {
 			return false;
 		if (!Arrays.equals(customFieldValues, that.customFieldValues))
 			return false;
-		return Arrays.equals(holdoutIds, that.holdoutIds);
+		if (holdoutType != null ? !holdoutType.equals(that.holdoutType) : that.holdoutType != null)
+			return false;
+		return Arrays.equals(excludedExperimentIds, that.excludedExperimentIds);
 	}
 
 	@Override
@@ -90,7 +95,8 @@ public class Experiment {
 		result = 31 * result + (audienceStrict ? 1 : 0);
 		result = 31 * result + (audience != null ? audience.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(customFieldValues);
-		result = 31 * result + Arrays.hashCode(holdoutIds);
+		result = 31 * result + (holdoutType != null ? holdoutType.hashCode() : 0);
+		result = 31 * result + Arrays.hashCode(excludedExperimentIds);
 		return result;
 	}
 
@@ -113,7 +119,8 @@ public class Experiment {
 				", audienceStrict=" + audienceStrict +
 				", audience='" + audience + '\'' +
 				", customFieldValues=" + Arrays.toString(customFieldValues) +
-				", holdoutIds=" + Arrays.toString(holdoutIds) +
+				", holdoutType='" + holdoutType + '\'' +
+				", excludedExperimentIds=" + Arrays.toString(excludedExperimentIds) +
 				'}';
 	}
 }

@@ -11,7 +11,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextData {
 	public Experiment[] experiments = new Experiment[0];
-	public ExperimentHoldout[] holdouts = new ExperimentHoldout[0];
+	public Experiment[] holdouts = new Experiment[0];
 
 	public ContextData() {}
 
@@ -21,7 +21,7 @@ public class ContextData {
 	}
 
 	@SuppressFBWarnings(value = "EI_EXPOSE_REP2")
-	public ContextData(Experiment[] experiments, ExperimentHoldout[] holdouts) {
+	public ContextData(Experiment[] experiments, Experiment[] holdouts) {
 		this.experiments = experiments;
 		this.holdouts = holdouts;
 	}
