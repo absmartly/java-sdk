@@ -378,35 +378,56 @@ public class Context implements Closeable {
 		return assignment.variant;
 	}
 
+	// A suppressed assignment (held out by an applicable holdout) never publishes its own
+	// exposure - the holdout experiment's own exposure is the sole membership record. Firing
+	// either exposure still triggers evaluation of every holdout applicable to this unit type,
+	// keeping both holdout arms symmetric regardless of which covered experiment triggered it.
 	private void queueExposure(final Assignment assignment) {
 		if (assignment.exposed.compareAndSet(false, true)) {
-			final Exposure exposure = new Exposure();
-			exposure.id = assignment.id;
-			exposure.name = assignment.name;
-			exposure.unit = assignment.unitType;
-			exposure.variant = assignment.variant;
-			exposure.exposedAt = clock_.millis();
-			exposure.assigned = assignment.assigned;
-			exposure.eligible = assignment.eligible;
-			exposure.overridden = assignment.overridden;
-			exposure.fullOn = assignment.fullOn;
-			exposure.custom = assignment.custom;
-			exposure.audienceMismatch = assignment.audienceMismatch;
-			exposure.heldOut = assignment.heldOut;
-			exposure.holdoutId = assignment.holdoutId;
-
-			try {
-				eventLock_.lock();
-				pendingCount_.incrementAndGet();
-				exposures_.add(exposure);
-			} finally {
-				eventLock_.unlock();
+			if (!assignment.suppressed) {
+				enqueueExposure(assignment);
 			}
 
-			logEvent(ContextEventLogger.EventType.Exposure, exposure);
+			if (assignment.holdouts != null) {
+				for (final Experiment holdout : assignment.holdouts) {
+					queueHoldoutExposure(holdout, assignment.unitType);
+				}
+			}
 
 			setTimeout();
 		}
+	}
+
+	private void queueHoldoutExposure(final Experiment holdoutExperiment, final String unitType) {
+		final Assignment holdoutAssignment = getHoldoutAssignment(holdoutExperiment, unitType);
+		if ((holdoutAssignment != null) && holdoutAssignment.exposed.compareAndSet(false, true)) {
+			enqueueExposure(holdoutAssignment);
+		}
+	}
+
+	private void enqueueExposure(final Assignment assignment) {
+		final Exposure exposure = new Exposure();
+		exposure.id = assignment.id;
+		exposure.name = assignment.name;
+		exposure.unit = assignment.unitType;
+		exposure.variant = assignment.variant;
+		exposure.exposedAt = clock_.millis();
+		exposure.assigned = assignment.assigned;
+		exposure.eligible = assignment.eligible;
+		exposure.overridden = assignment.overridden;
+		exposure.fullOn = assignment.fullOn;
+		exposure.custom = assignment.custom;
+		exposure.audienceMismatch = assignment.audienceMismatch;
+
+		try {
+			eventLock_.lock();
+			pendingCount_.incrementAndGet();
+			exposures_.add(exposure);
+		} finally {
+			eventLock_.unlock();
+		}
+
+		logEvent(ContextEventLogger.EventType.Exposure, exposure);
 	}
 
 	public int peekTreatment(@Nonnull final String experimentName) {
@@ -700,7 +721,6 @@ public class Context implements Closeable {
 				experiment.data.iteration == assignment.iteration &&
 				experiment.data.fullOnVariant == assignment.fullOnVariant &&
 				Arrays.equals(experiment.data.trafficSplit, assignment.trafficSplit) &&
-				Arrays.equals(experiment.data.holdoutIds, assignment.holdoutIds) &&
 				Arrays.equals(experiment.holdouts, assignment.holdouts);
 	}
 
@@ -709,10 +729,10 @@ public class Context implements Closeable {
 	// variant, traffic ineligibility, or a strict audience mismatch — the custom value can never
 	// equal that variant, so comparing the two would spuriously invalidate the cache and re-expose
 	// on every getTreatment call. Treat those forced assignments as cache-valid regardless of the
-	// custom assignment. (A held-out or forced assignment always has assigned=true except for the
+	// custom assignment. (A suppressed or forced assignment always has assigned=true except for the
 	// strict-mismatch and no-unit cases, where assigned stays false.)
 	private static boolean variantForcedRegardlessOfCustom(final Assignment assignment) {
-		return assignment.heldOut
+		return assignment.suppressed
 				|| assignment.fullOn
 				|| !assignment.eligible
 				|| !assignment.assigned;
@@ -733,13 +753,42 @@ public class Context implements Closeable {
 		boolean custom;
 
 		boolean audienceMismatch;
-		boolean heldOut;
-		int holdoutId;
-		int[] holdoutIds;
-		ExperimentHoldout[] holdouts;
+		// Held out by a union of applicable holdouts: no exposure for this experiment, control
+		// values only. `holdouts` is the resolved applicable list, used both to invalidate this
+		// cached assignment when a holdout definition changes and to trigger each holdout's own
+		// exposure once this experiment is evaluated (see queueExposure).
+		boolean suppressed;
+		Experiment[] holdouts;
 		Map<String, Object> variables = Collections.emptyMap();
 
 		final AtomicBoolean exposed = new AtomicBoolean(false);
+	}
+
+	// Pins the holdout definition an Assignment was computed against, so getHoldoutAssignment can
+	// detect a refresh that changed the holdout's seed/split/iteration and recompute rather than
+	// reuse a stale membership verdict. Compares assignment-relevant fields only, mirroring
+	// experimentMatches for ordinary experiments.
+	private static class HoldoutAssignment {
+		final Assignment assignment;
+		final int iteration;
+		final int seedHi;
+		final int seedLo;
+		final double[] split;
+		final String unitType;
+
+		HoldoutAssignment(Assignment assignment, Experiment holdout, String unitType) {
+			this.assignment = assignment;
+			this.iteration = holdout.iteration;
+			this.seedHi = holdout.seedHi;
+			this.seedLo = holdout.seedLo;
+			this.split = holdout.split;
+			this.unitType = unitType;
+		}
+
+		boolean matches(Experiment current, String currentUnitType) {
+			return (iteration == current.iteration) && (seedHi == current.seedHi) && (seedLo == current.seedLo)
+					&& Arrays.equals(split, current.split) && unitType.equals(currentUnitType);
+		}
 	}
 
 	private Assignment getAssignment(final String experimentName) {
@@ -801,37 +850,35 @@ public class Context implements Closeable {
 				if (experiment != null) {
 					final String unitType = experiment.data.unitType;
 
-					// Share the experiment's holdout arrays by reference rather than copying: they are
-					// only read here (and via Arrays.equals in experimentMatches) and experiment data is
-					// treated as immutable once installed by setData, so the aliasing is safe.
-					assignment.holdoutIds = experiment.data.holdoutIds;
+					// Share the experiment's applicable-holdouts array by reference rather than
+					// copying: it is only read here (and via Arrays.equals in experimentMatches) and
+					// experiment data is treated as immutable once installed by setData, so the
+					// aliasing is safe.
 					assignment.holdouts = experiment.holdouts;
 
+					boolean suppressed = false;
 					if (experiment.holdouts != null && experiment.holdouts.length > 0) {
 						final String uid = units_.get(unitType);
 						if (uid != null) {
 							final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
 							final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
 									unitHash);
-							for (final ExperimentHoldout holdout : experiment.holdouts) {
-								if (Boolean.TRUE.equals(holdout.fullOn) && experiment.data.fullOnVariant == 0) {
-									// a full_on holdout only applies to full-on experiments; the
-									// collector skips it server-side for non-full-on experiments too.
-									continue;
-								}
-
+							// Union across every applicable holdout: variant 0 in any one of them
+							// suppresses this experiment's own exposure and forces control values.
+							for (final Experiment holdout : experiment.holdouts) {
 								if (assigner.assign(holdout.split, holdout.seedHi, holdout.seedLo) == 0) {
-									assignment.heldOut = true;
-									assignment.holdoutId = holdout.id;
-									assignment.variant = 0;
-									assignment.assigned = true;
+									suppressed = true;
 									break;
 								}
 							}
 						}
 					}
+					assignment.suppressed = suppressed;
 
-					if (!assignment.heldOut) {
+					if (suppressed) {
+						assignment.variant = 0;
+						assignment.assigned = true;
+					} else {
 						if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
 							final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
 							for (final Attribute attr : attributes_) {
@@ -922,6 +969,46 @@ public class Context implements Closeable {
 		}
 	}
 
+	// The holdout's own assignment is cached by holdout id rather than name, since holdout
+	// entries live outside the experiments index and are shared by reference across every
+	// covered experiment. A definition change (seed, split, iteration) invalidates the cache
+	// entry so a refreshed holdout is re-assigned and re-exposed, exactly like a normal
+	// experiment's cached assignment does via experimentMatches.
+	private Assignment getHoldoutAssignment(final Experiment holdout, final String unitType) {
+		final String uid = units_.get(unitType);
+		if (uid == null) {
+			return null;
+		}
+
+		final ReentrantReadWriteLock.WriteLock writeLock = contextLock_.writeLock();
+		try {
+			writeLock.lock();
+
+			final HoldoutAssignment cached = holdoutAssignmentCache_.get(holdout.id);
+			if ((cached != null) && cached.matches(holdout, unitType)) {
+				return cached.assignment;
+			}
+
+			final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
+			final VariantAssigner assigner = Context.this.getVariantAssigner(unitType, unitHash);
+
+			final Assignment assignment = new Assignment();
+			assignment.id = holdout.id;
+			assignment.name = holdout.name;
+			assignment.iteration = holdout.iteration;
+			assignment.unitType = unitType;
+			assignment.eligible = true;
+			assignment.assigned = true;
+			assignment.variant = assigner.assign(holdout.split, holdout.seedHi, holdout.seedLo);
+
+			holdoutAssignmentCache_.put(holdout.id, new HoldoutAssignment(assignment, holdout, unitType));
+
+			return assignment;
+		} finally {
+			writeLock.unlock();
+		}
+	}
+
 	private List<ContextExperiment> getVariableExperiments(final String key) {
 		return Concurrency.getRW(dataLock_, indexVariables_, key);
 	}
@@ -999,7 +1086,7 @@ public class Context implements Closeable {
 
 	private static class ContextExperiment {
 		Experiment data;
-		ExperimentHoldout[] holdouts;
+		Experiment[] holdouts;
 		List<Map<String, Object>> variables;
 		Map<String, ContextCustomFieldValue> customFieldValues;
 	}
@@ -1009,43 +1096,62 @@ public class Context implements Closeable {
 		Object value;
 	}
 
-	private static ExperimentHoldout[] resolveHoldouts(final int[] holdoutIds,
-			final Map<Integer, ExperimentHoldout> holdoutIndex) {
-		if (holdoutIds == null || holdoutIds.length == 0) {
+	private static boolean isExcluded(final int[] excludedExperimentIds, final int experimentId) {
+		return (excludedExperimentIds != null) && (Arrays.binarySearch(excludedExperimentIds, experimentId) >= 0);
+	}
+
+	// A holdout applies to an experiment when their unit types match and the experiment is not
+	// in the holdout's own exclusion list. A `full_on` holdout additionally applies only to
+	// experiments that are themselves full-on (fullOnVariant != 0); `full` holdouts apply
+	// regardless. This is derived once per experiment at data-install time, not per unit.
+	private static Experiment[] resolveApplicableHoldouts(final Experiment experiment,
+			final Map<String, List<Experiment>> holdoutsByUnitType) {
+		final List<Experiment> candidates = holdoutsByUnitType.get(experiment.unitType);
+		if (candidates == null || candidates.isEmpty()) {
 			return null;
 		}
 
-		final List<ExperimentHoldout> resolved = new ArrayList<ExperimentHoldout>(holdoutIds.length);
-		for (final int holdoutId : holdoutIds) {
-			final ExperimentHoldout holdout = holdoutIndex.get(holdoutId);
-			if (holdout != null && holdout.split != null && holdout.split.length > 0) {
-				resolved.add(holdout);
+		final List<Experiment> applicable = new ArrayList<Experiment>(candidates.size());
+		for (final Experiment holdout : candidates) {
+			if ("full_on".equals(holdout.holdoutType) && experiment.fullOnVariant == 0) {
+				continue;
 			}
+
+			if (isExcluded(holdout.excludedExperimentIds, experiment.id)) {
+				continue;
+			}
+
+			applicable.add(holdout);
 		}
 
-		if (resolved.isEmpty()) {
+		if (applicable.isEmpty()) {
 			return null;
 		}
 
-		Collections.sort(resolved, new Comparator<ExperimentHoldout>() {
+		Collections.sort(applicable, new Comparator<Experiment>() {
 			@Override
-			public int compare(ExperimentHoldout a, ExperimentHoldout b) {
+			public int compare(Experiment a, Experiment b) {
 				return Integer.valueOf(a.id).compareTo(b.id);
 			}
 		});
 
-		return resolved.toArray(new ExperimentHoldout[0]);
+		return applicable.toArray(new Experiment[0]);
 	}
 
 	private void setData(final ContextData data) {
 		final Map<String, ContextExperiment> index = new HashMap<String, ContextExperiment>();
 		final Map<String, List<ContextExperiment>> indexVariables = new HashMap<String, List<ContextExperiment>>();
 
-		final Map<Integer, ExperimentHoldout> holdoutIndex = new HashMap<Integer, ExperimentHoldout>();
+		final Map<String, List<Experiment>> holdoutsByUnitType = new HashMap<String, List<Experiment>>();
 		if (data.holdouts != null) {
-			for (final ExperimentHoldout holdout : data.holdouts) {
-				if (holdout != null) {
-					holdoutIndex.put(holdout.id, holdout);
+			for (final Experiment holdout : data.holdouts) {
+				if ((holdout != null) && (holdout.split != null) && (holdout.split.length > 0)) {
+					List<Experiment> holdouts = holdoutsByUnitType.get(holdout.unitType);
+					if (holdouts == null) {
+						holdouts = new ArrayList<Experiment>();
+						holdoutsByUnitType.put(holdout.unitType, holdouts);
+					}
+					holdouts.add(holdout);
 				}
 			}
 		}
@@ -1053,7 +1159,7 @@ public class Context implements Closeable {
 		for (final Experiment experiment : data.experiments) {
 			final ContextExperiment contextExperiment = new ContextExperiment();
 			contextExperiment.data = experiment;
-			contextExperiment.holdouts = resolveHoldouts(experiment.holdoutIds, holdoutIndex);
+			contextExperiment.holdouts = resolveApplicableHoldouts(experiment, holdoutsByUnitType);
 			contextExperiment.variables = new ArrayList<Map<String, Object>>(experiment.variants.length);
 
 			for (final ExperimentVariant variant : experiment.variants) {
@@ -1172,6 +1278,7 @@ public class Context implements Closeable {
 	private final Map<String, byte[]> hashedUnits_;
 	private final Map<String, VariantAssigner> assigners_;
 	private final Map<String, Assignment> assignmentCache_ = new HashMap<String, Assignment>();
+	private final Map<Integer, HoldoutAssignment> holdoutAssignmentCache_ = new HashMap<Integer, HoldoutAssignment>();
 
 	private final ReentrantLock eventLock_ = new ReentrantLock();
 	private final ArrayList<Exposure> exposures_ = new ArrayList<Exposure>();
