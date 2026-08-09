@@ -721,7 +721,31 @@ public class Context implements Closeable {
 				experiment.data.iteration == assignment.iteration &&
 				experiment.data.fullOnVariant == assignment.fullOnVariant &&
 				Arrays.equals(experiment.data.trafficSplit, assignment.trafficSplit) &&
-				Arrays.equals(experiment.holdouts, assignment.holdouts);
+				holdoutSetMatches(experiment.holdouts, assignment.holdouts);
+	}
+
+	// Applicable-holdout identity for cache-validity purposes is (id, iteration) per entry, in
+	// resolution order - the same fields experimentMatches already uses to identify an ordinary
+	// experiment's own run, and nothing finer. Seed, split, name, variants, applications, audience
+	// and customFieldValues can all change without altering who is covered or which arm a unit
+	// lands in, so comparing whole Experiment objects (Arrays.equals delegates to
+	// Experiment.equals) would invalidate on purely cosmetic edits and force a duplicate exposure.
+	// A change in the resolved set - membership added/removed, or an id/iteration change on an
+	// existing entry - does alter coverage and must invalidate.
+	private static boolean holdoutSetMatches(final Experiment[] a, final Experiment[] b) {
+		if (a == b) {
+			return true;
+		} else if ((a == null) || (b == null) || (a.length != b.length)) {
+			return false;
+		}
+
+		for (int i = 0; i < a.length; ++i) {
+			if ((a[i].id != b[i].id) || (a[i].iteration != b[i].iteration)) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	// A custom assignment can only take effect on the normal, traffic-eligible assignment path.
@@ -754,9 +778,10 @@ public class Context implements Closeable {
 
 		boolean audienceMismatch;
 		// Held out by a union of applicable holdouts: no exposure for this experiment, control
-		// values only. `holdouts` is the resolved applicable list, used both to invalidate this
-		// cached assignment when a holdout definition changes and to trigger each holdout's own
-		// exposure once this experiment is evaluated (see queueExposure).
+		// values only. `holdouts` is the resolved applicable list (by id+iteration identity, see
+		// holdoutSetMatches), used both to invalidate this cached assignment when coverage changes
+		// and to trigger each holdout's own exposure once this experiment is evaluated (see
+		// queueExposure).
 		boolean suppressed;
 		Experiment[] holdouts;
 		Map<String, Object> variables = Collections.emptyMap();
@@ -764,30 +789,25 @@ public class Context implements Closeable {
 		final AtomicBoolean exposed = new AtomicBoolean(false);
 	}
 
-	// Pins the holdout definition an Assignment was computed against, so getHoldoutAssignment can
-	// detect a refresh that changed the holdout's seed/split/iteration and recompute rather than
-	// reuse a stale membership verdict. Compares assignment-relevant fields only, mirroring
-	// experimentMatches for ordinary experiments.
+	// Pins the (iteration, unitType) a holdout's Assignment was computed against. This is the same
+	// granularity experimentMatches uses for ordinary experiments: seedHi/seedLo/split are
+	// deliberately excluded so a live seed or percentage edit - which does not change who is
+	// covered - never invalidates an already-exposed unit's arm. Only an iteration bump, a genuine
+	// re-randomization epoch, replaces the cached verdict (and its `exposed` flag), exactly as it
+	// does for ordinary experiments.
 	private static class HoldoutAssignment {
 		final Assignment assignment;
 		final int iteration;
-		final int seedHi;
-		final int seedLo;
-		final double[] split;
 		final String unitType;
 
 		HoldoutAssignment(Assignment assignment, Experiment holdout, String unitType) {
 			this.assignment = assignment;
 			this.iteration = holdout.iteration;
-			this.seedHi = holdout.seedHi;
-			this.seedLo = holdout.seedLo;
-			this.split = holdout.split;
 			this.unitType = unitType;
 		}
 
 		boolean matches(Experiment current, String currentUnitType) {
-			return (iteration == current.iteration) && (seedHi == current.seedHi) && (seedLo == current.seedLo)
-					&& Arrays.equals(split, current.split) && unitType.equals(currentUnitType);
+			return (iteration == current.iteration) && unitType.equals(currentUnitType);
 		}
 	}
 
@@ -971,9 +991,9 @@ public class Context implements Closeable {
 
 	// The holdout's own assignment is cached by holdout id rather than name, since holdout
 	// entries live outside the experiments index and are shared by reference across every
-	// covered experiment. A definition change (seed, split, iteration) invalidates the cache
-	// entry so a refreshed holdout is re-assigned and re-exposed, exactly like a normal
-	// experiment's cached assignment does via experimentMatches.
+	// covered experiment. Only an iteration change invalidates the cache entry (see
+	// HoldoutAssignment), matching experimentMatches's treatment of ordinary experiments and
+	// guaranteeing an already-exposed unit's arm survives any seed, split or cosmetic edit.
 	private Assignment getHoldoutAssignment(final Experiment holdout, final String unitType) {
 		final String uid = units_.get(unitType);
 		if (uid == null) {
@@ -1278,6 +1298,18 @@ public class Context implements Closeable {
 	private final Map<String, byte[]> hashedUnits_;
 	private final Map<String, VariantAssigner> assigners_;
 	private final Map<String, Assignment> assignmentCache_ = new HashMap<String, Assignment>();
+	// A holdout's identity, for both this cache's keying and for detecting whether a covered
+	// experiment's own set of applicable holdouts is still current (holdoutSetMatches), is its
+	// (id, iteration) pair - never a full Experiment comparison. Rationale: the governing
+	// invariant is that a unit must never appear in both arms of the same holdout within one
+	// context's lifetime, which the once-per-context `exposed` AtomicBoolean on each cached
+	// Assignment enforces only as long as the entry it lives on is not needlessly replaced.
+	// seedHi/seedLo/split/name/variants/applications/audience/customFieldValues can all change
+	// without altering who is a member, so none of them may invalidate the entry - doing so
+	// would reset `exposed` and let an already-exposed unit be re-assigned into the other arm on
+	// the very next refresh. Only an iteration bump is a genuine re-randomization epoch and
+	// legitimately replaces the entry (and thus resets exposure), matching how experimentMatches
+	// already treats iteration for ordinary experiments.
 	private final Map<Integer, HoldoutAssignment> holdoutAssignmentCache_ = new HashMap<Integer, HoldoutAssignment>();
 
 	private final ReentrantLock eventLock_ = new ReentrantLock();

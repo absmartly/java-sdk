@@ -507,31 +507,133 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure
 	}
 
+	// A live seed edit within the same iteration is the crux of the bug this model fixes: naively
+	// comparing seedHi/seedLo (or the whole Experiment) invalidates the cached holdout Assignment,
+	// resets its `exposed` flag, and lets an already-exposed unit be re-assigned into the OTHER
+	// arm - variant 0 unit ends up exposed as variant 1 too, or vice versa. Same iteration must
+	// keep both the verdict and the exposure state pinned to the original arm.
 	@Test
-	void refreshReassignsWhenHoldoutDefinitionChanges() {
-		final Experiment experiment = newExperiment(1, "exp_holdout_refresh");
+	void refreshWithSeedChangeSameIterationKeepsUnitInOriginalArmAndDoesNotReExpose() {
+		final Experiment experiment = newExperiment(1, "exp_holdout_seed_thrash");
 
-		// unit is NOT held out initially (holdout B's seed)
+		// unit is held out initially (holdout A's seed, iteration 1)
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_holdout_seed_thrash")); // held out -> control
+		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure (variant 0)
+
+		// same holdout id and iteration, but a seed edit that would flip this unit to variant 1
+		// if it were re-assigned.
+		final Experiment reseededHoldout = newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
+		final Experiment refreshedExperiment = newExperiment(1, "exp_holdout_seed_thrash");
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(new Experiment[]{reseededHoldout}, refreshedExperiment));
+		refreshing.join();
+
+		// still variant 0 / held out: the pinned assignment from iteration 1 is reused, not
+		// recomputed against the new seed.
+		assertEquals(0, context.getTreatment("exp_holdout_seed_thrash"));
+		assertEquals(1, context.getPendingCount()); // no second, contradictory exposure in variant 1
+	}
+
+	// A cosmetic holdout edit - name, variants, applications - cannot change who is a member.
+	// Neither the holdout nor the covered experiment it suppresses may re-expose the unit: doing
+	// so would put the unit in variant 0 (already recorded) and, on the very same underlying
+	// assignment, effectively re-litigate variant 1 as well.
+	@Test
+	void refreshWithCosmeticHoldoutEditDoesNotReExposeHeldOutUnit() {
+		final Experiment experiment = newExperiment(1, "exp_holdout_cosmetic");
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_holdout_cosmetic")); // held out
+		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure
+
+		final Experiment cosmeticHoldout = newHoldout(11, "holdout_a_renamed", HOLDOUT_A_SEED_HI,
+				HOLDOUT_A_SEED_LO);
+		cosmeticHoldout.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
+		cosmeticHoldout.variants = new ExperimentVariant[]{
+				new ExperimentVariant("Control", null), new ExperimentVariant("HeldOut", null)
+		};
+		final Experiment refreshedExperiment = newExperiment(1, "exp_holdout_cosmetic");
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(new Experiment[]{cosmeticHoldout}, refreshedExperiment));
+		refreshing.join();
+
+		assertEquals(0, context.getTreatment("exp_holdout_cosmetic")); // still held out
+		assertEquals(1, context.getPendingCount()); // no new exposure for either the holdout or the experiment
+	}
+
+	// The covered experiment side of the same guarantee: a non-held-out unit's own ordinary
+	// exposure must not be duplicated by a cosmetic holdout edit either.
+	@Test
+	void refreshWithCosmeticHoldoutEditDoesNotDuplicateCoveredExperimentExposure() {
+		final Experiment experiment = newExperiment(1, "exp_holdout_cosmetic_covered");
+		final Context context = createReadyContext(UID_NOT_HELD_OUT, contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_holdout_cosmetic_covered")); // not held out
+		assertEquals(2, context.getPendingCount()); // own exposure + holdout exposure (variant 1)
+
+		final Experiment cosmeticHoldout = newHoldout(11, "holdout_a_renamed", HOLDOUT_A_SEED_HI,
+				HOLDOUT_A_SEED_LO);
+		final Experiment refreshedExperiment = newExperiment(1, "exp_holdout_cosmetic_covered");
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(new Experiment[]{cosmeticHoldout}, refreshedExperiment));
+		refreshing.join();
+
+		assertEquals(0, context.getTreatment("exp_holdout_cosmetic_covered"));
+		assertEquals(2, context.getPendingCount()); // no duplicate exposure of either kind
+	}
+
+	// An iteration bump is the one holdout edit that legitimately changes membership: it is a new
+	// randomization epoch, exactly as it is for ordinary experiments (see
+	// refreshClearAssignmentCacheForIterationChange in ContextTest). The unit is re-assigned once
+	// against the new epoch and lands in exactly one arm of it; the prior epoch's exposure - a
+	// distinct, already-published fact about a now-superseded assignment - is not retroactively
+	// invalidated. Note that a seed/split change WITHOUT an iteration bump (same epoch) must NOT
+	// re-assign, which is exactly what distinguishes this test from the cosmetic-edit tests above.
+	@Test
+	void refreshWithIterationBumpReassignsToExactlyOneNewArm() {
+		final Experiment experiment = newExperiment(1, "exp_holdout_iteration");
+
+		// unit is NOT held out initially (holdout B's seed, iteration 1)
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO)}, experiment));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_holdout_refresh"));
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_holdout_iteration"));
 		assertEquals(2, context.getPendingCount()); // normal exposure + holdout exposure (variant 1)
 
-		// same holdout id, but the definition's seed changes so the unit is now held out
-		final Experiment refreshedExperiment = newExperiment(1, "exp_holdout_refresh");
+		// same holdout id, new iteration with holdout A's seed: a genuine new epoch that now holds
+		// the unit out.
+		final Experiment newEpochHoldout = newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO);
+		newEpochHoldout.iteration = 2;
+		final Experiment refreshedExperiment = newExperiment(1, "exp_holdout_iteration");
+
 		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
-
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
-		refreshFuture.complete(contextDataOf(
-				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
-				refreshedExperiment));
+		refreshFuture.complete(contextDataOf(new Experiment[]{newEpochHoldout}, refreshedExperiment));
 		refreshing.join();
 
-		assertEquals(0, context.getTreatment("exp_holdout_refresh"));
-		// refreshed holdout re-exposes (its definition changed); the now-suppressed experiment
-		// emits no exposure of its own.
+		assertEquals(0, context.getTreatment("exp_holdout_iteration")); // new epoch: held out
+		// the new epoch's own exposure (variant 0); the now-suppressed experiment emits no
+		// exposure of its own for this epoch, so exactly one exposure is added.
+		assertEquals(3, context.getPendingCount());
+
+		// re-querying does not add a third exposure for the new epoch: exactly one arm was
+		// recorded for it, never both.
+		assertEquals(0, context.getTreatment("exp_holdout_iteration"));
 		assertEquals(3, context.getPendingCount());
 	}
 
