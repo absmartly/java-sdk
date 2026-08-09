@@ -276,6 +276,30 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
+	// The union rule is never proven if the deciding (held-out) holdout always sits at index 0 -
+	// a bug that stops at the first applicable holdout, or only ever consults holdouts[0], would
+	// still pass every other multi-holdout test above. Here the LOW-id holdout (11) does NOT hold
+	// the unit out and the HIGHER-id one (12) DOES; suppression must still trigger and both
+	// holdouts must still emit their own exposure with the correct variant.
+	@Test
+	void unionRuleAppliesWhenTheHigherIdHoldoutIsTheOnlyOneHoldingUnitOut() {
+		final Experiment experiment = newExperiment(1, "exp_union_high_id_decides");
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{
+						newHoldout(11, "holdout_low_id", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO), // does not hold UID out
+						newHoldout(12, "holdout_high_id", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO), // holds UID out
+				}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_union_high_id_decides")); // union -> suppressed
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				holdoutExposure(11, "holdout_low_id", 1),
+				holdoutExposure(12, "holdout_high_id", 0));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
 	@Test
 	void unitNotHeldOutByEitherHoldoutIsNotSuppressed() {
 		final Experiment experiment = newExperiment(1, "exp_multi_holdout_miss");
@@ -374,6 +398,28 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experiment));
 
 		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_session"));
+	}
+
+	// The unit type an experiment/holdout uses need not have any unit configured on this context
+	// at all (ContextConfig only sets session_id here). getHoldoutAssignment must treat a missing
+	// unit as "not evaluable" - control values, no exception, no holdout exposure - rather than
+	// NPE on the missing units_ entry.
+	@Test
+	void unconfiguredUnitTypeGetsControlValuesAndEmitsNoExposureAtAll() {
+		final Experiment experiment = newExperiment(1, "exp_user_holdout", "user_id", 0);
+		final Experiment holdout = newHoldout(11, "holdout_user", "user_id", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO,
+				"full", null);
+
+		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID); // only session_id, no user_id
+		final Context context = createReadyContext(config, contextDataOf(new Experiment[]{holdout}, experiment));
+
+		assertEquals(0, context.peekTreatment("exp_user_holdout"));
+
+		context.getTreatment("exp_user_holdout");
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		assertEquals(0, context.getPendingCount()); // neither the experiment nor the holdout fires
 	}
 
 	// (9): an absent holdouts key (null, the ContextData default) leaves behaviour identical to
@@ -829,5 +875,65 @@ class ContextHoldoutTest extends TestUtils {
 
 		// both exposures were queued for publish despite holdout A's logger call throwing.
 		assertEquals(2, context.getPendingCount());
+	}
+
+	// setData silently drops malformed holdout entries (null, split==null, split empty) rather
+	// than indexing them: each case below places the malformed entry at the covered experiment's
+	// own unit type, so if the filter regressed to `holdout != null` alone, the malformed entry
+	// would become "applicable" and either NPE or crash inside VariantAssigner.assign. Instead
+	// the experiment must assign normally, as if no holdout existed at all.
+	@Test
+	void nullHoldoutArrayElementIsIgnoredAndExperimentAssignsNormally() {
+		final Experiment experiment = newExperiment(1, "exp_null_holdout_entry");
+		final Context context = createReadyContext(contextDataOf(new Experiment[]{null}, experiment));
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_null_holdout_entry"));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_null_holdout_entry", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+						false, false, false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void holdoutWithNullSplitIsIgnoredAndExperimentAssignsNormally() {
+		final Experiment experiment = newExperiment(1, "exp_null_split_holdout");
+		final Experiment malformedHoldout = newHoldout(11, "holdout_null_split", HOLDOUT_A_SEED_HI,
+				HOLDOUT_A_SEED_LO);
+		malformedHoldout.split = null;
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{malformedHoldout}, experiment));
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_null_split_holdout"));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_null_split_holdout", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+						false, false, false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void holdoutWithEmptySplitIsIgnoredAndExperimentAssignsNormally() {
+		final Experiment experiment = newExperiment(1, "exp_empty_split_holdout");
+		final Experiment malformedHoldout = newHoldout(11, "holdout_empty_split", HOLDOUT_A_SEED_HI,
+				HOLDOUT_A_SEED_LO);
+		malformedHoldout.split = new double[0];
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{malformedHoldout}, experiment));
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_empty_split_holdout"));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_empty_split_holdout", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+						false, false, false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 }
