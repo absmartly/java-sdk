@@ -382,19 +382,39 @@ public class Context implements Closeable {
 	// exposure - the holdout experiment's own exposure is the sole membership record. Firing
 	// either exposure still triggers evaluation of every holdout applicable to this unit type,
 	// keeping both holdout arms symmetric regardless of which covered experiment triggered it.
+	// The trigger loop below must run even if the exposure above throws (e.g. a
+	// ContextEventLogger implementation that throws): `exposed` is already CAS'd true by the
+	// time we get here, so a skipped holdout trigger would never be retried for this context's
+	// life. Failures are collected and re-thrown once every holdout has had a chance to fire,
+	// rather than swallowed or allowed to abort the loop early.
 	private void queueExposure(final Assignment assignment) {
 		if (assignment.exposed.compareAndSet(false, true)) {
-			if (!assignment.suppressed) {
-				enqueueExposure(assignment);
+			RuntimeException failure = null;
+			try {
+				if (!assignment.suppressed) {
+					enqueueExposure(assignment);
+				}
+			} catch (final RuntimeException e) {
+				failure = e;
 			}
 
 			if (assignment.holdouts != null) {
 				for (final Experiment holdout : assignment.holdouts) {
-					queueHoldoutExposure(holdout, assignment.unitType);
+					try {
+						queueHoldoutExposure(holdout, assignment.unitType);
+					} catch (final RuntimeException e) {
+						if (failure == null) {
+							failure = e;
+						}
+					}
 				}
 			}
 
 			setTimeout();
+
+			if (failure != null) {
+				throw failure;
+			}
 		}
 	}
 
@@ -1199,6 +1219,12 @@ public class Context implements Closeable {
 		if (data.holdouts != null) {
 			for (final Experiment holdout : data.holdouts) {
 				if ((holdout != null) && (holdout.split != null) && (holdout.split.length > 0)) {
+					// isExcluded relies on binary search; the wire does not guarantee ordering, so
+					// normalize once here rather than on every lookup.
+					if (holdout.excludedExperimentIds != null) {
+						Arrays.sort(holdout.excludedExperimentIds);
+					}
+
 					List<Experiment> holdouts = holdoutsByUnitType.get(holdout.unitType);
 					if (holdouts == null) {
 						holdouts = new ArrayList<Experiment>();

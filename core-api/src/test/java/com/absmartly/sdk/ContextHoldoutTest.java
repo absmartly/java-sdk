@@ -1,7 +1,9 @@
 package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -790,5 +792,42 @@ class ContextHoldoutTest extends TestUtils {
 				contextDataOf(new Experiment[]{holdout}, suppressedExperiment, assignedExperiment));
 
 		assertEquals("from_assigned", context.getVariableValue("shared", "default"));
+	}
+
+	// Regression test for the unsorted-exclusion-array fix: the wire does not guarantee
+	// excludedExperimentIds is sorted, and isExcluded binary-searches it. setData must normalize
+	// the array so exclusions are applied correctly regardless of wire ordering.
+	@Test
+	void unsortedExcludedExperimentIdsStillExcludeCorrectly() {
+		final Experiment covered = newExperiment(1, "exp_holdout_in_unsorted");
+		final Experiment excluded = newExperiment(2, "exp_excluded_unsorted");
+		final Experiment holdout = newHoldout(11, "holdout_a", UNIT_TYPE, HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO,
+				"full", new int[]{9, 5, 2, 7}); // deliberately unsorted; excludes id 2
+
+		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, covered, excluded));
+
+		assertEquals(0, context.getTreatment("exp_holdout_in_unsorted")); // suppressed -> control
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_excluded_unsorted")); // exclusion unaffected
+	}
+
+	// Regression test for the logger-robustness fix: a throwing ContextEventLogger must not stop
+	// sibling holdout exposures from being queued. Holdout A (checked first, lower id) has a
+	// logger that throws; holdout B (checked second) must still fire.
+	@Test
+	void throwingLoggerDoesNotPermanentlyLoseSiblingHoldoutExposure() {
+		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(),
+				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof Exposure) && (((Exposure) o).id == 11)));
+
+		final Experiment experiment = newExperiment(1, "exp_multi_holdout_throwing_logger");
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{
+						newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO), // holds UID out, throws
+						newHoldout(12, "holdout_b", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO), // does not hold UID out
+				}, experiment));
+
+		assertThrows(RuntimeException.class, () -> context.getTreatment("exp_multi_holdout_throwing_logger"));
+
+		// both exposures were queued for publish despite holdout A's logger call throwing.
+		assertEquals(2, context.getPendingCount());
 	}
 }
