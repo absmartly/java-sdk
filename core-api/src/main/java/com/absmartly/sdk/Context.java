@@ -1009,14 +1009,33 @@ public class Context implements Closeable {
 	// HoldoutAssignment), matching experimentMatches's treatment of ordinary experiments and
 	// guaranteeing an already-exposed unit's arm survives any seed, split or cosmetic edit.
 	private Assignment getHoldoutAssignment(final Experiment holdout, final String unitType) {
-		final String uid = units_.get(unitType);
-		if (uid == null) {
-			return null;
+		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		try {
+			readLock.lock();
+
+			final String uid = units_.get(unitType);
+			if (uid == null) {
+				return null;
+			}
+
+			final HoldoutAssignment cached = holdoutAssignmentCache_.get(holdout.id);
+			if ((cached != null) && cached.matches(holdout, unitType)) {
+				return cached.assignment;
+			}
+		} finally {
+			readLock.unlock();
 		}
 
+		// Cache miss: recheck under the write lock before computing so two racing threads never
+		// install two different Assignment objects for the same holdout id.
 		final ReentrantReadWriteLock.WriteLock writeLock = contextLock_.writeLock();
 		try {
 			writeLock.lock();
+
+			final String uid = units_.get(unitType);
+			if (uid == null) {
+				return null;
+			}
 
 			final HoldoutAssignment cached = holdoutAssignmentCache_.get(holdout.id);
 			if ((cached != null) && cached.matches(holdout, unitType)) {
