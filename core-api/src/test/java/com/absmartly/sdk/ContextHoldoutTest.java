@@ -177,8 +177,8 @@ class ContextHoldoutTest extends TestUtils {
 		return new Exposure(id, name, unitType, variant, clock.millis(), true, true, false, false, false, false);
 	}
 
-	// (1) + (2): a held-out unit gets control values and emits zero exposures for the experiment
-	// it is held out of.
+	// A held-out unit gets control values and emits zero exposures for the experiment it is held
+	// out of.
 	@Test
 	void heldOutUnitGetsControlValuesAndEmitsNoExposureForCoveredExperiment() {
 		final Experiment experiment = newExperiment(1, "exp_holdout_in");
@@ -195,9 +195,8 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// (3): the holdout's own exposure is exactly one ordinary exposure with the unit's holdout
-	// variant and no holdout-specific fields, distinct from Exposure() itself no longer having
-	// heldOut/holdoutId fields at all.
+	// The holdout's own exposure is exactly one ordinary exposure with the unit's holdout
+	// variant and no holdout-specific fields.
 	@Test
 	void heldOutUnitEmitsExactlyOneOrdinaryHoldoutExposure() {
 		final Experiment experiment = newExperiment(1, "exp_holdout_in");
@@ -212,7 +211,7 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// (4): a non-held-out unit emits the holdout exposure with variant=1 plus its own normal
+	// A non-held-out unit emits the holdout exposure with variant=1 plus its own normal
 	// exposure, unchanged.
 	@Test
 	void notHeldOutUnitEmitsHoldoutExposureVariantOneAndNormalExposure() {
@@ -231,7 +230,7 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// (5): an experiment excluded from a holdout is never covered by it and emits normally for
+	// An experiment excluded from a holdout is never covered by it and emits normally for
 	// both a held-out and a non-held-out unit, even while the same unit is suppressed elsewhere.
 	@Test
 	void excludedExperimentEmitsNormallyEvenForHeldOutUnit() {
@@ -255,7 +254,7 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// (6): a normal experiment covered by two holdouts is suppressed if the unit is held out by
+	// A normal experiment covered by two holdouts is suppressed if the unit is held out by
 	// EITHER one (union), and each applicable holdout still emits its own independent exposure.
 	@Test
 	void unionOfApplicableHoldoutsSuppressesExperimentAndBothEmitOwnExposure() {
@@ -321,7 +320,7 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// (7): a full_on holdout is skipped entirely for a non-full-on experiment (no suppression, no
+	// A full_on holdout is skipped entirely for a non-full-on experiment (no suppression, no
 	// exposure triggered), and applies normally to a full-on one; a `full` holdout applies to a
 	// full-on experiment regardless of its fullOnVariant.
 	@Test
@@ -372,7 +371,7 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(0, context.getTreatment("exp_fullon_full_holdout")); // held out despite fullOnVariant=2
 	}
 
-	// (8): holdout applicability is derived from unit type alone; the `applications` field (which
+	// Holdout applicability is derived from unit type alone; the `applications` field (which
 	// the wire contract leaves empty on holdout entries) plays no role in matching.
 	@Test
 	void applicabilityIgnoresApplicationsFieldOnBothSides() {
@@ -422,7 +421,7 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(0, context.getPendingCount()); // neither the experiment nor the holdout fires
 	}
 
-	// (9): an absent holdouts key (null, the ContextData default) leaves behaviour identical to
+	// An absent holdouts key (null, the ContextData default) leaves behaviour identical to
 	// pre-holdout: no suppression, no NPE.
 	@Test
 	void assignsNormallyWhenHoldoutsKeyIsAbsent() {
@@ -443,7 +442,7 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_no_matching_holdouts"));
 	}
 
-	// (10): a custom assignment can never override a held-out unit's variant - holdout precedence
+	// A custom assignment can never override a held-out unit's variant - holdout precedence
 	// beats custom assignments, matching the existing audience/full-on/traffic precedence rules.
 	@Test
 	void customAssignmentCannotOverrideHeldOutVariant() {
@@ -498,7 +497,7 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(0, context.peekTreatment("exp_holdout_audience"));
 	}
 
-	// (11): the holdout's own exposure is emitted once per context, not once per suppressed
+	// The holdout's own exposure is emitted once per context, not once per suppressed
 	// experiment - two experiments covered by the same holdout still yield a single holdout
 	// exposure.
 	@Test
@@ -555,11 +554,11 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure
 	}
 
-	// A live seed edit within the same iteration is the crux of the bug this model fixes: naively
-	// comparing seedHi/seedLo (or the whole Experiment) invalidates the cached holdout Assignment,
-	// resets its `exposed` flag, and lets an already-exposed unit be re-assigned into the OTHER
-	// arm - variant 0 unit ends up exposed as variant 1 too, or vice versa. Same iteration must
-	// keep both the verdict and the exposure state pinned to the original arm.
+	// A live seed edit within the same iteration must not change who is a member: naively
+	// comparing seedHi/seedLo (or the whole Experiment) would invalidate the cached holdout
+	// Assignment, reset its `exposed` flag, and let an already-exposed unit be re-assigned into
+	// the OTHER arm - variant 0 unit ends up exposed as variant 1 too, or vice versa. Same
+	// iteration must keep both the verdict and the exposure state pinned to the original arm.
 	@Test
 	void refreshWithSeedChangeSameIterationKeepsUnitInOriginalArmAndDoesNotReExpose() {
 		final Experiment experiment = newExperiment(1, "exp_holdout_seed_thrash");
@@ -791,7 +790,7 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// --- Regression tests for the coupled `assigned` / emission-symmetry fix ----------------
+	// --- `assigned` and holdout-exposure symmetry ---------------------------------------------
 	// A suppressed assignment is not a participant in its experiment: `assigned` stays false.
 	// Reading a variable must still trigger the holdout's own exposure, for both arms, purely
 	// because the experiment was evaluated - regardless of whether that evaluation reached

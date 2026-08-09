@@ -372,7 +372,7 @@ public class Context implements Closeable {
 
 		final Assignment assignment = getAssignment(experimentName);
 		if (!assignment.exposed.get()) {
-			queueExposure(assignment);
+			triggerExposure(assignment);
 		}
 
 		return assignment.variant;
@@ -387,7 +387,7 @@ public class Context implements Closeable {
 	// time we get here, so a skipped holdout trigger would never be retried for this context's
 	// life. Failures are collected and re-thrown once every holdout has had a chance to fire,
 	// rather than swallowed or allowed to abort the loop early.
-	private void queueExposure(final Assignment assignment) {
+	private void triggerExposure(final Assignment assignment) {
 		if (assignment.exposed.compareAndSet(false, true)) {
 			RuntimeException failure = null;
 			try {
@@ -401,7 +401,7 @@ public class Context implements Closeable {
 			if (assignment.holdouts != null) {
 				for (final Experiment holdout : assignment.holdouts) {
 					try {
-						queueHoldoutExposure(holdout, assignment.unitType);
+						triggerHoldoutExposure(holdout, assignment.unitType);
 					} catch (final RuntimeException e) {
 						if (failure == null) {
 							failure = e;
@@ -418,7 +418,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	private void queueHoldoutExposure(final Experiment holdoutExperiment, final String unitType) {
+	private void triggerHoldoutExposure(final Experiment holdoutExperiment, final String unitType) {
 		final Assignment holdoutAssignment = getHoldoutAssignment(holdoutExperiment, unitType);
 		if ((holdoutAssignment != null) && holdoutAssignment.exposed.compareAndSet(false, true)) {
 			enqueueExposure(holdoutAssignment);
@@ -486,7 +486,7 @@ public class Context implements Closeable {
 		if (assignment != null) {
 			if (assignment.variables != null) {
 				if (!assignment.exposed.get()) {
-					queueExposure(assignment);
+					triggerExposure(assignment);
 				}
 
 				if (assignment.variables.containsKey(key)) {
@@ -769,17 +769,13 @@ public class Context implements Closeable {
 	}
 
 	// A custom assignment can only take effect on the normal, traffic-eligible assignment path.
-	// When the cached variant was forced by a higher-precedence rule — a holdout, a full-on
-	// variant, traffic ineligibility, or a strict audience mismatch — the custom value can never
-	// equal that variant, so comparing the two would spuriously invalidate the cache and re-expose
-	// on every getTreatment call. Treat those forced assignments as cache-valid regardless of the
-	// custom assignment. (A held-out unit is not a participant in the experiment, so `suppressed`
-	// is checked explicitly rather than relying on `assigned`.)
+	// When the cached variant was forced by a higher-precedence rule — a full-on variant, traffic
+	// ineligibility, a strict audience mismatch, or holdout suppression (which clears `assigned`) —
+	// the custom value can never equal that variant, so comparing the two would spuriously
+	// invalidate the cache and re-expose on every getTreatment call. Treat those forced
+	// assignments as cache-valid regardless of the custom assignment.
 	private static boolean variantForcedRegardlessOfCustom(final Assignment assignment) {
-		return assignment.suppressed
-				|| assignment.fullOn
-				|| !assignment.eligible
-				|| !assignment.assigned;
+		return assignment.fullOn || !assignment.eligible || !assignment.assigned;
 	}
 
 	private static class Assignment {
@@ -801,7 +797,7 @@ public class Context implements Closeable {
 		// values only. `holdouts` is the resolved applicable list (by id+iteration identity, see
 		// holdoutSetMatches), used both to invalidate this cached assignment when coverage changes
 		// and to trigger each holdout's own exposure once this experiment is evaluated (see
-		// queueExposure).
+		// triggerExposure).
 		boolean suppressed;
 		Experiment[] holdouts;
 		Map<String, Object> variables = Collections.emptyMap();
