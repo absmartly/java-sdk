@@ -742,4 +742,53 @@ class ContextHoldoutTest extends TestUtils {
 				holdoutExposure(VERDICT_UNIT_TYPE, 108, "holdout_108", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
+
+	// --- Regression tests for the coupled `assigned` / emission-symmetry fix ----------------
+	// A suppressed assignment is not a participant in its experiment: `assigned` stays false.
+	// Reading a variable must still trigger the holdout's own exposure, for both arms, purely
+	// because the experiment was evaluated - regardless of whether that evaluation reached
+	// `getTreatment` or `getVariableValue`, and regardless of whether the experiment's own
+	// exposure was itself suppressed.
+	@Test
+	void variableLookupFiresHoldoutExposureForBothHeldOutAndNonHeldOutUnits() {
+		final Experiment experimentHeldOut = newExperiment(1, "exp_var_held_out");
+		experimentHeldOut.variants[1].config = "{\"var_a\":\"value_a\"}";
+		final Context heldOutContext = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				experimentHeldOut));
+
+		// suppressed: control values only, but evaluating the variable must still trigger the
+		// holdout's own exposure.
+		assertEquals("default", heldOutContext.getVariableValue("var_a", "default"));
+		assertEquals(1, heldOutContext.getPendingCount()); // holdout exposure only
+
+		final Experiment experimentNotHeldOut = newExperiment(1, "exp_var_not_held_out");
+		experimentNotHeldOut.variants[1].config = "{\"var_a\":\"value_a\"}";
+		final Context notHeldOutContext = createReadyContext(UID_NOT_HELD_OUT, contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				experimentNotHeldOut));
+
+		assertEquals("default", notHeldOutContext.getVariableValue("var_a", "default")); // normal variant is 0
+		assertEquals(2, notHeldOutContext.getPendingCount()); // own exposure + holdout exposure
+	}
+
+	// A held-out experiment must never win variable-key resolution over one the unit is
+	// genuinely assigned to, even when the held-out experiment has the lower id and is checked
+	// first.
+	@Test
+	void variableKeyResolutionSkipsSuppressedAssignmentInFavorOfAssignedOne() {
+		final Experiment suppressedExperiment = newExperiment(1, "exp_var_key_suppressed");
+		suppressedExperiment.variants[1].config = "{\"shared\":\"from_suppressed\"}";
+
+		final Experiment assignedExperiment = newExperiment(2, "exp_var_key_assigned");
+		assignedExperiment.variants[1].config = "{\"shared\":\"from_assigned\"}";
+
+		final Experiment holdout = newHoldout(11, "holdout_a", UNIT_TYPE, HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO,
+				"full", new int[]{2}); // excludes exp_var_key_assigned from coverage
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{holdout}, suppressedExperiment, assignedExperiment));
+
+		assertEquals("from_assigned", context.getVariableValue("shared", "default"));
+	}
 }

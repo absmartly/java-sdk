@@ -753,8 +753,8 @@ public class Context implements Closeable {
 	// variant, traffic ineligibility, or a strict audience mismatch — the custom value can never
 	// equal that variant, so comparing the two would spuriously invalidate the cache and re-expose
 	// on every getTreatment call. Treat those forced assignments as cache-valid regardless of the
-	// custom assignment. (A suppressed or forced assignment always has assigned=true except for the
-	// strict-mismatch and no-unit cases, where assigned stays false.)
+	// custom assignment. (A held-out unit is not a participant in the experiment, so `suppressed`
+	// is checked explicitly rather than relying on `assigned`.)
 	private static boolean variantForcedRegardlessOfCustom(final Assignment assignment) {
 		return assignment.suppressed
 				|| assignment.fullOn
@@ -896,8 +896,10 @@ public class Context implements Closeable {
 					assignment.suppressed = suppressed;
 
 					if (suppressed) {
+						// A held-out unit is not a participant in this experiment: assigned stays
+						// false so it never wins variable-key resolution against a genuinely
+						// assigned experiment and never fires this experiment's own exposure.
 						assignment.variant = 0;
-						assignment.assigned = true;
 					} else {
 						if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
 							final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
@@ -966,15 +968,27 @@ public class Context implements Closeable {
 		}
 	}
 
+	// A suppressed (held-out) experiment is not a participant, so it never wins resolution over
+	// a genuinely assigned or overridden experiment sharing the same variable key. It is used
+	// only as a fallback, so a held-out unit still reads control values and still triggers this
+	// experiment's holdouts — symmetric with the non-held-out path — when nothing else claims the
+	// key.
 	private Assignment getVariableAssignment(final String key) {
 		final List<ContextExperiment> keyExperimentVariables = getVariableExperiments(key);
 
 		if (keyExperimentVariables != null) {
+			Assignment suppressedFallback = null;
 			for (final ContextExperiment experimentVariables : keyExperimentVariables) {
 				final Assignment assignment = getAssignment(experimentVariables.data.name);
 				if (assignment.assigned || assignment.overridden) {
 					return assignment;
 				}
+				if (assignment.suppressed && suppressedFallback == null) {
+					suppressedFallback = assignment;
+				}
+			}
+			if (suppressedFallback != null) {
+				return suppressedFallback;
 			}
 		}
 		return null;
