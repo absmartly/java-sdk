@@ -880,6 +880,38 @@ class ContextHoldoutTest extends TestUtils {
 				contextDataOf(new Experiment[]{holdout}, suppressedExperiment, assignedExperiment));
 
 		assertEquals("from_assigned", context.getVariableValue("shared", "default"));
+
+		// the lower-id suppressed experiment was evaluated to make this resolution decision, so
+		// its applicable holdout must fire even though its own value lost the key - the assigned
+		// experiment's own ordinary exposure fires too, but the suppressed one's does not.
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				holdoutExposure(11, "holdout_a", 0),
+				new Exposure(2, "exp_var_key_assigned", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						false, false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// The peek path must stay side-effect free: resolving a variable key via peekVariableValue
+	// must not trigger any holdout exposure for a candidate it evaluates along the way.
+	@Test
+	void peekVariableValueNeverTriggersHoldoutExposureForEvaluatedCandidates() {
+		final Experiment suppressedExperiment = newExperiment(1, "exp_var_key_peek_suppressed");
+		suppressedExperiment.variants[1].config = "{\"shared_peek\":\"from_suppressed\"}";
+
+		final Experiment assignedExperiment = newExperiment(2, "exp_var_key_peek_assigned");
+		assignedExperiment.variants[1].config = "{\"shared_peek\":\"from_assigned\"}";
+
+		final Experiment holdout = newHoldout(11, "holdout_a", UNIT_TYPE, HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO,
+				"full", new int[]{2});
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{holdout}, suppressedExperiment, assignedExperiment));
+
+		assertEquals("from_assigned", context.peekVariableValue("shared_peek", "default"));
+		assertEquals(0, context.getPendingCount()); // no exposure of any kind
 	}
 
 	// Regression test for the unsorted-exclusion-array fix: the wire does not guarantee

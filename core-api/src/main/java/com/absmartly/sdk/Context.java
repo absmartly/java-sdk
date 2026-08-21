@@ -398,16 +398,10 @@ public class Context implements Closeable {
 				failure = e;
 			}
 
-			if (assignment.holdouts != null) {
-				for (final Experiment holdout : assignment.holdouts) {
-					try {
-						triggerHoldoutExposure(holdout, assignment.unitType);
-					} catch (final RuntimeException e) {
-						if (failure == null) {
-							failure = e;
-						}
-					}
-				}
+			final RuntimeException holdoutFailure = triggerApplicableHoldoutExposures(assignment.holdouts,
+					assignment.unitType);
+			if (failure == null) {
+				failure = holdoutFailure;
 			}
 
 			setTimeout();
@@ -416,6 +410,27 @@ public class Context implements Closeable {
 				throw failure;
 			}
 		}
+	}
+
+	// Fires every holdout applicable to a unit type, independent of whether the covered
+	// experiment that surfaced them is the one ultimately selected for a treatment/variable
+	// lookup: the contract fires on first evaluation, not first selection. One throwing logger
+	// must not stop siblings, so failures are collected and the first one re-thrown only after
+	// every holdout has had a chance to fire.
+	private RuntimeException triggerApplicableHoldoutExposures(final Experiment[] holdouts, final String unitType) {
+		RuntimeException failure = null;
+		if (holdouts != null) {
+			for (final Experiment holdout : holdouts) {
+				try {
+					triggerHoldoutExposure(holdout, unitType);
+				} catch (final RuntimeException e) {
+					if (failure == null) {
+						failure = e;
+					}
+				}
+			}
+		}
+		return failure;
 	}
 
 	private void triggerHoldoutExposure(final Experiment holdoutExperiment, final String unitType) {
@@ -482,7 +497,7 @@ public class Context implements Closeable {
 	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
 		checkReady(true);
 
-		final Assignment assignment = getVariableAssignment(key);
+		final Assignment assignment = getVariableAssignment(key, false);
 		if (assignment != null) {
 			if (assignment.variables != null) {
 				if (!assignment.exposed.get()) {
@@ -500,7 +515,7 @@ public class Context implements Closeable {
 	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
 		checkReady(true);
 
-		final Assignment assignment = getVariableAssignment(key);
+		final Assignment assignment = getVariableAssignment(key, true);
 		if (assignment != null) {
 			if (assignment.variables != null) {
 				if (assignment.variables.containsKey(key)) {
@@ -989,19 +1004,38 @@ public class Context implements Closeable {
 	// only as a fallback, so a held-out unit still reads control values and still triggers this
 	// experiment's holdouts — symmetric with the non-held-out path — when nothing else claims the
 	// key.
-	private Assignment getVariableAssignment(final String key) {
+	//
+	// Every candidate reached while resolving the key was genuinely evaluated, whether or not it
+	// ends up the one returned, so on the non-peek path each candidate's applicable holdouts fire
+	// as it is visited - the ordinary experiment exposure is still emitted only for the winner,
+	// by the caller. peek must stay side-effect free, so it skips triggering entirely.
+	private Assignment getVariableAssignment(final String key, final boolean peek) {
 		final List<ContextExperiment> keyExperimentVariables = getVariableExperiments(key);
 
 		if (keyExperimentVariables != null) {
 			Assignment suppressedFallback = null;
+			RuntimeException failure = null;
 			for (final ContextExperiment experimentVariables : keyExperimentVariables) {
 				final Assignment assignment = getAssignment(experimentVariables.data.name);
+				if (!peek) {
+					final RuntimeException holdoutFailure = triggerApplicableHoldoutExposures(assignment.holdouts,
+							assignment.unitType);
+					if (failure == null) {
+						failure = holdoutFailure;
+					}
+				}
 				if (assignment.assigned || assignment.overridden) {
+					if (failure != null) {
+						throw failure;
+					}
 					return assignment;
 				}
 				if (assignment.suppressed && suppressedFallback == null) {
 					suppressedFallback = assignment;
 				}
+			}
+			if (failure != null) {
+				throw failure;
 			}
 			if (suppressedFallback != null) {
 				return suppressedFallback;
