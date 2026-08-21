@@ -684,6 +684,49 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(3, context.getPendingCount());
 	}
 
+	// A same-iteration seed/split edit must not change who is suppressed, even for a covered
+	// experiment whose ordinary Assignment cache is a fresh miss (newly added, or invalidated).
+	// Suppression must come from the same pinned HoldoutAssignment as the holdout's own exposure,
+	// never recomputed directly from the live definition - otherwise a unit already exposed as
+	// holdout variant 0 could receive a covered experiment's treatment and exposure after the
+	// direct recomputation flips to variant 1.
+	@Test
+	void refreshedSeedDoesNotDesyncSuppressionFromPinnedHoldoutArmForNewlyEvaluatedExperiment() {
+		final Experiment experimentA = newExperiment(1, "exp_holdout_desync_a");
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experimentA));
+
+		assertEquals(0, context.getTreatment("exp_holdout_desync_a")); // held out -> control
+		assertEquals(1, context.getPendingCount()); // holdout's own exposure (variant 0)
+
+		// same holdout id and iteration, but a seed edit that would flip this unit to variant 1
+		// if suppression were recomputed directly - plus a brand-new covered experiment whose
+		// Assignment cache has never been populated, forcing the write-lock computation path.
+		final Experiment reseededHoldout = newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
+		final Experiment refreshedExperimentA = newExperiment(1, "exp_holdout_desync_a");
+		final Experiment experimentB = newExperiment(2, "exp_holdout_desync_b");
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(
+				contextDataOf(new Experiment[]{reseededHoldout}, refreshedExperimentA, experimentB));
+		refreshing.join();
+
+		// the pinned holdout arm (variant 0) must still govern suppression for the newly
+		// evaluated experiment, not the live seed's recomputed arm (which would be variant 1).
+		assertEquals(0, context.getTreatment("exp_holdout_desync_b"));
+		assertEquals(0, context.getTreatment("exp_holdout_desync_a"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		// no new exposure at all: both experiments remain suppressed under the pinned arm, and
+		// the holdout's own exposure was already recorded before the refresh.
+		final PublishEvent expected = publishedEvent(UID, holdoutExposure(11, "holdout_a", 0));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
 	// --- Cross-SDK parity vectors -----------------------------------------------------------
 	// Verdicts below were computed offline against the SDK's own MD5 -> base64url-unpadded ->
 	// murmur3_32 pipeline (VariantAssigner/UnitHasher, unmodified) and independently against the

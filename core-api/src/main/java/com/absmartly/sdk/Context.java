@@ -894,18 +894,18 @@ public class Context implements Closeable {
 
 					boolean suppressed = false;
 					if (experiment.holdouts != null && experiment.holdouts.length > 0) {
-						final String uid = units_.get(unitType);
-						if (uid != null) {
-							final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
-							final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
-									unitHash);
-							// Union across every applicable holdout: variant 0 in any one of them
-							// suppresses this experiment's own exposure and forces control values.
-							for (final Experiment holdout : experiment.holdouts) {
-								if (assigner.assign(holdout.split, holdout.seedHi, holdout.seedLo) == 0) {
-									suppressed = true;
-									break;
-								}
+						// Union across every applicable holdout: variant 0 in any one of them
+						// suppresses this experiment's own exposure and forces control values. Each
+						// holdout's arm is read from its pinned HoldoutAssignment (see
+						// getHoldoutAssignment) rather than recomputed from the live definition here,
+						// so suppression and the holdout's own exposure always agree, even after a
+						// same-iteration seed/split refresh.
+						for (final Experiment holdout : experiment.holdouts) {
+							final Assignment holdoutAssignment = Context.this.getHoldoutAssignment(holdout,
+									unitType);
+							if ((holdoutAssignment != null) && (holdoutAssignment.variant == 0)) {
+								suppressed = true;
+								break;
 							}
 						}
 					}
