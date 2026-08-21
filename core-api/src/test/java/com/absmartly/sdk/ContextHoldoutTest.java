@@ -108,7 +108,7 @@ class ContextHoldoutTest extends TestUtils {
 		experiment.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
 		experiment.variants = new ExperimentVariant[]{
 				new ExperimentVariant("A", null),
-				fullOnVariant == 2 ? new ExperimentVariant("B", null) : new ExperimentVariant("B", null)
+				new ExperimentVariant("B", null)
 		};
 		experiment.audienceStrict = false;
 		experiment.audience = null;
