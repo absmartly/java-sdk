@@ -893,6 +893,12 @@ public class Context implements Closeable {
 				if (experiment != null) {
 					assignment.id = experiment.data.id;
 					assignment.unitType = experiment.data.unitType;
+
+					// An override still evaluates the experiment - only its variant is replaced -
+					// so the applicable holdouts must fire exactly as they would for a normal
+					// assignment. Override precedence itself is untouched: the returned variant
+					// stays the overridden one.
+					assignment.holdouts = experiment.holdouts;
 				}
 
 				assignment.overridden = true;

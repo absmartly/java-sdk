@@ -484,6 +484,47 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(3, context.peekTreatment("exp_holdout_override"));
 	}
 
+	// peekTreatment alone cannot prove the override branch attaches applicable holdouts, since
+	// peek never triggers exposures for anything. getTreatment on an overridden experiment must
+	// still trigger its applicable holdout's own exposure - for both arms - because the
+	// experiment was evaluated, exactly as it would be without the override.
+	@Test
+	void getTreatmentOnOverriddenExperimentTriggersApplicableHoldoutExposureBothArms() {
+		final Experiment heldOutExperiment = newExperiment(1, "exp_holdout_override_held_out");
+		final ContextConfig heldOutConfig = ContextConfig.create().setUnit(UNIT_TYPE, UID)
+				.setOverride("exp_holdout_override_held_out", 3);
+		final Context heldOutContext = createReadyContext(heldOutConfig, contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				heldOutExperiment));
+
+		assertEquals(3, heldOutContext.getTreatment("exp_holdout_override_held_out")); // override wins
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		heldOutContext.publish();
+
+		final PublishEvent expectedHeldOut = publishedEvent(UID,
+				new Exposure(1, "exp_holdout_override_held_out", UNIT_TYPE, 3, clock.millis(), false, true, true,
+						false, false, false),
+				holdoutExposure(11, "holdout_a", 0));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(heldOutContext, expectedHeldOut);
+
+		final Experiment notHeldOutExperiment = newExperiment(1, "exp_holdout_override_not_held_out");
+		final ContextConfig notHeldOutConfig = ContextConfig.create().setUnit(UNIT_TYPE, UID_NOT_HELD_OUT)
+				.setOverride("exp_holdout_override_not_held_out", 3);
+		final Context notHeldOutContext = createReadyContext(notHeldOutConfig, contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				notHeldOutExperiment));
+
+		assertEquals(3, notHeldOutContext.getTreatment("exp_holdout_override_not_held_out")); // override wins
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		notHeldOutContext.publish();
+
+		final PublishEvent expectedNotHeldOut = publishedEvent(UID_NOT_HELD_OUT,
+				new Exposure(1, "exp_holdout_override_not_held_out", UNIT_TYPE, 3, clock.millis(), false, true, true,
+						false, false, false),
+				holdoutExposure(11, "holdout_a", 1));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(notHeldOutContext, expectedNotHeldOut);
+	}
+
 	@Test
 	void holdoutTakesPrecedenceOverAudienceMismatch() {
 		final Experiment experiment = newExperiment(1, "exp_holdout_audience");
