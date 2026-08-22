@@ -3,6 +3,7 @@ package com.absmartly.sdk;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java8.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -1165,5 +1167,35 @@ class ContextHoldoutTest extends TestUtils {
 		final PublishEvent expected = publishedEvent(UID, ownExposure, ownExposure,
 				holdoutExposure(11, "holdout_late", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// F3 (MEDIUM): getVariableValue resolves via the variable-key path, which fires candidate
+	// holdout exposures as each candidate is visited. When the winning assignment was already
+	// exposed (so getVariableValue itself never calls triggerExposure -> setTimeout), a holdout
+	// exposure fired for a losing/suppressed candidate along the way must still schedule a flush
+	// on its own - it must not sit unflushed until an unrelated event.
+	@Test
+	void variablePathHoldoutExposureSchedulesFlushWithoutAnyOtherEvent() {
+		final Experiment suppressed = newExperiment(1, "exp_var_flush_suppressed");
+		suppressed.variants[1].config = "{\"flush_key\":\"from_suppressed\"}";
+
+		final Experiment assigned = newExperiment(2, "exp_var_flush_assigned");
+		assigned.variants[1].config = "{\"flush_key\":\"from_assigned\"}";
+
+		final Experiment holdout = newHoldout(11, "holdout_flush", UNIT_TYPE, HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO,
+				"full", new int[]{2}); // excludes exp_var_flush_assigned from coverage
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{holdout}, suppressed, assigned));
+
+		when(scheduler.schedule((Runnable) any(), eq(100L), eq(TimeUnit.MILLISECONDS)))
+				.thenReturn(mock(java.util.concurrent.ScheduledFuture.class));
+
+		assertEquals("from_assigned", context.getVariableValue("flush_key", "default"));
+
+		// the suppressed candidate's applicable holdout fired an exposure that no other call path
+		// enqueued/exposed; a flush must have been scheduled for it regardless.
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(100L),
+				eq(TimeUnit.MILLISECONDS));
 	}
 }

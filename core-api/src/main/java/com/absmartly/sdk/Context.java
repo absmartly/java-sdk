@@ -404,8 +404,6 @@ public class Context implements Closeable {
 				failure = holdoutFailure;
 			}
 
-			setTimeout();
-
 			if (failure != null) {
 				throw failure;
 			}
@@ -440,6 +438,12 @@ public class Context implements Closeable {
 		}
 	}
 
+	// Every enqueued exposure - ordinary or holdout, from any of getTreatment, triggerExposure's
+	// holdout loop, or the variable-key path's per-candidate holdout firing - schedules its own
+	// flush here rather than relying on the caller: a caller can enqueue a holdout exposure
+	// without ever enqueueing its own (e.g. an already-exposed winner, or a losing variable-key
+	// candidate that only fires holdouts), and setTimeout() is idempotent, so centralizing the
+	// call is strictly safer than tracking every call site individually.
 	private void enqueueExposure(final Assignment assignment) {
 		final Exposure exposure = new Exposure();
 		exposure.id = assignment.id;
@@ -463,6 +467,8 @@ public class Context implements Closeable {
 		}
 
 		logEvent(ContextEventLogger.EventType.Exposure, exposure);
+
+		setTimeout();
 	}
 
 	public int peekTreatment(@Nonnull final String experimentName) {
