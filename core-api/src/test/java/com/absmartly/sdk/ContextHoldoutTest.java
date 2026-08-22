@@ -924,11 +924,16 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(2, context.getPendingCount());
 	}
 
-	// setData silently drops malformed holdout entries (null, split==null, split empty) rather
-	// than indexing them: each case below places the malformed entry at the covered experiment's
-	// own unit type, so if the filter regressed to `holdout != null` alone, the malformed entry
-	// would become "applicable" and either NPE or crash inside VariantAssigner.assign. Instead
-	// the experiment must assign normally, as if no holdout existed at all.
+	// setData silently drops malformed holdout entries (null, split==null, split empty) while
+	// building holdoutsById, rather than indexing them. The null-entry case below exercises that
+	// directly: a null element in data.holdouts must not NPE the indexing loop, regardless of
+	// whether any experiment references it. The split==null/split-empty cases instead cover
+	// resolveApplicableHoldouts' downstream behavior when a referenced id was dropped from
+	// holdoutsById at indexing time, so each covers its experiment by the malformed holdout's id
+	// (coveredBy(..., 11)) - if the split check regressed, the malformed holdout would stay
+	// indexed, resolveApplicableHoldouts would return it as applicable, and variant assignment
+	// would crash inside VariantAssigner.assign on the invalid split. Instead the experiment must
+	// assign normally, as if no holdout existed at all.
 	@Test
 	void nullHoldoutArrayElementIsIgnoredAndExperimentAssignsNormally() {
 		final Experiment experiment = newExperiment(1, "exp_null_holdout_entry");
@@ -946,7 +951,7 @@ class ContextHoldoutTest extends TestUtils {
 
 	@Test
 	void holdoutWithNullSplitIsIgnoredAndExperimentAssignsNormally() {
-		final Experiment experiment = newExperiment(1, "exp_null_split_holdout");
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_null_split_holdout"), 11);
 		final Experiment malformedHoldout = newHoldout(11, "holdout_null_split", HOLDOUT_A_SEED_HI,
 				HOLDOUT_A_SEED_LO);
 		malformedHoldout.split = null;
@@ -966,7 +971,7 @@ class ContextHoldoutTest extends TestUtils {
 
 	@Test
 	void holdoutWithEmptySplitIsIgnoredAndExperimentAssignsNormally() {
-		final Experiment experiment = newExperiment(1, "exp_empty_split_holdout");
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_empty_split_holdout"), 11);
 		final Experiment malformedHoldout = newHoldout(11, "holdout_empty_split", HOLDOUT_A_SEED_HI,
 				HOLDOUT_A_SEED_LO);
 		malformedHoldout.split = new double[0];
@@ -984,13 +989,13 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// --- Fable review fix regressions -----------------------------------------------------
+	// --- Holdout cache/publish invariants under concurrent refresh and overrides ------------
 
-	// F1 (HIGH): a stale Experiment reference reaching getHoldoutAssignment must never overwrite
-	// a cache entry a concurrent, genuinely newer evaluation already installed and exposed. This
-	// reproduces the exact mechanism from the finding directly (bypassing the surrounding
-	// call-site plumbing via reflection into the private trigger path, since fixing finding #2
-	// closes every call site that could reach this window through public API alone): the holdout
+	// A stale Experiment reference reaching getHoldoutAssignment must never overwrite a cache
+	// entry a concurrent, genuinely newer evaluation already installed and exposed. This
+	// reproduces the exact mechanism directly (bypassing the surrounding call-site plumbing via
+	// reflection into the private trigger path, since the public API closes every call site that
+	// could reach this window): the holdout
 	// H is bumped to a new iteration with a flipped verdict via the normal refresh + evaluation
 	// path, genuinely installing and exposing an it2 HoldoutAssignment (variant 1). A directly
 	// reconstructed, deliberately stale it1 Experiment object - same id, old iteration, the OLD
@@ -1055,8 +1060,8 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// F2 (MEDIUM): the override fast path must revalidate applicable-holdout coverage exactly
-	// like the ordinary experimentMatches branch does. A holdout that becomes applicable to an
+	// The override fast path must revalidate applicable-holdout coverage exactly like the
+	// ordinary experimentMatches branch does. A holdout that becomes applicable to an
 	// already-overridden, already-exposed experiment only after a refresh must still fire when
 	// that experiment is evaluated again - the override never suppresses holdout evaluation.
 	// Invalidating on the coverage change re-fires E's own exposure too, symmetric with how an
@@ -1098,9 +1103,8 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// F3 (MEDIUM): getVariableValue resolves via the variable-key path, which fires candidate
-	// holdout exposures as each candidate is visited. When the winning assignment was already
-	// exposed (so getVariableValue itself never calls triggerExposure -> setTimeout), a holdout
+	// getVariableValue resolves via the variable-key path, which fires candidate holdout
+	// exposures as each candidate is visited. When the winning assignment was already exposed (so getVariableValue itself never calls triggerExposure -> setTimeout), a holdout
 	// exposure fired for a losing/suppressed candidate along the way must still schedule a flush
 	// on its own - it must not sit unflushed until an unrelated event.
 	@Test
@@ -1128,9 +1132,9 @@ class ContextHoldoutTest extends TestUtils {
 				eq(TimeUnit.MILLISECONDS));
 	}
 
-	// F4 (LOW): setData must not mutate a caller-supplied experiment's holdoutIds array in
-	// place - resolution only ever reads it. The caller's array is asserted unchanged after
-	// setData runs, and coverage (which the resolution reads directly off it) still works.
+	// setData must not mutate a caller-supplied experiment's holdoutIds array in place -
+	// resolution only ever reads it. The caller's array is asserted unchanged after setData
+	// runs, and coverage (which the resolution reads directly off it) still works.
 	@Test
 	void setDataDoesNotMutateCallerSuppliedHoldoutIdsArray() {
 		final int[] callerArray = new int[]{12, 11}; // deliberately unsorted, and includes a dangling id (12)
