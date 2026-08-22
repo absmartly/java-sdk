@@ -1249,13 +1249,8 @@ public class Context implements Closeable {
 		Object value;
 	}
 
-	// An experiment's applicable holdouts are exactly the holdouts[] entries named by its
-	// holdoutIds, resolved once per experiment at data-install time, not per unit. A referenced
-	// id absent from holdoutsById (wire inconsistency, or a malformed holdout entry setData
-	// dropped during indexing) simply contributes no coverage rather than erroring - the id is
-	// treated as not present in holdouts[]. holdoutIds is only iterated here, never sorted or
-	// mutated, so no defensive copy of it is needed; the resulting applicable list is sorted by
-	// id for deterministic exposure ordering and to keep holdoutSetMatches comparisons stable.
+	// Missing or malformed holdout references are ignored. Sort resolved holdouts by id for
+	// deterministic exposure ordering and stable cache matching.
 	private static Experiment[] resolveApplicableHoldouts(final Experiment experiment,
 			final Map<Integer, Experiment> holdoutsById) {
 		if (experiment.holdoutIds == null || experiment.holdoutIds.length == 0) {
