@@ -1123,4 +1123,47 @@ class ContextHoldoutTest extends TestUtils {
 				holdoutExposure(11, "holdout_h", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
+
+	// F2 (MEDIUM): the override fast path must revalidate applicable-holdout coverage exactly
+	// like the ordinary experimentMatches branch does. A holdout that becomes applicable to an
+	// already-overridden, already-exposed experiment only after a refresh must still fire when
+	// that experiment is evaluated again - the override never suppresses holdout evaluation.
+	// Invalidating on the coverage change re-fires E's own exposure too, symmetric with how an
+	// ordinary experiment's experimentMatches-driven invalidation already behaves.
+	@Test
+	void holdoutBecomingApplicableAfterRefreshStillFiresForOverriddenExperiment() {
+		final Experiment experiment = newExperiment(1, "exp_override_late_holdout");
+
+		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID)
+				.setOverride("exp_override_late_holdout", 3);
+		// no holdouts at all initially.
+		final Context context = createReadyContext(config, contextDataOf(experiment));
+
+		assertEquals(3, context.getTreatment("exp_override_late_holdout")); // override wins, no holdout yet
+		assertEquals(1, context.getPendingCount()); // only E's own exposure
+
+		// refresh installs a holdout covering the same unit type/experiment for the first time.
+		final Experiment refreshedExperiment = newExperiment(1, "exp_override_late_holdout");
+		final Experiment holdout = newHoldout(11, "holdout_late", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO);
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(new Experiment[]{holdout}, refreshedExperiment));
+		refreshing.join();
+
+		// re-evaluating the overridden experiment must still trigger the newly applicable
+		// holdout's own exposure.
+		assertEquals(3, context.getTreatment("exp_override_late_holdout")); // override still wins
+		assertEquals(3, context.getPendingCount()); // + E's re-fired exposure + the holdout's own
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final Exposure ownExposure = new Exposure(1, "exp_override_late_holdout", UNIT_TYPE, 3, clock.millis(),
+				false, true, true, false, false, false);
+		final PublishEvent expected = publishedEvent(UID, ownExposure, ownExposure,
+				holdoutExposure(11, "holdout_late", 0));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
 }

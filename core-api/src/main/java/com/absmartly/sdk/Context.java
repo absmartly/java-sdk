@@ -855,8 +855,15 @@ public class Context implements Closeable {
 				final ContextExperiment experiment = Context.this.getExperiment(experimentName);
 
 				if (override != null) {
-					if (assignment.overridden && assignment.variant == override) {
-						// override up-to-date
+					// An override still evaluates the experiment for holdout purposes (see the
+					// write path below), so the fast path must revalidate the applicable-holdout
+					// set exactly like the ordinary branch does via experimentMatches - otherwise
+					// a holdout that becomes applicable after a refresh never fires for an
+					// already-overridden experiment, and stays that way forever.
+					if (assignment.overridden && assignment.variant == override
+							&& holdoutSetMatches((experiment != null) ? experiment.holdouts : null,
+									assignment.holdouts)) {
+						// override and holdout coverage both up-to-date
 						return assignment;
 					}
 				} else if (experiment == null) {
