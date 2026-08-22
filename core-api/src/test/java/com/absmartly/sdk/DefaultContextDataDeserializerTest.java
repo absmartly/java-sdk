@@ -150,6 +150,7 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		};
 		experiment.audienceStrict = false;
 		experiment.audience = null;
+		experiment.holdoutIds = new int[]{11};
 
 		final Experiment holdoutA = new Experiment();
 		holdoutA.id = 11;
@@ -168,7 +169,6 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		holdoutA.audienceStrict = false;
 		holdoutA.audience = null;
 		holdoutA.holdoutType = "full";
-		holdoutA.excludedExperimentIds = new int[0];
 
 		final Experiment holdoutB = new Experiment();
 		holdoutB.id = 12;
@@ -187,7 +187,6 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		holdoutB.audienceStrict = false;
 		holdoutB.audience = null;
 		holdoutB.holdoutType = "full_on";
-		holdoutB.excludedExperimentIds = new int[]{4};
 
 		final ContextData expected = new ContextData(
 				new Experiment[]{experiment},

@@ -33,7 +33,8 @@
 					"config":"{\"banner.border\":1,\"banner.size\":\"large\"}"
 				}
 			],
-			"audience": null
+			"audience": null,
+			"holdoutIds":[11]
 		}
 	],
 	"holdouts":[
@@ -66,8 +67,7 @@
 				}
 			],
 			"audience": null,
-			"holdoutType":"full",
-			"excludedExperimentIds":[]
+			"holdoutType":"full"
 		},
 		{
 			"id":12,
@@ -98,8 +98,7 @@
 				}
 			],
 			"audience": null,
-			"holdoutType":"full_on",
-			"excludedExperimentIds":[4]
+			"holdoutType":"full_on"
 		}
 	]
 }
