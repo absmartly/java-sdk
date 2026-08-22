@@ -1,5 +1,6 @@
 package com.absmartly.sdk;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -1197,5 +1198,26 @@ class ContextHoldoutTest extends TestUtils {
 		// enqueued/exposed; a flush must have been scheduled for it regardless.
 		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(100L),
 				eq(TimeUnit.MILLISECONDS));
+	}
+
+	// F4 (LOW): setData must not mutate a caller-supplied holdout's excludedExperimentIds array
+	// in place. The caller's array is asserted unchanged after setData runs, while exclusion
+	// behaviour (which relies on the sorted copy) still works correctly.
+	@Test
+	void setDataDoesNotMutateCallerSuppliedExcludedExperimentIdsArray() {
+		final Experiment covered = newExperiment(1, "exp_holdout_no_mutate_in");
+		final Experiment excluded = newExperiment(2, "exp_holdout_no_mutate_excluded");
+		final int[] callerArray = new int[]{9, 5, 2, 7};
+		final Experiment holdout = newHoldout(11, "holdout_no_mutate", UNIT_TYPE, HOLDOUT_A_SEED_HI,
+				HOLDOUT_A_SEED_LO, "full", callerArray);
+
+		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, covered, excluded));
+
+		// exclusion still works correctly via the internally sorted copy.
+		assertEquals(0, context.getTreatment("exp_holdout_no_mutate_in")); // suppressed -> control
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_holdout_no_mutate_excluded")); // exclusion unaffected
+
+		// the caller's own array, handed in via ContextData, must remain exactly as constructed.
+		assertArrayEquals(new int[]{9, 5, 2, 7}, callerArray);
 	}
 }

@@ -1253,6 +1253,41 @@ public class Context implements Closeable {
 		return (excludedExperimentIds != null) && (Arrays.binarySearch(excludedExperimentIds, experimentId) >= 0);
 	}
 
+	// excludedExperimentIds must be sorted for isExcluded's binary search, but the wire does not
+	// guarantee ordering and the Experiment instance can be owned by the caller (ContextData
+	// supplied to ABSmartly.createContextWith, potentially shared/reused across contexts).
+	// Returns a shallow copy carrying a private, sorted copy of the array so isExcluded never
+	// mutates - or races on - the caller's data; the original is reused unchanged when there is
+	// nothing to sort.
+	private static Experiment normalizeHoldout(final Experiment holdout) {
+		if (holdout.excludedExperimentIds == null) {
+			return holdout;
+		}
+
+		final Experiment copy = new Experiment();
+		copy.id = holdout.id;
+		copy.name = holdout.name;
+		copy.unitType = holdout.unitType;
+		copy.iteration = holdout.iteration;
+		copy.seedHi = holdout.seedHi;
+		copy.seedLo = holdout.seedLo;
+		copy.split = holdout.split;
+		copy.trafficSeedHi = holdout.trafficSeedHi;
+		copy.trafficSeedLo = holdout.trafficSeedLo;
+		copy.trafficSplit = holdout.trafficSplit;
+		copy.fullOnVariant = holdout.fullOnVariant;
+		copy.applications = holdout.applications;
+		copy.variants = holdout.variants;
+		copy.audienceStrict = holdout.audienceStrict;
+		copy.audience = holdout.audience;
+		copy.customFieldValues = holdout.customFieldValues;
+		copy.holdoutType = holdout.holdoutType;
+		copy.excludedExperimentIds = Arrays.copyOf(holdout.excludedExperimentIds, holdout.excludedExperimentIds.length);
+		Arrays.sort(copy.excludedExperimentIds);
+
+		return copy;
+	}
+
 	// A holdout applies to an experiment when their unit types match and the experiment is not
 	// in the holdout's own exclusion list. A `full_on` holdout additionally applies only to
 	// experiments that are themselves full-on (fullOnVariant != 0); `full` holdouts apply
@@ -1300,19 +1335,19 @@ public class Context implements Closeable {
 		if (data.holdouts != null) {
 			for (final Experiment holdout : data.holdouts) {
 				if ((holdout != null) && (holdout.split != null) && (holdout.split.length > 0)) {
-					// isExcluded relies on binary search; the wire does not guarantee ordering, so
-					// normalize once here rather than on every lookup.
-					if (holdout.excludedExperimentIds != null) {
-						Arrays.sort(holdout.excludedExperimentIds);
-					}
+					// isExcluded relies on binary search, and the wire does not guarantee
+					// ordering. data.holdouts can be a caller-supplied, shared ContextData
+					// (ABSmartly.createContextWith), so normalize onto a private copy here rather
+					// than sorting the caller's array in place.
+					final Experiment normalized = normalizeHoldout(holdout);
 
-					List<Experiment> holdouts = holdoutsByUnitType.get(holdout.unitType);
+					List<Experiment> holdouts = holdoutsByUnitType.get(normalized.unitType);
 					if (holdouts == null) {
 						holdouts = new ArrayList<Experiment>();
-						holdoutsByUnitType.put(holdout.unitType, holdouts);
+						holdoutsByUnitType.put(normalized.unitType, holdouts);
 					}
-					holdouts.add(holdout);
-					holdoutsById.put(holdout.id, holdout);
+					holdouts.add(normalized);
+					holdoutsById.put(normalized.id, normalized);
 				}
 			}
 		}
