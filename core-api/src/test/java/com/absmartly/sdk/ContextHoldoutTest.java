@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Method;
 import java.util.concurrent.ScheduledExecutorService;
 import java8.util.concurrent.CompletableFuture;
 
@@ -1049,6 +1050,77 @@ class ContextHoldoutTest extends TestUtils {
 		final PublishEvent expected = publishedEvent(UID,
 				new Exposure(1, "exp_empty_split_holdout", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
 						false, false, false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// --- Fable review fix regressions -----------------------------------------------------
+
+	// F1 (HIGH): a stale Experiment reference reaching getHoldoutAssignment must never overwrite
+	// a cache entry a concurrent, genuinely newer evaluation already installed and exposed. This
+	// reproduces the exact mechanism from the finding directly (bypassing the surrounding
+	// call-site plumbing via reflection into the private trigger path, since fixing finding #2
+	// closes every call site that could reach this window through public API alone): the holdout
+	// H is bumped to a new iteration with a flipped verdict via the normal refresh + evaluation
+	// path, genuinely installing and exposing an it2 HoldoutAssignment (variant 1). A directly
+	// reconstructed, deliberately stale it1 Experiment object - same id, old iteration, the OLD
+	// seed that computes the OPPOSITE arm (variant 0) - is then fed straight into the private
+	// trigger path exactly as a lagging caller's cached holdouts array would. The fix must resolve
+	// H's live (it2) definition by id and return the already-exposed cache entry unchanged; a
+	// regression would recompute from the dead it1 seed, overwrite the it2 entry with a fresh,
+	// unexposed Assignment, and let it be exposed a second time with the opposite (contradictory)
+	// arm.
+	@Test
+	void staleHoldoutReferenceNeverOverwritesNewerPinnedCacheEntry() throws Exception {
+		final Experiment holdoutIteration1 = newHoldout(11, "holdout_h", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO);
+		final Experiment f = newExperiment(1, "exp_f");
+
+		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdoutIteration1}, f));
+
+		assertEquals(0, context.getTreatment("exp_f")); // held out by H@it1 (variant 0)
+		assertEquals(1, context.getPendingCount()); // H@it1's own exposure (variant 0)
+
+		// Refresh: H bumped to a genuine new epoch (iteration 2) with a seed that flips the
+		// verdict to variant 1, covering a new experiment G. Evaluating G installs and exposes the
+		// it2 HoldoutAssignment for real, through the normal path.
+		final Experiment holdoutIteration2 = newHoldout(11, "holdout_h", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
+		holdoutIteration2.iteration = 2;
+		final Experiment refreshedF = newExperiment(1, "exp_f");
+		final Experiment g = newExperiment(2, "exp_g");
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(new Experiment[]{holdoutIteration2}, refreshedF, g));
+		refreshing.join();
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_g")); // not held out by H@it2
+		assertEquals(3, context.getPendingCount()); // G's own exposure + H@it2's own exposure (variant 1)
+
+		// A deliberately stale reference to H: same id, OLD iteration (1), and the OLD seed that
+		// computes the OPPOSITE arm from the live it2 definition. This is exactly what a lagging
+		// caller's cached holdouts array would still hold.
+		final Experiment staleHoldoutReference = newHoldout(11, "holdout_h", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO);
+
+		final Method triggerHoldoutExposure = Context.class.getDeclaredMethod("triggerHoldoutExposure",
+				Experiment.class, String.class);
+		triggerHoldoutExposure.setAccessible(true);
+		triggerHoldoutExposure.invoke(context, staleHoldoutReference, UNIT_TYPE);
+
+		// no second, contradictory exposure: the live it2 entry (already exposed, variant 1) must
+		// have been resolved and reused rather than overwritten by a fresh it1-seeded recompute.
+		assertEquals(3, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		// f was suppressed under it1 and never emits an exposure of its own; H legitimately emits
+		// once per distinct epoch (it1 variant 0, it2 variant 1) - the invariant broken by the bug
+		// is a THIRD, contradictory exposure for the SAME it2 epoch, which is what is absent here.
+		final PublishEvent expected = publishedEvent(UID,
+				holdoutExposure(11, "holdout_h", 0),
+				new Exposure(2, "exp_g", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false, false, false,
+						false),
+				holdoutExposure(11, "holdout_h", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 }

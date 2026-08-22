@@ -1059,11 +1059,32 @@ public class Context implements Closeable {
 		}
 	}
 
+	// Id-keyed lookup against the currently installed data, used to resolve a holdout's live
+	// definition regardless of which (possibly stale) Experiment reference a caller is holding.
+	private Experiment getHoldoutById(final int holdoutId) {
+		try {
+			dataLock_.readLock().lock();
+			return holdoutsById_.get(holdoutId);
+		} finally {
+			dataLock_.readLock().unlock();
+		}
+	}
+
 	// The holdout's own assignment is cached by holdout id rather than name, since holdout
 	// entries live outside the experiments index and are shared by reference across every
 	// covered experiment. Only an iteration change invalidates the cache entry (see
 	// HoldoutAssignment), matching experimentMatches's treatment of ordinary experiments and
 	// guaranteeing an already-exposed unit's arm survives any seed, split or cosmetic edit.
+	//
+	// The `holdout` parameter can be a stale Experiment reference: callers reach this method via
+	// a cached Assignment.holdouts array that may predate the most recent setData (e.g. the
+	// override fast path, or a refresh racing between getAssignment and triggerExposure). Trusting
+	// its iteration would let a dead definition overwrite a cache entry that a concurrent,
+	// genuinely newer evaluation already installed, producing a duplicate same-epoch exposure with
+	// a contradictory arm. Resolving by id against the currently-installed data before every
+	// matches()/compute step removes that ambiguity entirely: id is stable across installs, so the
+	// live lookup always reflects the newest definition, and a stale caller-supplied reference can
+	// never appear "newer" than what is actually installed.
 	private Assignment getHoldoutAssignment(final Experiment holdout, final String unitType) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
@@ -1074,8 +1095,9 @@ public class Context implements Closeable {
 				return null;
 			}
 
+			final Experiment liveHoldout = resolveLiveHoldout(holdout);
 			final HoldoutAssignment cached = holdoutAssignmentCache_.get(holdout.id);
-			if ((cached != null) && cached.matches(holdout, unitType)) {
+			if ((cached != null) && cached.matches(liveHoldout, unitType)) {
 				return cached.assignment;
 			}
 		} finally {
@@ -1093,8 +1115,9 @@ public class Context implements Closeable {
 				return null;
 			}
 
+			final Experiment liveHoldout = resolveLiveHoldout(holdout);
 			final HoldoutAssignment cached = holdoutAssignmentCache_.get(holdout.id);
-			if ((cached != null) && cached.matches(holdout, unitType)) {
+			if ((cached != null) && cached.matches(liveHoldout, unitType)) {
 				return cached.assignment;
 			}
 
@@ -1102,20 +1125,28 @@ public class Context implements Closeable {
 			final VariantAssigner assigner = Context.this.getVariantAssigner(unitType, unitHash);
 
 			final Assignment assignment = new Assignment();
-			assignment.id = holdout.id;
-			assignment.name = holdout.name;
-			assignment.iteration = holdout.iteration;
+			assignment.id = liveHoldout.id;
+			assignment.name = liveHoldout.name;
+			assignment.iteration = liveHoldout.iteration;
 			assignment.unitType = unitType;
 			assignment.eligible = true;
 			assignment.assigned = true;
-			assignment.variant = assigner.assign(holdout.split, holdout.seedHi, holdout.seedLo);
+			assignment.variant = assigner.assign(liveHoldout.split, liveHoldout.seedHi, liveHoldout.seedLo);
 
-			holdoutAssignmentCache_.put(holdout.id, new HoldoutAssignment(assignment, holdout, unitType));
+			holdoutAssignmentCache_.put(liveHoldout.id, new HoldoutAssignment(assignment, liveHoldout, unitType));
 
 			return assignment;
 		} finally {
 			writeLock.unlock();
 		}
+	}
+
+	// Falls back to the caller-supplied reference only when the id is absent from the currently
+	// installed data (e.g. a holdout removed or invalidated by the latest refresh); there is no
+	// newer definition to prefer over it in that case.
+	private Experiment resolveLiveHoldout(final Experiment holdout) {
+		final Experiment live = Context.this.getHoldoutById(holdout.id);
+		return (live != null) ? live : holdout;
 	}
 
 	private List<ContextExperiment> getVariableExperiments(final String key) {
@@ -1252,6 +1283,7 @@ public class Context implements Closeable {
 		final Map<String, List<ContextExperiment>> indexVariables = new HashMap<String, List<ContextExperiment>>();
 
 		final Map<String, List<Experiment>> holdoutsByUnitType = new HashMap<String, List<Experiment>>();
+		final Map<Integer, Experiment> holdoutsById = new HashMap<Integer, Experiment>();
 		if (data.holdouts != null) {
 			for (final Experiment holdout : data.holdouts) {
 				if ((holdout != null) && (holdout.split != null) && (holdout.split.length > 0)) {
@@ -1267,6 +1299,7 @@ public class Context implements Closeable {
 						holdoutsByUnitType.put(holdout.unitType, holdouts);
 					}
 					holdouts.add(holdout);
+					holdoutsById.put(holdout.id, holdout);
 				}
 			}
 		}
@@ -1337,6 +1370,7 @@ public class Context implements Closeable {
 
 			index_ = index;
 			indexVariables_ = indexVariables;
+			holdoutsById_ = holdoutsById;
 			data_ = data;
 
 			setRefreshTimer();
@@ -1350,6 +1384,7 @@ public class Context implements Closeable {
 			dataLock_.writeLock().lock();
 			index_ = new HashMap<String, ContextExperiment>();
 			indexVariables_ = new HashMap<String, List<ContextExperiment>>();
+			holdoutsById_ = new HashMap<Integer, Experiment>();
 			data_ = new ContextData();
 			failed_ = true;
 		} finally {
@@ -1388,6 +1423,9 @@ public class Context implements Closeable {
 	private ContextData data_;
 	private Map<String, ContextExperiment> index_;
 	private Map<String, List<ContextExperiment>> indexVariables_;
+	// Id-keyed view of the holdouts installed by the most recent setData, used to resolve a
+	// holdout's live definition independent of any stale Experiment reference a caller holds.
+	private Map<Integer, Experiment> holdoutsById_;
 	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
 
 	private final Map<String, byte[]> hashedUnits_;
