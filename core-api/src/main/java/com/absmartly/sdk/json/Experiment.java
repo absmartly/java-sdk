@@ -27,7 +27,11 @@ public class Experiment {
 
 	// Set only for entries served in the top-level `holdouts` array; null for ordinary experiments.
 	public String holdoutType;
-	public int[] excludedExperimentIds;
+
+	// Set only for entries served in the top-level `experiments` array: the ids of the holdouts
+	// (from the top-level `holdouts` array) that cover this experiment. Null or empty means the
+	// experiment is not covered by any holdout. Absent on holdout entries themselves.
+	public int[] holdoutIds;
 
 	public Experiment() {}
 
@@ -74,7 +78,7 @@ public class Experiment {
 			return false;
 		if (holdoutType != null ? !holdoutType.equals(that.holdoutType) : that.holdoutType != null)
 			return false;
-		return Arrays.equals(excludedExperimentIds, that.excludedExperimentIds);
+		return Arrays.equals(holdoutIds, that.holdoutIds);
 	}
 
 	@Override
@@ -96,7 +100,7 @@ public class Experiment {
 		result = 31 * result + (audience != null ? audience.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(customFieldValues);
 		result = 31 * result + (holdoutType != null ? holdoutType.hashCode() : 0);
-		result = 31 * result + Arrays.hashCode(excludedExperimentIds);
+		result = 31 * result + Arrays.hashCode(holdoutIds);
 		return result;
 	}
 
@@ -120,7 +124,7 @@ public class Experiment {
 				", audience='" + audience + '\'' +
 				", customFieldValues=" + Arrays.toString(customFieldValues) +
 				", holdoutType='" + holdoutType + '\'' +
-				", excludedExperimentIds=" + Arrays.toString(excludedExperimentIds) +
+				", holdoutIds=" + Arrays.toString(holdoutIds) +
 				'}';
 	}
 }

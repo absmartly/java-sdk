@@ -1249,67 +1249,25 @@ public class Context implements Closeable {
 		Object value;
 	}
 
-	private static boolean isExcluded(final int[] excludedExperimentIds, final int experimentId) {
-		return (excludedExperimentIds != null) && (Arrays.binarySearch(excludedExperimentIds, experimentId) >= 0);
-	}
-
-	// excludedExperimentIds must be sorted for isExcluded's binary search, but the wire does not
-	// guarantee ordering and the Experiment instance can be owned by the caller (ContextData
-	// supplied to ABSmartly.createContextWith, potentially shared/reused across contexts).
-	// Returns a shallow copy carrying a private, sorted copy of the array so isExcluded never
-	// mutates - or races on - the caller's data; the original is reused unchanged when there is
-	// nothing to sort.
-	private static Experiment normalizeHoldout(final Experiment holdout) {
-		if (holdout.excludedExperimentIds == null) {
-			return holdout;
-		}
-
-		final Experiment copy = new Experiment();
-		copy.id = holdout.id;
-		copy.name = holdout.name;
-		copy.unitType = holdout.unitType;
-		copy.iteration = holdout.iteration;
-		copy.seedHi = holdout.seedHi;
-		copy.seedLo = holdout.seedLo;
-		copy.split = holdout.split;
-		copy.trafficSeedHi = holdout.trafficSeedHi;
-		copy.trafficSeedLo = holdout.trafficSeedLo;
-		copy.trafficSplit = holdout.trafficSplit;
-		copy.fullOnVariant = holdout.fullOnVariant;
-		copy.applications = holdout.applications;
-		copy.variants = holdout.variants;
-		copy.audienceStrict = holdout.audienceStrict;
-		copy.audience = holdout.audience;
-		copy.customFieldValues = holdout.customFieldValues;
-		copy.holdoutType = holdout.holdoutType;
-		copy.excludedExperimentIds = Arrays.copyOf(holdout.excludedExperimentIds, holdout.excludedExperimentIds.length);
-		Arrays.sort(copy.excludedExperimentIds);
-
-		return copy;
-	}
-
-	// A holdout applies to an experiment when their unit types match and the experiment is not
-	// in the holdout's own exclusion list. A `full_on` holdout additionally applies only to
-	// experiments that are themselves full-on (fullOnVariant != 0); `full` holdouts apply
-	// regardless. This is derived once per experiment at data-install time, not per unit.
+	// An experiment's applicable holdouts are exactly the holdouts[] entries named by its
+	// holdoutIds, resolved once per experiment at data-install time, not per unit. A referenced
+	// id absent from holdoutsById (wire inconsistency, or a malformed holdout entry setData
+	// dropped during indexing) simply contributes no coverage rather than erroring - the id is
+	// treated as not present in holdouts[]. holdoutIds is only iterated here, never sorted or
+	// mutated, so no defensive copy of it is needed; the resulting applicable list is sorted by
+	// id for deterministic exposure ordering and to keep holdoutSetMatches comparisons stable.
 	private static Experiment[] resolveApplicableHoldouts(final Experiment experiment,
-			final Map<String, List<Experiment>> holdoutsByUnitType) {
-		final List<Experiment> candidates = holdoutsByUnitType.get(experiment.unitType);
-		if (candidates == null || candidates.isEmpty()) {
+			final Map<Integer, Experiment> holdoutsById) {
+		if (experiment.holdoutIds == null || experiment.holdoutIds.length == 0) {
 			return null;
 		}
 
-		final List<Experiment> applicable = new ArrayList<Experiment>(candidates.size());
-		for (final Experiment holdout : candidates) {
-			if ("full_on".equals(holdout.holdoutType) && experiment.fullOnVariant == 0) {
-				continue;
+		final List<Experiment> applicable = new ArrayList<Experiment>(experiment.holdoutIds.length);
+		for (final int holdoutId : experiment.holdoutIds) {
+			final Experiment holdout = holdoutsById.get(holdoutId);
+			if (holdout != null) {
+				applicable.add(holdout);
 			}
-
-			if (isExcluded(holdout.excludedExperimentIds, experiment.id)) {
-				continue;
-			}
-
-			applicable.add(holdout);
 		}
 
 		if (applicable.isEmpty()) {
@@ -1330,24 +1288,11 @@ public class Context implements Closeable {
 		final Map<String, ContextExperiment> index = new HashMap<String, ContextExperiment>();
 		final Map<String, List<ContextExperiment>> indexVariables = new HashMap<String, List<ContextExperiment>>();
 
-		final Map<String, List<Experiment>> holdoutsByUnitType = new HashMap<String, List<Experiment>>();
 		final Map<Integer, Experiment> holdoutsById = new HashMap<Integer, Experiment>();
 		if (data.holdouts != null) {
 			for (final Experiment holdout : data.holdouts) {
 				if ((holdout != null) && (holdout.split != null) && (holdout.split.length > 0)) {
-					// isExcluded relies on binary search, and the wire does not guarantee
-					// ordering. data.holdouts can be a caller-supplied, shared ContextData
-					// (ABSmartly.createContextWith), so normalize onto a private copy here rather
-					// than sorting the caller's array in place.
-					final Experiment normalized = normalizeHoldout(holdout);
-
-					List<Experiment> holdouts = holdoutsByUnitType.get(normalized.unitType);
-					if (holdouts == null) {
-						holdouts = new ArrayList<Experiment>();
-						holdoutsByUnitType.put(normalized.unitType, holdouts);
-					}
-					holdouts.add(normalized);
-					holdoutsById.put(normalized.id, normalized);
+					holdoutsById.put(holdout.id, holdout);
 				}
 			}
 		}
@@ -1355,7 +1300,7 @@ public class Context implements Closeable {
 		for (final Experiment experiment : data.experiments) {
 			final ContextExperiment contextExperiment = new ContextExperiment();
 			contextExperiment.data = experiment;
-			contextExperiment.holdouts = resolveApplicableHoldouts(experiment, holdoutsByUnitType);
+			contextExperiment.holdouts = resolveApplicableHoldouts(experiment, holdoutsById);
 			contextExperiment.variables = new ArrayList<Map<String, Object>>(experiment.variants.length);
 
 			for (final ExperimentVariant variant : experiment.variants) {
