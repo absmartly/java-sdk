@@ -1,5 +1,7 @@
 package com.absmartly.sdk.internal;
 
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
+
 public abstract class Buffers {
 	private Buffers() {}
 
@@ -28,13 +30,8 @@ public abstract class Buffers {
 	}
 
 	static public int encodeUTF8(byte[] buf, int offset, CharSequence value) {
-		// Delegate to the platform UTF-8 encoder so characters outside the Basic
-		// Multilingual Plane (e.g. emoji, encoded in Java strings as UTF-16
-		// surrogate pairs) produce correct 4-byte UTF-8 sequences. The previous
-		// hand-rolled loop processed each UTF-16 code unit independently and
-		// emitted invalid CESU-8 for surrogate pairs, yielding a different unit
-		// hash than the other SDKs and the collector.
-		final byte[] bytes = value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		// Platform encoder: surrogate pairs must produce 4-byte UTF-8 for cross-SDK hash parity.
+		final byte[] bytes = value.toString().getBytes(StandardCharsets.UTF_8);
 		System.arraycopy(bytes, 0, buf, offset, bytes.length);
 		return bytes.length;
 	}

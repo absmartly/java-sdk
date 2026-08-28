@@ -35,8 +35,8 @@ allprojects {
 	apply from: rootProject.file("gradle/coverage-logger.gradle")
 
 	compileJava {
-		sourceCompatibility = "1.8"
-		targetCompatibility = "1.8"
+		sourceCompatibility = "1.6"
+		targetCompatibility = "1.6"
 	}
 }
 
