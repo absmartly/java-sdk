@@ -177,16 +177,17 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		holdoutB.iteration = 1;
 		holdoutB.seedHi = 1;
 		holdoutB.seedLo = 222;
-		holdoutB.split = new double[]{0.05, 0.95};
+		holdoutB.split = new double[]{0.05, 0.05, 0.9};
 		holdoutB.trafficSplit = new double[]{0.0, 1.0};
 		holdoutB.fullOnVariant = 0;
 		holdoutB.variants = new ExperimentVariant[]{
 				new ExperimentVariant("A", null),
-				new ExperimentVariant("B", null)
+				new ExperimentVariant("B", null),
+				new ExperimentVariant("C", null)
 		};
 		holdoutB.audienceStrict = false;
 		holdoutB.audience = null;
-		holdoutB.holdoutType = "full_on";
+		holdoutB.holdoutType = "all_full_on";
 
 		final ContextData expected = new ContextData(
 				new Experiment[]{experiment},

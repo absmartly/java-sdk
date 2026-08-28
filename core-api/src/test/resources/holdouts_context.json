@@ -78,7 +78,8 @@
 			"seedLo":222,
 			"split":[
 				0.05,
-				0.95
+				0.05,
+				0.9
 			],
 			"trafficSeedHi":0,
 			"trafficSeedLo":0,
@@ -95,10 +96,14 @@
 				{
 					"name":"B",
 					"config":null
+				},
+				{
+					"name":"C",
+					"config":null
 				}
 			],
 			"audience": null,
-			"holdoutType":"full_on"
+			"holdoutType":"all_full_on"
 		}
 	]
 }

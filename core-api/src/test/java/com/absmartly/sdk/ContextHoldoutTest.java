@@ -22,6 +22,7 @@ import org.mockito.Mockito;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.java.time.Clock;
+import com.absmartly.sdk.json.Attribute;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.ExperimentApplication;
@@ -55,6 +56,17 @@ class ContextHoldoutTest extends TestUtils {
 	// split[0.1,0.9], seedHi=1, seedLo=222 -> variant 1 (not held out) for both UIDs.
 	static final int HOLDOUT_B_SEED_HI = 1;
 	static final int HOLDOUT_B_SEED_LO = 222;
+
+	// A 3-arm (all_full_on) holdout's split has length 3, which is what selects the arm-1 rule -
+	// holdoutType is never read by Context.java. Seeds below were found by exhaustive search
+	// against this split for UID: seedLo=1 -> arm 0, seedLo=3 -> arm 1, seedLo=0 -> arm 2.
+	static final double[] THREE_ARM_SPLIT = {0.3, 0.3, 0.4};
+	static final int THREE_ARM_0_SEED_HI = 0;
+	static final int THREE_ARM_0_SEED_LO = 1;
+	static final int THREE_ARM_1_SEED_HI = 0;
+	static final int THREE_ARM_1_SEED_LO = 3;
+	static final int THREE_ARM_2_SEED_HI = 0;
+	static final int THREE_ARM_2_SEED_LO = 0;
 
 	ContextDataProvider dataProvider;
 	ContextEventLogger eventLogger;
@@ -143,6 +155,23 @@ class ContextHoldoutTest extends TestUtils {
 		holdout.audienceStrict = false;
 		holdout.audience = null;
 		holdout.holdoutType = holdoutType;
+		return holdout;
+	}
+
+	// A 3-arm (all_full_on) holdout. holdoutType is set for wire-fidelity only; Context.java
+	// derives arity solely from split.length.
+	static Experiment newThreeArmHoldout(int id, String name, int seedHi, int seedLo) {
+		return newThreeArmHoldout(id, name, UNIT_TYPE, seedHi, seedLo);
+	}
+
+	static Experiment newThreeArmHoldout(int id, String name, String unitType, int seedHi, int seedLo) {
+		final Experiment holdout = newHoldout(id, name, unitType, seedHi, seedLo, "all_full_on");
+		holdout.split = THREE_ARM_SPLIT;
+		holdout.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", null),
+				new ExperimentVariant("C", null)
+		};
 		return holdout;
 	}
 
@@ -322,6 +351,180 @@ class ContextHoldoutTest extends TestUtils {
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
 		assertEquals(0, context.getTreatment("exp_fullon_holdout")); // held out despite fullOnVariant=2
+	}
+
+	// --- Three-arm (all_full_on) holdouts ----------------------------------------------------
+	// Arm 0 holds out every in-scope experiment, full-on or not, exactly like a two-arm holdout's
+	// variant 0.
+	@Test
+	void threeArmVariantZeroHoldsOutBothFullOnAndNonFullOnExperiments() {
+		final Experiment nonFullOn = coveredBy(newExperiment(1, "exp_three_arm_0_non_fullon"), 21);
+		final Experiment fullOn = coveredBy(newExperiment(2, "exp_three_arm_0_fullon", 2), 21);
+		final Experiment holdout = newThreeArmHoldout(21, "holdout_three_arm", THREE_ARM_0_SEED_HI,
+				THREE_ARM_0_SEED_LO);
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{holdout}, nonFullOn, fullOn));
+
+		assertEquals(0, context.getTreatment("exp_three_arm_0_non_fullon")); // held out -> control
+		assertEquals(0, context.getTreatment("exp_three_arm_0_fullon")); // held out despite fullOnVariant=2
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID, holdoutExposure(21, "holdout_three_arm", 0));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Arm 1 (full-on only) is the heart of the feature: a non-full-on experiment is forced to
+	// control, exactly as if held out, while a full-on experiment in the same holdout's scope is
+	// assigned its own fullOnVariant with fullOn=true and is NOT suppressed.
+	@Test
+	void threeArmVariantOneForcesNonFullOnExperimentToControlButAssignsFullOnExperimentNormally() {
+		final Experiment nonFullOn = coveredBy(newExperiment(1, "exp_three_arm_1_non_fullon"), 21);
+		final Experiment fullOn = coveredBy(newExperiment(2, "exp_three_arm_1_fullon", 2), 21);
+		final Experiment holdout = newThreeArmHoldout(21, "holdout_three_arm", THREE_ARM_1_SEED_HI,
+				THREE_ARM_1_SEED_LO);
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{holdout}, nonFullOn, fullOn));
+
+		assertEquals(0, context.getTreatment("exp_three_arm_1_non_fullon")); // forced to control
+		assertEquals(2, context.getTreatment("exp_three_arm_1_fullon")); // its own fullOnVariant, not suppressed
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		// the non-full-on experiment emits no exposure of its own; the full-on one does, with
+		// fullOn=true; the holdout's own exposure fires once at variant 1.
+		final PublishEvent expected = publishedEvent(UID,
+				holdoutExposure(21, "holdout_three_arm", 1),
+				new Exposure(2, "exp_three_arm_1_fullon", UNIT_TYPE, 2, clock.millis(), true, true, false, true,
+						false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Arm 2 (normal traffic) evaluates every in-scope experiment completely normally, full-on or
+	// not, exactly as if uncovered.
+	@Test
+	void threeArmVariantTwoEvaluatesBothExperimentKindsNormally() {
+		final Experiment nonFullOn = coveredBy(newExperiment(1, "exp_three_arm_2_non_fullon"), 21);
+		final Experiment fullOn = coveredBy(newExperiment(2, "exp_three_arm_2_fullon", 2), 21);
+		final Experiment holdout = newThreeArmHoldout(21, "holdout_three_arm", THREE_ARM_2_SEED_HI,
+				THREE_ARM_2_SEED_LO);
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{holdout}, nonFullOn, fullOn));
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_three_arm_2_non_fullon")); // normal assignment
+		assertEquals(2, context.getTreatment("exp_three_arm_2_fullon")); // its own fullOnVariant
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_three_arm_2_non_fullon", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+						false, false, false, false),
+				holdoutExposure(21, "holdout_three_arm", 2),
+				new Exposure(2, "exp_three_arm_2_fullon", UNIT_TYPE, 2, clock.millis(), true, true, false, true,
+						false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Union: a 2-arm holdout that holds the unit out wins even when an applicable 3-arm holdout's
+	// arm (2, normal traffic) would not have held it out on its own.
+	@Test
+	void twoArmHoldoutWinsUnionEvenWhenThreeArmWouldNotHoldOut() {
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_union_two_arm_wins"), 11, 22);
+		final Experiment twoArmHoldout = newHoldout(11, "holdout_two_arm", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO); // holds UID out
+		final Experiment threeArmHoldout = newThreeArmHoldout(22, "holdout_three_arm", THREE_ARM_2_SEED_HI,
+				THREE_ARM_2_SEED_LO); // does not hold UID out
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{twoArmHoldout, threeArmHoldout}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_union_two_arm_wins")); // union -> suppressed
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				holdoutExposure(11, "holdout_two_arm", 0),
+				holdoutExposure(22, "holdout_three_arm", 2));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Union, the other direction: a 3-arm holdout's arm 1 holds a non-full-on experiment out even
+	// when an applicable 2-arm holdout would not have.
+	@Test
+	void threeArmHoldoutWinsUnionEvenWhenTwoArmWouldNotHoldOut() {
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_union_three_arm_wins"), 11, 22);
+		final Experiment twoArmHoldout = newHoldout(11, "holdout_two_arm", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO); // does not hold UID out
+		final Experiment threeArmHoldout = newThreeArmHoldout(22, "holdout_three_arm", THREE_ARM_1_SEED_HI,
+				THREE_ARM_1_SEED_LO); // holds non-full-on UID out (arm 1)
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{twoArmHoldout, threeArmHoldout}, experiment));
+
+		assertEquals(0, context.getTreatment("exp_union_three_arm_wins")); // union -> suppressed
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				holdoutExposure(11, "holdout_two_arm", 1),
+				holdoutExposure(22, "holdout_three_arm", 1));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Arm 1 must defer to the normal assignment path for a full-on experiment rather than
+	// short-circuiting to fullOnVariant: audienceStrict is still evaluated first, so an audience
+	// mismatch yields control (not the full-on variant) exactly as it would under arm 2 (normal
+	// traffic). The own exposure still fires - the experiment was evaluated and rejected by
+	// audience, not held out by the holdout - with audienceMismatch=true and assigned=false,
+	// identically for both arms.
+	@Test
+	void threeArmArmOneDefersToNormalPathSoAudienceMismatchStillWinsForFullOnExperiment() {
+		final String audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+
+		final Experiment fullOnArm1 = coveredBy(newExperiment(1, "exp_three_arm_1_audience_fullon", 2), 21);
+		fullOnArm1.audienceStrict = true;
+		fullOnArm1.audience = audience;
+		final Experiment holdoutArm1 = newThreeArmHoldout(21, "holdout_three_arm", THREE_ARM_1_SEED_HI,
+				THREE_ARM_1_SEED_LO);
+		final Context contextArm1 = createReadyContext(contextDataOf(new Experiment[]{holdoutArm1}, fullOnArm1));
+		contextArm1.setAttribute("age", 5); // mismatches the audience filter
+
+		final Experiment fullOnArm2 = coveredBy(newExperiment(1, "exp_three_arm_2_audience_fullon", 2), 21);
+		fullOnArm2.audienceStrict = true;
+		fullOnArm2.audience = audience;
+		final Experiment holdoutArm2 = newThreeArmHoldout(21, "holdout_three_arm", THREE_ARM_2_SEED_HI,
+				THREE_ARM_2_SEED_LO);
+		final Context contextArm2 = createReadyContext(contextDataOf(new Experiment[]{holdoutArm2}, fullOnArm2));
+		contextArm2.setAttribute("age", 5); // mismatches the audience filter
+
+		// arm 1 (full-on only) and arm 2 (normal traffic) reach the identical verdict: audience
+		// mismatch forces control, not the full-on variant.
+		assertEquals(0, contextArm1.getTreatment("exp_three_arm_1_audience_fullon"));
+		assertEquals(0, contextArm2.getTreatment("exp_three_arm_2_audience_fullon"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		contextArm1.publish();
+		contextArm2.publish();
+
+		final PublishEvent expectedArm1 = publishedEvent(UID,
+				new Exposure(1, "exp_three_arm_1_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
+						false, false, true),
+				holdoutExposure(21, "holdout_three_arm", 1));
+		expectedArm1.attributes = new Attribute[]{new Attribute("age", 5, clock.millis())};
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(contextArm1, expectedArm1);
+
+		final PublishEvent expectedArm2 = publishedEvent(UID,
+				new Exposure(1, "exp_three_arm_2_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
+						false, false, true),
+				holdoutExposure(21, "holdout_three_arm", 2));
+		expectedArm2.attributes = new Attribute[]{new Attribute("age", 5, clock.millis())};
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(contextArm2, expectedArm2);
 	}
 
 	// The unit type an experiment/holdout uses need not have any unit configured on this context
