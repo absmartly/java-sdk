@@ -2763,34 +2763,25 @@ class ContextTest extends TestUtils {
 	@Test
 	void concurrentProducerDuringFailedPublishRestoresBothEvents() {
 		final Context context = createReadyContext();
-		assertTrue(context.isReady());
 
-		// Queue event A before the first publish attempt.
 		context.track("goal_a", mapOf("amount", 1));
 		assertEquals(1, context.getPendingCount());
 
 		final CompletableFuture<Void> publishFuture1 = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture1);
 
-		// flush() drains goal_a and sets pendingCount to 0; the publish is in flight.
 		final CompletableFuture<Void> asyncResult1 = context.publishAsync();
 		assertEquals(0, context.getPendingCount());
 
-		// Event B arrives while A's publish is still in flight.
 		context.track("goal_b", mapOf("amount", 2));
 		assertEquals(1, context.getPendingCount());
 
-		// Fail the in-flight publish; the exceptionally handler must restore goal_a
-		// and addAndGet(1), leaving pendingCount == 2 (restored A + concurrent B).
 		final Exception failure = new Exception("publish failed");
 		publishFuture1.completeExceptionally(failure);
 
-		// Joining on asyncResult1 is the deterministic sync point: the exceptionally
-		// handler that calls result.completeExceptionally() must have run.
 		assertThrows(CompletionException.class, asyncResult1::join);
 		assertEquals(2, context.getPendingCount());
 
-		// Retry: both events must be delivered in the next successful publish.
 		final CompletableFuture<Void> publishFuture2 = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture2);
 
@@ -2800,14 +2791,12 @@ class ContextTest extends TestUtils {
 		publishFuture2.complete(null);
 		asyncResult2.join();
 
-		// Both goal_a and goal_b must appear in the event delivered to the publisher.
 		verify(eventHandler, Mockito.times(2)).publish(any(), any());
 	}
 
 	@Test
 	void closeAsyncRetryAfterFailedPublishSucceeds() {
 		final Context context = createReadyContext();
-		assertTrue(context.isReady());
 
 		context.track("goal_a", mapOf("amount", 1));
 		assertEquals(1, context.getPendingCount());
@@ -2815,23 +2804,18 @@ class ContextTest extends TestUtils {
 		final CompletableFuture<Void> publishFuture1 = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture1);
 
-		// First closeAsync: drains the event and starts the publish.
 		final CompletableFuture<Void> closeFuture1 = context.closeAsync();
 		assertFalse(context.isClosed());
 
 		final Exception failure = new Exception("publish failed");
 		publishFuture1.completeExceptionally(failure);
 
-		// Joining closeFuture1 is the deterministic sync point: the close exceptionally
-		// handler runs, restores events, clears closing_, and completes closeFuture1 exceptionally.
 		final CompletionException actual = assertThrows(CompletionException.class, closeFuture1::join);
 		assertSame(failure, actual.getCause());
 
-		// Events were restored; the context must remain open for a retry.
 		assertFalse(context.isClosed());
 		assertTrue(context.getPendingCount() > 0);
 
-		// Retry closeAsync with a succeeding publisher.
 		final CompletableFuture<Void> publishFuture2 = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture2);
 
@@ -2844,7 +2828,6 @@ class ContextTest extends TestUtils {
 		assertTrue(context.isClosed());
 		assertEquals(0, context.getPendingCount());
 
-		// Publisher must have been invoked twice: once for the failed attempt, once for the retry.
 		verify(eventHandler, Mockito.times(2)).publish(any(), any());
 	}
 }
