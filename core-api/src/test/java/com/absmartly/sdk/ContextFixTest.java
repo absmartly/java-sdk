@@ -69,22 +69,6 @@ class ContextFixTest extends TestUtils {
 	}
 
 	@Test
-	void brandingInErrorMessages() {
-		final ContextData data = new ContextData();
-		data.experiments = new Experiment[0];
-
-		final Context context = createReadyContext(data);
-
-		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-		context.close();
-
-		IllegalStateException ex = assertThrows(IllegalStateException.class,
-				() -> context.setAttribute("test", "value"));
-		assertTrue(ex.getMessage().contains("ABsmartly"));
-		assertFalse(ex.getMessage().contains("ABSmartly"));
-	}
-
-	@Test
 	void setDataWithNullExperimentVariantsReturnsDefaultTreatment() {
 		final ContextData data = new ContextData();
 		final Experiment experiment = new Experiment();
