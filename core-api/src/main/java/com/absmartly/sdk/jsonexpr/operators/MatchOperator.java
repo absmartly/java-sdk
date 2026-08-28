@@ -19,7 +19,7 @@ public class MatchOperator extends BinaryOperator {
 			0, 4, 60L, TimeUnit.SECONDS,
 			new SynchronousQueue<Runnable>(),
 			new DaemonThreadFactory(),
-			new ThreadPoolExecutor.CallerRunsPolicy());
+			new ThreadPoolExecutor.AbortPolicy());
 
 	@Override
 	public Object binary(Evaluator evaluator, Object lhs, Object rhs) {
@@ -42,13 +42,19 @@ public class MatchOperator extends BinaryOperator {
 					final Pattern compiled = Pattern.compile(pattern);
 					final InterruptibleCharSequence interruptible = new InterruptibleCharSequence(text);
 
-					Future<Boolean> future = REGEX_POOL.submit(new Callable<Boolean>() {
-						@Override
-						public Boolean call() {
-							final Matcher matcher = compiled.matcher(interruptible);
-							return matcher.find();
-						}
-					});
+					Future<Boolean> future;
+					try {
+						future = REGEX_POOL.submit(new Callable<Boolean>() {
+							@Override
+							public Boolean call() {
+								final Matcher matcher = compiled.matcher(interruptible);
+								return matcher.find();
+							}
+						});
+					} catch (RejectedExecutionException e) {
+						log.warn("Regex pool saturated; skipping match to avoid blocking caller");
+						return null;
+					}
 
 					try {
 						return future.get(REGEX_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -58,6 +64,7 @@ public class MatchOperator extends BinaryOperator {
 								pattern);
 						return null;
 					} catch (InterruptedException e) {
+						future.cancel(true);
 						Thread.currentThread().interrupt();
 						return null;
 					} catch (ExecutionException e) {
@@ -87,6 +94,9 @@ public class MatchOperator extends BinaryOperator {
 
 		@Override
 		public int length() {
+			if (Thread.currentThread().isInterrupted()) {
+				throw new InterruptedCharAccessException();
+			}
 			return delegate.length();
 		}
 
