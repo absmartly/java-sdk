@@ -161,11 +161,7 @@ class ContextHoldoutTest extends TestUtils {
 	// A 3-arm (all_full_on) holdout. holdoutType is set for wire-fidelity only; Context.java
 	// derives arity solely from split.length.
 	static Experiment newThreeArmHoldout(int id, String name, int seedHi, int seedLo) {
-		return newThreeArmHoldout(id, name, UNIT_TYPE, seedHi, seedLo);
-	}
-
-	static Experiment newThreeArmHoldout(int id, String name, String unitType, int seedHi, int seedLo) {
-		final Experiment holdout = newHoldout(id, name, unitType, seedHi, seedLo, "all_full_on");
+		final Experiment holdout = newHoldout(id, name, UNIT_TYPE, seedHi, seedLo, "all_full_on");
 		holdout.split = THREE_ARM_SPLIT;
 		holdout.variants = new ExperimentVariant[]{
 				new ExperimentVariant("A", null),
