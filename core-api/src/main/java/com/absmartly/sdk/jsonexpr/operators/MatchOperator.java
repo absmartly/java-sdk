@@ -17,8 +17,8 @@ public class MatchOperator extends BinaryOperator {
 	private static final int REGEX_TIMEOUT_MS = 100;
 	// Pool sized to 2× available CPUs, floor 4, cap 32; a small bounded queue (2× max workers)
 	// absorbs momentary bursts while keeping hostile queued work bounded.
-	private static final int REGEX_POOL_SIZE =
-			Math.max(4, Math.min(Runtime.getRuntime().availableProcessors() * 2, 32));
+	private static final int REGEX_POOL_SIZE = Math.max(4,
+			Math.min(Runtime.getRuntime().availableProcessors() * 2, 32));
 	private static final ExecutorService REGEX_POOL = buildPool(REGEX_POOL_SIZE);
 
 	private static ThreadPoolExecutor buildPool(int size) {

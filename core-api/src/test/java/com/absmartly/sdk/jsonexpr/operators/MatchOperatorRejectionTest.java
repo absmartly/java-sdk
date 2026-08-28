@@ -86,32 +86,67 @@ class MatchOperatorRejectionTest extends OperatorTest {
 			return delegate.submit(task);
 		}
 
-		@Override public void execute(Runnable cmd) { delegate.execute(cmd); }
-		@Override public void shutdown() { delegate.shutdown(); }
-		@Override public java.util.List<Runnable> shutdownNow() { return delegate.shutdownNow(); }
-		@Override public boolean isShutdown() { return delegate.isShutdown(); }
-		@Override public boolean isTerminated() { return delegate.isTerminated(); }
-		@Override public boolean awaitTermination(long t, TimeUnit u) throws InterruptedException {
+		@Override
+		public void execute(Runnable cmd) {
+			delegate.execute(cmd);
+		}
+
+		@Override
+		public void shutdown() {
+			delegate.shutdown();
+		}
+
+		@Override
+		public java.util.List<Runnable> shutdownNow() {
+			return delegate.shutdownNow();
+		}
+
+		@Override
+		public boolean isShutdown() {
+			return delegate.isShutdown();
+		}
+
+		@Override
+		public boolean isTerminated() {
+			return delegate.isTerminated();
+		}
+
+		@Override
+		public boolean awaitTermination(long t, TimeUnit u) throws InterruptedException {
 			return delegate.awaitTermination(t, u);
 		}
-		@Override public <T> Future<T> submit(Runnable task, T result) {
+
+		@Override
+		public <T> Future<T> submit(Runnable task, T result) {
 			return delegate.submit(task, result);
 		}
-		@Override public Future<?> submit(Runnable task) { return delegate.submit(task); }
-		@Override public <T> java.util.List<Future<T>> invokeAll(
+
+		@Override
+		public Future<?> submit(Runnable task) {
+			return delegate.submit(task);
+		}
+
+		@Override
+		public <T> java.util.List<Future<T>> invokeAll(
 				java.util.Collection<? extends Callable<T>> tasks) throws InterruptedException {
 			return delegate.invokeAll(tasks);
 		}
-		@Override public <T> java.util.List<Future<T>> invokeAll(
+
+		@Override
+		public <T> java.util.List<Future<T>> invokeAll(
 				java.util.Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
 				throws InterruptedException {
 			return delegate.invokeAll(tasks, timeout, unit);
 		}
-		@Override public <T> T invokeAny(java.util.Collection<? extends Callable<T>> tasks)
+
+		@Override
+		public <T> T invokeAny(java.util.Collection<? extends Callable<T>> tasks)
 				throws InterruptedException, ExecutionException {
 			return delegate.invokeAny(tasks);
 		}
-		@Override public <T> T invokeAny(java.util.Collection<? extends Callable<T>> tasks,
+
+		@Override
+		public <T> T invokeAny(java.util.Collection<? extends Callable<T>> tasks,
 				long timeout, TimeUnit unit)
 				throws InterruptedException, ExecutionException, TimeoutException {
 			return delegate.invokeAny(tasks, timeout, unit);
