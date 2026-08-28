@@ -32,6 +32,17 @@ public class MatchOperator extends BinaryOperator {
 		return pool;
 	}
 
+	private final ExecutorService pool;
+
+	public MatchOperator() {
+		this(REGEX_POOL);
+	}
+
+	// Package-private: allows tests to inject a controlled executor to exercise the rejection path.
+	MatchOperator(ExecutorService pool) {
+		this.pool = pool;
+	}
+
 	@Override
 	public Object binary(Evaluator evaluator, Object lhs, Object rhs) {
 		final String text = evaluator.stringConvert(lhs);
@@ -55,7 +66,7 @@ public class MatchOperator extends BinaryOperator {
 
 					Future<Boolean> future;
 					try {
-						future = REGEX_POOL.submit(new Callable<Boolean>() {
+						future = pool.submit(new Callable<Boolean>() {
 							@Override
 							public Boolean call() {
 								final Matcher matcher = compiled.matcher(interruptible);
