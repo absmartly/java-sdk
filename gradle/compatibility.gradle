@@ -1,0 +1,18 @@
+// Enforces Java 1.6 API floor on production source of core-api using Animal Sniffer.
+// Animal Sniffer checks constant-pool owner classes against a known signature list,
+// catching references to APIs absent in Java 1.6 that sourceCompatibility/targetCompatibility miss.
+//
+// Only production (main) classes are checked; test code uses JUnit 5 / Mockito 5 which
+// require Java 11+ APIs and would produce false violations on test sourcesets.
+if (project.name == "core-api") {
+	apply plugin: "ru.vyarus.animalsniffer"
+
+	animalsniffer {
+		sourceSets = [sourceSets.main]
+	}
+
+	dependencies {
+		// java16 1.1 contains the set of classes and members present in Java 1.6.
+		signature "org.codehaus.mojo.signature:java16:1.1@signature"
+	}
+}
