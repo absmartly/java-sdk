@@ -928,8 +928,8 @@ public class Context implements Closeable {
 
 					boolean suppressed = false;
 					if (experiment.holdouts != null && experiment.holdouts.length > 0) {
-						// Union across every applicable holdout: variant 0 in any one of them
-						// suppresses this experiment's own exposure and forces control values. Each
+						// Union across every applicable holdout: any one of them holding this
+						// experiment out suppresses its own exposure and forces control values. Each
 						// holdout's arm is read from its pinned HoldoutAssignment (see
 						// getHoldoutAssignment) rather than recomputed from the live definition here,
 						// so suppression and the holdout's own exposure always agree, even after a
@@ -937,7 +937,8 @@ public class Context implements Closeable {
 						for (final Experiment holdout : experiment.holdouts) {
 							final Assignment holdoutAssignment = Context.this.getHoldoutAssignment(holdout,
 									unitType);
-							if ((holdoutAssignment != null) && (holdoutAssignment.variant == 0)) {
+							if ((holdoutAssignment != null) && isHeldOutBy(holdout, holdoutAssignment.variant,
+									experiment.data.fullOnVariant)) {
 								suppressed = true;
 								break;
 							}
@@ -1016,6 +1017,28 @@ public class Context implements Closeable {
 		} finally {
 			writeLock.unlock();
 		}
+	}
+
+	// Arm count comes from holdout.split.length, never from holdoutType. Per applicable holdout H
+	// and covered experiment X: H.variant==0 always holds X out. In a 3-arm H, variant==1 holds X
+	// out only when X.fullOnVariant==0 (X is not full-on); when X.fullOnVariant!=0, X defers to
+	// its normal assignment path exactly as variant==2 would, so audienceStrict is evaluated
+	// before the full-on variant is assigned and arm 1/2 never diverge for audience-unrelated
+	// reasons. A 2-arm H's variant==1 and a 3-arm H's variant==2 both defer to the normal path. A
+	// null or shorter-than-2 split cannot express arm 1's 3-arm meaning, so it is treated as
+	// not-held-out unless variant 0.
+	private static boolean isHeldOutBy(final Experiment holdout, final int holdoutVariant,
+			final int fullOnVariant) {
+		if (holdoutVariant == 0) {
+			return true;
+		}
+
+		final int armCount = (holdout.split != null) ? holdout.split.length : 0;
+		if (armCount == 3 && holdoutVariant == 1) {
+			return fullOnVariant == 0;
+		}
+
+		return false;
 	}
 
 	// A suppressed (held-out) experiment is not a participant, so it never wins resolution over
