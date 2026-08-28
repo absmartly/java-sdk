@@ -15,11 +15,22 @@ public class MatchOperator extends BinaryOperator {
 	private static final int MAX_PATTERN_LENGTH = 1000;
 	private static final int MAX_TEXT_LENGTH = 10000;
 	private static final int REGEX_TIMEOUT_MS = 100;
-	private static final ExecutorService REGEX_POOL = new ThreadPoolExecutor(
-			0, 4, 60L, TimeUnit.SECONDS,
-			new SynchronousQueue<Runnable>(),
-			new DaemonThreadFactory(),
-			new ThreadPoolExecutor.AbortPolicy());
+	// Pool sized to 2× available CPUs, floor 4, cap 32; a small bounded queue (2× max workers)
+	// absorbs momentary bursts while keeping hostile queued work bounded.
+	private static final int REGEX_POOL_SIZE =
+			Math.max(4, Math.min(Runtime.getRuntime().availableProcessors() * 2, 32));
+	private static final ExecutorService REGEX_POOL = buildPool(REGEX_POOL_SIZE);
+
+	private static ThreadPoolExecutor buildPool(int size) {
+		ThreadPoolExecutor pool = new ThreadPoolExecutor(
+				size, size, 60L, TimeUnit.SECONDS,
+				new ArrayBlockingQueue<Runnable>(size * 2),
+				new DaemonThreadFactory(),
+				new ThreadPoolExecutor.AbortPolicy());
+		// Core threads time out so idle threads die on low-traffic processes (e.g. Android).
+		pool.allowCoreThreadTimeOut(true);
+		return pool;
+	}
 
 	@Override
 	public Object binary(Evaluator evaluator, Object lhs, Object rhs) {
