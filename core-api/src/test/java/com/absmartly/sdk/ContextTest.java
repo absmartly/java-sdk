@@ -32,6 +32,7 @@ import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
@@ -2761,6 +2762,7 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
 	void concurrentProducerDuringFailedPublishRestoresBothEvents() {
 		final Context context = createReadyContext();
 
@@ -2795,6 +2797,7 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
 	void closeAsyncRetryAfterFailedPublishSucceeds() {
 		final Context context = createReadyContext();
 
