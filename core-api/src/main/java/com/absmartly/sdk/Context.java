@@ -628,7 +628,11 @@ public class Context implements Closeable {
 					}).exceptionally(new Function<Throwable, Void>() {
 						@Override
 						public Void apply(Throwable exception) {
-							closed_.set(true);
+							// If events were restored by flush's failure handler, leave the context
+							// open so a retry of closeAsync() can attempt to publish them.
+							if (pendingCount_.get() == 0) {
+								closed_.set(true);
+							}
 							closing_.set(false);
 							newClosingFuture.completeExceptionally(exception);
 
@@ -744,7 +748,7 @@ public class Context implements Closeable {
 										achievements_.add(0, finalAchievements[i]);
 									}
 								}
-								pendingCount_.set(finalEventCount);
+								pendingCount_.addAndGet(finalEventCount);
 							} finally {
 								eventLock_.unlock();
 							}
