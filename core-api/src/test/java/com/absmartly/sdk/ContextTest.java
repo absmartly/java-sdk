@@ -480,7 +480,7 @@ class ContextTest extends TestUtils {
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
-		context.finalize();
+		context.close();
 
 		assertTrue(context.isFinalized());
 		assertTrue(context.isClosed());

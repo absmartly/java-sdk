@@ -664,11 +664,6 @@ public class Context implements Closeable {
 		return closeAsync();
 	}
 
-	@Deprecated
-	public void finalize() {
-		close();
-	}
-
 	private CompletableFuture<Void> flush() {
 		clearTimeout();
 
