@@ -30,7 +30,7 @@ public abstract class Buffers {
 	}
 
 	static public int encodeUTF8(byte[] buf, int offset, CharSequence value) {
-		// Platform encoder: surrogate pairs must produce 4-byte UTF-8 for cross-SDK hash parity.
+		// Platform encoder: a surrogate pair must produce one four-byte UTF-8 sequence.
 		final byte[] bytes = value.toString().getBytes(StandardCharsets.UTF_8);
 		System.arraycopy(bytes, 0, buf, offset, bytes.length);
 		return bytes.length;

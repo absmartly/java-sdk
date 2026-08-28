@@ -11,7 +11,7 @@ public class ABSmartly extends ABsmartly {
 		return new ABSmartly(config);
 	}
 
-	protected ABSmartly(@Nonnull ABSmartlyConfig config) {
+	private ABSmartly(@Nonnull ABSmartlyConfig config) {
 		super(config);
 	}
 }

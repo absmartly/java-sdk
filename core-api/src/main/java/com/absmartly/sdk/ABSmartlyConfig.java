@@ -13,7 +13,7 @@ public class ABSmartlyConfig extends ABsmartlyConfig {
 		return new ABSmartlyConfig();
 	}
 
-	protected ABSmartlyConfig() {
+	private ABSmartlyConfig() {
 		super();
 	}
 

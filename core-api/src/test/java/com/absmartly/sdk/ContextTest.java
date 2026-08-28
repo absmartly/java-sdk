@@ -473,7 +473,7 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
-	void finalizeIsAliasForClose() {
+	void isFinalizedAliasesIsClosedAfterClose() {
 		final Context context = createReadyContext();
 		assertFalse(context.isFinalized());
 		assertFalse(context.isFinalizing());
