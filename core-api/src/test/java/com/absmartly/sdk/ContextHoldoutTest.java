@@ -895,6 +895,132 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
+	// --- Arm-count pinning across a same-iteration arity change -----------------------------
+	// The arm number cached in HoldoutAssignment is meaningless without the arm count it was
+	// computed against: arm 1 means "defer to normal assignment" under a 2-arm holdout but
+	// "full-on only" under a 3-arm one. A same-iteration refresh that only changes split.length
+	// must not silently re-mean an already-pinned arm.
+
+	// A unit pinned at arm 1 under a 2-arm holdout defers to normal assignment. If the holdout is
+	// refreshed to 3 arms within the same iteration, a newly evaluated non-full-on experiment must
+	// still defer to normal assignment (arm 1's pinned 2-arm meaning), not suddenly be suppressed
+	// as though arm 1 meant "full-on only" under the new, live arity.
+	@Test
+	void refreshFromTwoArmToThreeArmSameIterationDoesNotReinterpretDeferringArmAsFullOnOnly() {
+		final Experiment experimentA = coveredBy(newExperiment(1, "exp_arity_2to3_a"), 31);
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(31, "holdout_arity", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO)},
+				experimentA));
+
+		// arm 1 under 2 arms: not held out, deferred to normal assignment.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_2to3_a"));
+
+		// same holdout id and iteration, refreshed to 3 arms; a brand-new covered experiment is
+		// evaluated only after the refresh, forcing a fresh isHeldOutBy call against the pinned
+		// arm.
+		final Experiment threeArmHoldout = newThreeArmHoldout(31, "holdout_arity", THREE_ARM_1_SEED_HI,
+				THREE_ARM_1_SEED_LO);
+		final Experiment refreshedExperimentA = coveredBy(newExperiment(1, "exp_arity_2to3_a"), 31);
+		final Experiment experimentB = coveredBy(newExperiment(2, "exp_arity_2to3_b"), 31);
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(
+				contextDataOf(new Experiment[]{threeArmHoldout}, refreshedExperimentA, experimentB));
+		refreshing.join();
+
+		// still deferred to normal assignment: the pinned arm is 1 under 2 arms, not under 3.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_2to3_b"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_arity_2to3_a", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						false, false, false),
+				holdoutExposure(31, "holdout_arity", 1),
+				new Exposure(2, "exp_arity_2to3_b", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						false, false, false));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// The reverse direction: a unit pinned at arm 1 under a 3-arm holdout holds a non-full-on
+	// experiment out. If the holdout is refreshed to 2 arms within the same iteration, a newly
+	// evaluated non-full-on experiment must remain held out under arm 1's pinned 3-arm meaning,
+	// not be silently un-suppressed as though arm 1 meant "defer to normal" under the new, live
+	// arity.
+	@Test
+	void refreshFromThreeArmToTwoArmSameIterationKeepsFullOnOnlyArmSuppressingNonFullOnExperiment() {
+		final Experiment experimentA = coveredBy(newExperiment(1, "exp_arity_3to2_a"), 41);
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newThreeArmHoldout(41, "holdout_arity_rev", THREE_ARM_1_SEED_HI,
+						THREE_ARM_1_SEED_LO)},
+				experimentA));
+
+		// arm 1 under 3 arms: full-on only, so a non-full-on experiment is held out.
+		assertEquals(0, context.getTreatment("exp_arity_3to2_a"));
+		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure (variant 1)
+
+		// same holdout id and iteration, refreshed to 2 arms; a brand-new covered experiment is
+		// evaluated only after the refresh.
+		final Experiment twoArmHoldout = newHoldout(41, "holdout_arity_rev", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
+		final Experiment refreshedExperimentA = coveredBy(newExperiment(1, "exp_arity_3to2_a"), 41);
+		final Experiment experimentB = coveredBy(newExperiment(2, "exp_arity_3to2_b"), 41);
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(
+				contextDataOf(new Experiment[]{twoArmHoldout}, refreshedExperimentA, experimentB));
+		refreshing.join();
+
+		// still held out: the pinned arm is 1 under 3 arms, not under 2.
+		assertEquals(0, context.getTreatment("exp_arity_3to2_b"));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		// neither covered experiment ever emits its own exposure; the holdout's own exposure
+		// fired once, before the refresh.
+		final PublishEvent expected = publishedEvent(UID, holdoutExposure(41, "holdout_arity_rev", 1));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Within one context, an experiment evaluated before a same-iteration arity change and one
+	// evaluated only after it must not disagree about whether the pinned holdout arm holds them
+	// out: both are covered by the exact same HoldoutAssignment, so both must read the exact same
+	// pinned arm count.
+	@Test
+	void experimentsEvaluatedBeforeAndAfterSameIterationArityChangeAgreeOnSuppression() {
+		final Experiment experimentPre = coveredBy(newExperiment(1, "exp_arity_consistency_pre"), 71);
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(71, "holdout_arity_consistency", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO)},
+				experimentPre));
+
+		// evaluated BEFORE the refresh: arm 1 under 2 arms, not held out.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_pre"));
+
+		final Experiment threeArmHoldout = newThreeArmHoldout(71, "holdout_arity_consistency",
+				THREE_ARM_1_SEED_HI, THREE_ARM_1_SEED_LO);
+		final Experiment refreshedExperimentPre = coveredBy(newExperiment(1, "exp_arity_consistency_pre"), 71);
+		final Experiment experimentPost = coveredBy(newExperiment(2, "exp_arity_consistency_post"), 71);
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(
+				contextDataOf(new Experiment[]{threeArmHoldout}, refreshedExperimentPre, experimentPost));
+		refreshing.join();
+
+		// evaluated ONLY AFTER the refresh, against the very same HoldoutAssignment: must agree
+		// with exp_arity_consistency_pre's own verdict rather than being re-meant under the new,
+		// live 3-arm split.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_post"));
+		// the pre-refresh verdict is unchanged by the refresh.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_pre"));
+	}
+
 	// --- Cross-SDK parity vectors -----------------------------------------------------------
 	// Verdicts below were computed offline against the SDK's own MD5 -> base64url-unpadded ->
 	// murmur3_32 pipeline (VariantAssigner/UnitHasher, unmodified) and independently against the

@@ -807,6 +807,9 @@ public class Context implements Closeable {
 		String unitType;
 		double[] trafficSplit;
 		int variant;
+		// Arm count the holdout's own arm (variant, above) was computed against. Set only for a
+		// holdout's own Assignment (see getHoldoutAssignment); unused for ordinary experiments.
+		int armCount;
 		boolean assigned;
 		boolean overridden;
 		boolean eligible;
@@ -831,7 +834,10 @@ public class Context implements Closeable {
 	// deliberately excluded so a live seed or percentage edit - which does not change who is
 	// covered - never invalidates an already-exposed unit's arm. Only an iteration bump, a genuine
 	// re-randomization epoch, replaces the cached verdict (and its `exposed` flag), exactly as it
-	// does for ordinary experiments.
+	// does for ordinary experiments. armCount is deliberately excluded here too: it is pinned on
+	// Assignment itself (see armCount below), bundled with the arm number it was computed
+	// against, so the cached arm is always interpreted under its own arity rather than being
+	// invalidated and re-exposed under a new one for a same-iteration arity change.
 	private static class HoldoutAssignment {
 		final Assignment assignment;
 		final int iteration;
@@ -930,15 +936,15 @@ public class Context implements Closeable {
 					if (experiment.holdouts != null && experiment.holdouts.length > 0) {
 						// Union across every applicable holdout: any one of them holding this
 						// experiment out suppresses its own exposure and forces control values. Each
-						// holdout's arm is read from its pinned HoldoutAssignment (see
-						// getHoldoutAssignment) rather than recomputed from the live definition here,
-						// so suppression and the holdout's own exposure always agree, even after a
-						// same-iteration seed/split refresh.
+						// holdout's arm AND the arm count it was computed against are read from its
+						// pinned HoldoutAssignment (see getHoldoutAssignment) rather than recomputed
+						// from the live definition here, so suppression and the holdout's own
+						// exposure always agree, even after a same-iteration seed/split refresh.
 						for (final Experiment holdout : experiment.holdouts) {
 							final Assignment holdoutAssignment = Context.this.getHoldoutAssignment(holdout,
 									unitType);
-							if ((holdoutAssignment != null) && isHeldOutBy(holdout, holdoutAssignment.variant,
-									experiment.data.fullOnVariant)) {
+							if ((holdoutAssignment != null) && isHeldOutBy(holdoutAssignment.variant,
+									holdoutAssignment.armCount, experiment.data.fullOnVariant)) {
 								suppressed = true;
 								break;
 							}
@@ -1019,22 +1025,24 @@ public class Context implements Closeable {
 		}
 	}
 
-	// Arm count comes from holdout.split.length, never from holdoutType. Per applicable holdout H
-	// and covered experiment X: H.variant==0 always holds X out. In a 3-arm H, variant==1 holds X
-	// out only when X.fullOnVariant==0 (X is not full-on); when X.fullOnVariant!=0, X defers to
-	// its normal assignment path exactly as variant==2 would, so audienceStrict is evaluated
-	// before the full-on variant is assigned and arm 1/2 never diverge for audience-unrelated
-	// reasons. A 2-arm H's variant==1 and a 3-arm H's variant==2 both defer to the normal path. A
-	// null or shorter-than-2 split cannot express arm 1's 3-arm meaning, so it is treated as
-	// not-held-out unless variant 0.
-	private static boolean isHeldOutBy(final Experiment holdout, final int holdoutVariant,
+	// Arm count is the pinned count the holdout's own arm was computed against (Assignment.armCount
+	// from getHoldoutAssignment), never read live from holdout.split.length here: the live split
+	// can change within the same iteration (see HoldoutAssignment), and re-deriving arity from it
+	// would reinterpret an already-pinned arm number under a different meaning. Per applicable
+	// holdout H and covered experiment X: H.variant==0 always holds X out. In a 3-arm H,
+	// variant==1 holds X out only when X.fullOnVariant==0 (X is not full-on); when
+	// X.fullOnVariant!=0, X defers to its normal assignment path exactly as variant==2 would, so
+	// audienceStrict is evaluated before the full-on variant is assigned and arm 1/2 never diverge
+	// for audience-unrelated reasons. A 2-arm H's variant==1 and a 3-arm H's variant==2 both defer
+	// to the normal path. A null or shorter-than-2 split cannot express arm 1's 3-arm meaning, so
+	// it is treated as not-held-out unless variant 0.
+	private static boolean isHeldOutBy(final int holdoutVariant, final int holdoutArmCount,
 			final int fullOnVariant) {
 		if (holdoutVariant == 0) {
 			return true;
 		}
 
-		final int armCount = (holdout.split != null) ? holdout.split.length : 0;
-		if (armCount == 3 && holdoutVariant == 1) {
+		if (holdoutArmCount == 3 && holdoutVariant == 1) {
 			return fullOnVariant == 0;
 		}
 
@@ -1168,6 +1176,7 @@ public class Context implements Closeable {
 			assignment.eligible = true;
 			assignment.assigned = true;
 			assignment.variant = assigner.assign(liveHoldout.split, liveHoldout.seedHi, liveHoldout.seedLo);
+			assignment.armCount = (liveHoldout.split != null) ? liveHoldout.split.length : 0;
 
 			holdoutAssignmentCache_.put(liveHoldout.id, new HoldoutAssignment(assignment, liveHoldout, unitType));
 
