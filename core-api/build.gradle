@@ -35,6 +35,8 @@ def jacocoExcludes = [
 	"com/absmartly/sdk/json/**/*",
 	"com/absmartly/sdk/deprecated/**/*",
 	"com/absmartly/sdk/java/**/*",
+	"com/absmartly/sdk/ABSmartly.class",
+	"com/absmartly/sdk/ABSmartlyConfig.class",
 ]
 
 jacocoTestReport {

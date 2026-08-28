@@ -41,6 +41,20 @@ public class Context implements Closeable {
 				variableParser, audienceMatcher);
 	}
 
+	/**
+	 * @deprecated Use {@link #create(Clock, ContextConfig, ScheduledExecutorService, CompletableFuture,
+	 *             ContextDataProvider, ContextPublisher, ContextEventLogger, VariableParser, AudienceMatcher)} instead.
+	 */
+	@Deprecated
+	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
+			@Nonnull final ScheduledExecutorService scheduler,
+			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
+			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
+			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher) {
+		return create(clock, config, scheduler, dataFuture, dataProvider, (ContextPublisher) eventHandler, eventLogger,
+				variableParser, audienceMatcher);
+	}
+
 	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
 			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
 			ContextPublisher eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,

@@ -130,7 +130,10 @@ class ABsmartlyTest extends TestUtils {
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
-				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+				contextStatic
+						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class),
+								any(),
+								any(), any()))
 						.thenReturn(contextMock);
 
 				final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -155,7 +158,8 @@ class ABsmartlyTest extends TestUtils {
 						.forClass(AudienceMatcher.class);
 
 				contextStatic.verify(
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()),
+						() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+								any(), any()),
 						Mockito.times(1));
 				contextStatic.verify(
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
@@ -190,7 +194,10 @@ class ABsmartlyTest extends TestUtils {
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
-				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+				contextStatic
+						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class),
+								any(),
+								any(), any()))
 						.thenReturn(contextMock);
 
 				final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -217,7 +224,8 @@ class ABsmartlyTest extends TestUtils {
 						.forClass(AudienceMatcher.class);
 
 				contextStatic.verify(
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()),
+						() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+								any(), any()),
 						Mockito.times(1));
 				contextStatic.verify(
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
@@ -287,7 +295,9 @@ class ABsmartlyTest extends TestUtils {
 							assertSame(audienceDeserializer, context.arguments().get(0));
 						})) {
 			final Context contextMock = mock(Context.class);
-			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+			contextStatic
+					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+							any(), any()))
 					.thenReturn(contextMock);
 
 			final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -310,7 +320,8 @@ class ABsmartlyTest extends TestUtils {
 			final ArgumentCaptor<AudienceMatcher> audienceMatcher = ArgumentCaptor.forClass(AudienceMatcher.class);
 
 			contextStatic.verify(
-					() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()),
+					() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(), any(),
+							any()),
 					Mockito.times(1));
 			contextStatic.verify(
 					() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
@@ -342,7 +353,9 @@ class ABsmartlyTest extends TestUtils {
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 			final Context contextMock = mock(Context.class);
-			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+			contextStatic
+					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+							any(), any()))
 					.thenReturn(contextMock);
 
 			final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
