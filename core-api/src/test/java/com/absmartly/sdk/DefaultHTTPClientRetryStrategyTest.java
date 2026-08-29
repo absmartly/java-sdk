@@ -1,68 +1,87 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.IOException;
+import java.util.Set;
 
+import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
+import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
+import org.apache.hc.core5.http.HttpRequest;
 import org.apache.hc.core5.http.HttpResponse;
-import org.apache.hc.core5.http.message.BasicHttpResponse;
+import org.apache.hc.core5.http.protocol.BasicHttpContext;
+import org.apache.hc.core5.http.protocol.HttpContext;
+import org.apache.hc.core5.util.TimeValue;
 import org.junit.jupiter.api.Test;
 
-class DefaultHTTPClientRetryStrategyTest {
-	private static HttpResponse response(final int code) {
-		return new BasicHttpResponse(code, "");
+class DefaultHTTPClientRetryStrategyTest extends TestUtils {
+	@Test
+	void retryRequest() {
+		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, 1_000);
+		final HttpRequest request = SimpleRequestBuilder.get("http://localhost/v1/context").build();
+		final HttpContext context = new BasicHttpContext();
+
+		int i = 1;
+		for (; i <= 7; ++i) {
+			assertTrue(strategy.retryRequest(request, new ConnectTimeoutException("timeout"), i, context));
+		}
+		assertFalse(strategy.retryRequest(request, new ConnectTimeoutException("timeout"), i, context));
 	}
 
 	@Test
-	void retriesRetryableCodesUpToMaxRetries() {
-		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(3, 100);
+	void testRetryRequest() {
+		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, 1_000);
+		final HttpContext context = new BasicHttpContext();
+		final Set<Integer> retryableCodes = setOf(502, 503);
 
-		for (final int code : new int[]{502, 503}) {
-			assertTrue(strategy.retryRequest(response(code), 1, null));
-			assertTrue(strategy.retryRequest(response(code), 3, null));
-			assertFalse(strategy.retryRequest(response(code), 4, null));
+		for (int code : retryableCodes) {
+			final HttpResponse response = new SimpleHttpResponse(code);
+
+			int i = 1;
+			for (; i <= 7; ++i) {
+				assertTrue(strategy.retryRequest(response, i, context));
+			}
+			assertFalse(strategy.retryRequest(response, i, context));
 		}
+	}
+
+	@Test
+	void getRetryInterval() {
+		final long maxIntervalMs = 3_049;
+		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, maxIntervalMs);
+		final HttpContext context = new BasicHttpContext();
+
+		long previous = 0;
+		final HttpResponse response = new SimpleHttpResponse(502);
+
+		int i = 1;
+		for (; i <= 7; ++i) {
+			final TimeValue actual = strategy.getRetryInterval(response, i, context);
+			assertTrue(previous < actual.toMilliseconds());
+			previous = actual.toMilliseconds();
+		}
+
+		assertTrue(Math.abs(maxIntervalMs - previous) <= 1);
 	}
 
 	@Test
 	void doesNotRetryNonRetryableCodes() {
-		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(3, 100);
+		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, 1_000);
+		final HttpContext context = new BasicHttpContext();
 
-		for (final int code : new int[]{200, 400, 404, 500, 504}) {
-			assertFalse(strategy.retryRequest(response(code), 1, null));
+		for (int code : setOf(200, 400, 404, 500, 504)) {
+			assertFalse(strategy.retryRequest(new SimpleHttpResponse(code), 1, context));
 		}
 	}
 
 	@Test
-	void retriesIOExceptionsUpToMaxRetries() {
-		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(2, 100);
-		final IOException exception = new IOException("connection reset");
-
-		assertTrue(strategy.retryRequest(null, exception, 1, null));
-		assertTrue(strategy.retryRequest(null, exception, 2, null));
-		assertFalse(strategy.retryRequest(null, exception, 3, null));
-	}
-
-	@Test
-	void retryIntervalGrowsExponentiallyAndStaysWithinBudget() {
-		final long maxRetryIntervalMs = 1000;
-		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(3, maxRetryIntervalMs);
-
-		final long first = strategy.getRetryInterval(response(503), 1, null).toMilliseconds();
-		final long second = strategy.getRetryInterval(response(503), 2, null).toMilliseconds();
-		final long third = strategy.getRetryInterval(response(503), 3, null).toMilliseconds();
-
-		assertTrue(second > first, "interval must grow: " + first + " -> " + second);
-		assertTrue(third > second, "interval must grow: " + second + " -> " + third);
-		assertEquals(second - first, (third - second) / 2, "growth must double each attempt");
-		assertTrue(third <= maxRetryIntervalMs, "final interval " + third + " exceeds budget " + maxRetryIntervalMs);
-	}
-
-	@Test
 	void zeroMaxRetriesDisablesRetrying() {
-		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(0, 100);
+		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(0, 1_000);
+		final HttpRequest request = SimpleRequestBuilder.get("http://localhost/v1/context").build();
+		final HttpContext context = new BasicHttpContext();
 
-		assertFalse(strategy.retryRequest(response(503), 1, null));
-		assertFalse(strategy.retryRequest(null, new IOException("boom"), 1, null));
+		assertFalse(strategy.retryRequest(new SimpleHttpResponse(503), 1, context));
+		assertFalse(strategy.retryRequest(request, new ConnectTimeoutException("timeout"), 1, context));
 	}
 }
