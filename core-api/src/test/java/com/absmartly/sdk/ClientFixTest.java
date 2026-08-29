@@ -75,7 +75,7 @@ class ClientFixTest extends TestUtils {
 	}
 
 	@Test
-	void httpEndpointDoesNotThrowButLogsWarning() {
+	void httpEndpointIsAccepted() {
 		final HTTPClient httpClient = mock(HTTPClient.class);
 		assertDoesNotThrow(() -> {
 			Client.create(ClientConfig.create()
