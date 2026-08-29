@@ -439,18 +439,17 @@ public class ProductController {
         final ContextConfig contextConfig = ContextConfig.create()
             .setUnit("session_id", session.getId());
 
-        final Context context = absmartly.createContext(contextConfig)
-            .waitUntilReady();
+        final ModelAndView mav = new ModelAndView();
 
-        final int treatment = context.getTreatment("exp_product_layout");
+        try (Context context = absmartly.createContext(contextConfig)
+                .waitUntilReady()) {
+            final int treatment = context.getTreatment("exp_product_layout");
 
-        context.close();
-
-        ModelAndView mav = new ModelAndView();
-        if (treatment == 0) {
-            mav.setViewName("product_control");
-        } else {
-            mav.setViewName("product_treatment");
+            if (treatment == 0) {
+                mav.setViewName("product_control");
+            } else {
+                mav.setViewName("product_treatment");
+            }
         }
 
         return mav;
@@ -511,16 +510,14 @@ public class ProductResource {
         final ContextConfig contextConfig = ContextConfig.create()
             .setUnit("session_id", sessionId);
 
-        final Context context = absmartly.createContext(contextConfig)
-            .waitUntilReady();
+        try (Context context = absmartly.createContext(contextConfig)
+                .waitUntilReady()) {
+            final int treatment = context.getTreatment("exp_product_layout");
 
-        final int treatment = context.getTreatment("exp_product_layout");
-
-        context.close();
-
-        return Response.ok()
-            .entity(Map.of("treatment", treatment))
-            .build();
+            return Response.ok()
+                .entity(Map.of("treatment", treatment))
+                .build();
+        }
     }
 }
 ```
