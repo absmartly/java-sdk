@@ -3073,31 +3073,53 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void publisherClosingContextFromCallbackIsRejected() {
+	void publisherCanCloseContextSynchronously() {
 		final Context context = createReadyContext();
 		context.track("goal", mapOf("amount", 1));
 
-		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
-			assertThrows(IllegalStateException.class, context::closeAsync);
-			return CompletableFuture.completedFuture(null);
-		});
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> context.closeAsync());
 
 		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
 		publishResult.join();
 
-		assertFalse(context.isClosed());
+		assertTrue(context.isClosed());
 		assertEquals(0, context.getPendingCount());
+		assertTrue(context.closeAsync().isDone());
 	}
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void rejectedPublisherCloseDoesNotStrandRestoredEvents() {
+	void publisherCloseThenThrowReopensContextForRetry() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final RuntimeException failure = new RuntimeException("publisher threw");
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+			context.closeAsync();
+			throw failure;
+		}).thenReturn(CompletableFuture.completedFuture(null));
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		final CompletionException actual = assertThrows(CompletionException.class, publishResult::join);
+		assertSame(failure, actual.getCause());
+		assertTrue(context.getPendingCount() > 0);
+		assertFalse(context.isClosed());
+		assertFalse(context.isClosed() && context.getPendingCount() > 0);
+
+		assertDoesNotThrow(context::publishAsync).join();
+		assertEquals(0, context.getPendingCount());
+		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCloseThenFailedFutureReopensContextForRetry() {
 		final Context context = createReadyContext();
 		context.track("goal", mapOf("amount", 1));
 
 		final RuntimeException failure = new RuntimeException("publisher failed");
 		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
-			assertThrows(IllegalStateException.class, context::closeAsync);
+			context.closeAsync();
 			return failedFuture(failure);
 		}).thenReturn(CompletableFuture.completedFuture(null));
 
@@ -3106,9 +3128,41 @@ class ContextTest extends TestUtils {
 		assertSame(failure, actual.getCause());
 		assertTrue(context.getPendingCount() > 0);
 		assertFalse(context.isClosed());
+		assertFalse(context.isClosed() && context.getPendingCount() > 0);
 
 		assertDoesNotThrow(context::publishAsync).join();
 		assertEquals(0, context.getPendingCount());
 		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void overlappingPublishDoesNotFinalizeWithRestoredEvents() {
+		final Context context = createReadyContext();
+		final CompletableFuture<Void> publisherFutureA = new CompletableFuture<>();
+		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
+		final RuntimeException failure = new RuntimeException("publisher B failed");
+		when(eventHandler.publish(any(), any())).thenReturn(publisherFutureA).thenAnswer(invocation -> {
+			closeResult.set(context.closeAsync());
+			return failedFuture(failure);
+		});
+
+		context.track("goal_a", mapOf("amount", 1));
+		final CompletableFuture<Void> publishResultA = context.publishAsync();
+		context.track("goal_b", mapOf("amount", 2));
+		final CompletableFuture<Void> publishResultB = context.publishAsync();
+
+		assertThrows(CompletionException.class, publishResultB::join);
+		assertFalse(closeResult.get().isDone());
+		assertTrue(context.getPendingCount() > 0);
+		assertFalse(context.isClosed());
+
+		publisherFutureA.complete(null);
+		publishResultA.join();
+		closeResult.get().join();
+
+		assertTrue(context.getPendingCount() > 0);
+		assertFalse(context.isClosed());
+		assertFalse(context.isClosed() && context.getPendingCount() > 0);
 	}
 }
