@@ -763,7 +763,6 @@ public class Context implements Closeable {
 
 						pendingCount_.set(0);
 						publishFutures_.add(result);
-						publisherInvocations_.put(result, Thread.currentThread());
 					}
 				} finally {
 					eventLock_.unlock();
@@ -835,6 +834,12 @@ public class Context implements Closeable {
 					final CompletableFuture<Void> publishResult;
 					try {
 						try {
+							try {
+								eventLock_.lock();
+								publisherInvocations_.put(result, Thread.currentThread());
+							} finally {
+								eventLock_.unlock();
+							}
 							publishResult = eventHandler_.publish(this, event);
 						} finally {
 							try {
