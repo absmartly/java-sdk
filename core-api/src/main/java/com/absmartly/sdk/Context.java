@@ -618,15 +618,7 @@ public class Context implements Closeable {
 				try {
 					eventLock_.lock();
 					pendingCount = pendingCount_.get();
-					final Set<CompletableFuture<Void>> closingPublishFutures = new HashSet<CompletableFuture<Void>>(
-							publishFutures_);
-					for (Map.Entry<CompletableFuture<Void>, Thread> invocation : publisherInvocations_.entrySet()) {
-						if (invocation.getValue() == Thread.currentThread()) {
-							closingPublishFutures.remove(invocation.getKey());
-						}
-					}
-					inFlightPublishes = closingPublishFutures
-							.toArray(new CompletableFuture<?>[closingPublishFutures.size()]);
+					inFlightPublishes = publishFutures_.toArray(new CompletableFuture<?>[publishFutures_.size()]);
 				} finally {
 					eventLock_.unlock();
 				}
@@ -762,6 +754,7 @@ public class Context implements Closeable {
 						}
 
 						pendingCount_.set(0);
+						// ContextPublisher callbacks must not synchronously close this context.
 						publishFutures_.add(result);
 					}
 				} finally {
@@ -833,22 +826,7 @@ public class Context implements Closeable {
 
 					final CompletableFuture<Void> publishResult;
 					try {
-						try {
-							try {
-								eventLock_.lock();
-								publisherInvocations_.put(result, Thread.currentThread());
-							} finally {
-								eventLock_.unlock();
-							}
-							publishResult = eventHandler_.publish(this, event);
-						} finally {
-							try {
-								eventLock_.lock();
-								publisherInvocations_.remove(result);
-							} finally {
-								eventLock_.unlock();
-							}
-						}
+						publishResult = eventHandler_.publish(this, event);
 					} catch (final Throwable throwable) {
 						onPublishFailure.apply(throwable);
 						return callerResult;
@@ -1381,7 +1359,6 @@ public class Context implements Closeable {
 	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final Set<CompletableFuture<Void>> publishFutures_ = new HashSet<CompletableFuture<Void>>();
-	private final Map<CompletableFuture<Void>, Thread> publisherInvocations_ = new HashMap<CompletableFuture<Void>, Thread>();
 
 	private final ReentrantLock timeoutLock_ = new ReentrantLock();
 	private volatile ScheduledFuture<?> timeout_ = null;
