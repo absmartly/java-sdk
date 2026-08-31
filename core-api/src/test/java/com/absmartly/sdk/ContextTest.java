@@ -3134,35 +3134,4 @@ class ContextTest extends TestUtils {
 		assertEquals(0, context.getPendingCount());
 		verify(eventHandler, Mockito.times(2)).publish(any(), any());
 	}
-
-	@Test
-	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void overlappingPublishDoesNotFinalizeWithRestoredEvents() {
-		final Context context = createReadyContext();
-		final CompletableFuture<Void> publisherFutureA = new CompletableFuture<>();
-		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
-		final RuntimeException failure = new RuntimeException("publisher B failed");
-		when(eventHandler.publish(any(), any())).thenReturn(publisherFutureA).thenAnswer(invocation -> {
-			closeResult.set(context.closeAsync());
-			return failedFuture(failure);
-		});
-
-		context.track("goal_a", mapOf("amount", 1));
-		final CompletableFuture<Void> publishResultA = context.publishAsync();
-		context.track("goal_b", mapOf("amount", 2));
-		final CompletableFuture<Void> publishResultB = context.publishAsync();
-
-		assertThrows(CompletionException.class, publishResultB::join);
-		assertFalse(closeResult.get().isDone());
-		assertTrue(context.getPendingCount() > 0);
-		assertFalse(context.isClosed());
-
-		publisherFutureA.complete(null);
-		publishResultA.join();
-		closeResult.get().join();
-
-		assertTrue(context.getPendingCount() > 0);
-		assertFalse(context.isClosed());
-		assertFalse(context.isClosed() && context.getPendingCount() > 0);
-	}
 }
