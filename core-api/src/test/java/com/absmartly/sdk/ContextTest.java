@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -2930,6 +2931,65 @@ class ContextTest extends TestUtils {
 		assertEquals(0, context.getPendingCount());
 
 		verify(eventHandler, Mockito.times(1)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void closeAwaitsPublishWhileFailureLoggerIsBlocked() throws Exception {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final CompletableFuture<Void> publisherFuture = new CompletableFuture<>();
+		final CompletableFuture<Void> retryFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publisherFuture)
+				.thenReturn(retryFuture);
+		final CountDownLatch loggerEntered = new CountDownLatch(1);
+		final CountDownLatch releaseLogger = new CountDownLatch(1);
+		Mockito.doAnswer(invocation -> {
+			loggerEntered.countDown();
+			releaseLogger.await();
+			return null;
+		}).when(eventLogger).handleEvent(any(), eq(ContextEventLogger.EventType.Error), any());
+
+		final CompletableFuture<Void> publishResult = context.publishAsync();
+		final RuntimeException failure = new RuntimeException("publish failed");
+		final Thread failureThread = new Thread(() -> publisherFuture.completeExceptionally(failure));
+		failureThread.start();
+		loggerEntered.await();
+
+		final CompletableFuture<Void> closeResult = context.closeAsync();
+		assertFalse(closeResult.isDone());
+		assertFalse(context.isClosed());
+
+		releaseLogger.countDown();
+		failureThread.join();
+		assertThrows(CompletionException.class, publishResult::join);
+		retryFuture.complete(null);
+		assertThrows(CompletionException.class, closeResult::join);
+		assertFalse(context.isClosed() && context.getPendingCount() > 0);
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void synchronousPublisherFailureSettlesWhenErrorLoggerThrows() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final RuntimeException publisherFailure = new RuntimeException("publisher threw");
+		when(eventHandler.publish(any(), any())).thenThrow(publisherFailure);
+		Mockito.doThrow(new RuntimeException("logger threw"))
+				.when(eventLogger).handleEvent(any(), eq(ContextEventLogger.EventType.Error), any());
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		final CompletionException actual = assertThrows(CompletionException.class, publishResult::join);
+		assertSame(publisherFailure, actual.getCause());
+		assertTrue(context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> closeResult = assertDoesNotThrow(context::closeAsync);
+		assertTrue(closeResult.isDone());
+		assertThrows(CompletionException.class, closeResult::join);
+		assertFalse(context.isClosed());
+		assertTrue(context.getPendingCount() > 0);
 	}
 
 	@Test
