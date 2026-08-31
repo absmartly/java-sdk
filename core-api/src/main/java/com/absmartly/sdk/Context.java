@@ -609,16 +609,6 @@ public class Context implements Closeable {
 	}
 
 	public CompletableFuture<Void> closeAsync() {
-		try {
-			eventLock_.lock();
-			if (publisherInvocations_.containsValue(Thread.currentThread())) {
-				throw new IllegalStateException(
-						"ContextPublisher must not close the context from within publish(); return a future and let the caller close the context instead");
-			}
-		} finally {
-			eventLock_.unlock();
-		}
-
 		if (!closed_.get()) {
 			if (closing_.compareAndSet(false, true)) {
 				clearRefreshTimer();
@@ -628,7 +618,15 @@ public class Context implements Closeable {
 				try {
 					eventLock_.lock();
 					pendingCount = pendingCount_.get();
-					inFlightPublishes = publishFutures_.toArray(new CompletableFuture<?>[publishFutures_.size()]);
+					final Set<CompletableFuture<Void>> closingPublishFutures = new HashSet<CompletableFuture<Void>>(
+							publishFutures_);
+					for (Map.Entry<CompletableFuture<Void>, Thread> invocation : publisherInvocations_.entrySet()) {
+						if (invocation.getValue() == Thread.currentThread()) {
+							closingPublishFutures.remove(invocation.getKey());
+						}
+					}
+					inFlightPublishes = closingPublishFutures
+							.toArray(new CompletableFuture<?>[closingPublishFutures.size()]);
 				} finally {
 					eventLock_.unlock();
 				}
@@ -643,11 +641,22 @@ public class Context implements Closeable {
 					CompletableFuture.allOf(closingPublishes).thenAccept(new Consumer<Void>() {
 						@Override
 						public void accept(Void x) {
-							closed_.set(true);
+							boolean finalized = false;
+							try {
+								eventLock_.lock();
+								if (pendingCount_.get() == 0) {
+									closed_.set(true);
+									finalized = true;
+								}
+							} finally {
+								eventLock_.unlock();
+							}
 							closing_.set(false);
 							newClosingFuture.complete(null);
 
-							Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+							if (finalized) {
+								Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+							}
 						}
 					}).exceptionally(new Function<Throwable, Void>() {
 						@Override
@@ -677,8 +686,15 @@ public class Context implements Closeable {
 							public Void apply(Void ignoredResult, Throwable exception) {
 								// Same rule as the flush-driven failure path: only close once
 								// no events remain to retry.
-								if ((exception == null) || (pendingCount_.get() == 0)) {
-									closed_.set(true);
+								boolean finalized = false;
+								try {
+									eventLock_.lock();
+									if (pendingCount_.get() == 0) {
+										closed_.set(true);
+										finalized = true;
+									}
+								} finally {
+									eventLock_.unlock();
 								}
 								closing_.set(false);
 
@@ -686,7 +702,9 @@ public class Context implements Closeable {
 									newClosingFuture.completeExceptionally(exception);
 								} else {
 									newClosingFuture.complete(null);
-									Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+									if (finalized) {
+										Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+									}
 								}
 								return null;
 							}
@@ -695,10 +713,21 @@ public class Context implements Closeable {
 						return newClosingFuture;
 					}
 
-					closed_.set(true);
+					boolean finalized = false;
+					try {
+						eventLock_.lock();
+						if (pendingCount_.get() == 0) {
+							closed_.set(true);
+							finalized = true;
+						}
+					} finally {
+						eventLock_.unlock();
+					}
 					closing_.set(false);
 
-					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+					if (finalized) {
+						Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+					}
 
 					// Nothing was pending here, so no closingFuture_ was published for this
 					// attempt; return directly to avoid picking up a stale future left behind
@@ -813,6 +842,12 @@ public class Context implements Closeable {
 									}
 								}
 								pendingCount_.addAndGet(finalEventCount);
+								// A publish failing after close finalized must leave the context usable,
+								// because the restored events are still deliverable.
+								if (pendingCount_.get() > 0 && (closed_.get() || closing_.get())) {
+									closed_.set(false);
+									closing_.set(false);
+								}
 							} finally {
 								eventLock_.unlock();
 							}
