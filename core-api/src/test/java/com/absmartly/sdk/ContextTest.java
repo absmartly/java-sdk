@@ -2909,4 +2909,26 @@ class ContextTest extends TestUtils {
 
 		verify(eventHandler, Mockito.times(1)).publish(any(), any());
 	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publishSucceedsWhenLoggerThrowsOnPublishEvent() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		Mockito.doThrow(new RuntimeException("logger failure"))
+				.when(eventLogger).handleEvent(any(), eq(ContextEventLogger.EventType.Publish), any());
+
+		assertDoesNotThrow(context::publish);
+		assertEquals(0, context.getPendingCount());
+
+		// no new events were queued, so a retry must not re-deliver the same batch
+		context.publishAsync().join();
+		assertEquals(0, context.getPendingCount());
+
+		verify(eventHandler, Mockito.times(1)).publish(any(), any());
+	}
 }

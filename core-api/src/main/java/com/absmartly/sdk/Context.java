@@ -772,13 +772,24 @@ public class Context implements Closeable {
 					final GoalAchievement[] finalAchievements = achievements;
 					final int finalEventCount = eventCount;
 
-					eventHandler_.publish(this, event).thenRunAsync(new Runnable() {
+					final CompletableFuture<Void> publishResult = eventHandler_.publish(this, event);
+
+					// The Publish log event runs in its own stage so a logger exception cannot be
+					// mistaken for a publisher failure and trigger event restoration.
+					publishResult.thenRunAsync(new Runnable() {
 						@Override
 						public void run() {
-							Context.this.logEvent(ContextEventLogger.EventType.Publish, event);
-							result.complete(null);
+							try {
+								Context.this.logEvent(ContextEventLogger.EventType.Publish, event);
+							} catch (final Throwable ignored) {
+								// diagnostic logger failures must not affect publish accounting
+							} finally {
+								result.complete(null);
+							}
 						}
-					}).exceptionally(new Function<Throwable, Void>() {
+					});
+
+					publishResult.exceptionally(new Function<Throwable, Void>() {
 						@Override
 						public Void apply(Throwable throwable) {
 							try {
