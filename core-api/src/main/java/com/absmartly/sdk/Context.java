@@ -793,13 +793,18 @@ public class Context implements Closeable {
 									}
 								}
 								pendingCount_.addAndGet(finalEventCount);
-								publishFutures_.remove(result);
 							} finally {
 								eventLock_.unlock();
 							}
 
 							Context.this.logError(throwable);
 							result.completeExceptionally(throwable);
+							try {
+								eventLock_.lock();
+								publishFutures_.remove(result);
+							} finally {
+								eventLock_.unlock();
+							}
 							return null;
 						}
 					};
@@ -822,13 +827,13 @@ public class Context implements Closeable {
 							} catch (final Throwable ignored) {
 								// diagnostic logger failures must not affect publish accounting
 							} finally {
+								result.complete(null);
 								try {
 									eventLock_.lock();
 									publishFutures_.remove(result);
 								} finally {
 									eventLock_.unlock();
 								}
-								result.complete(null);
 							}
 						}
 					});
