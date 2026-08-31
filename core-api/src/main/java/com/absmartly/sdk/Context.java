@@ -12,7 +12,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
-import java8.util.function.BiConsumer;
 import java8.util.function.BiFunction;
 import java8.util.function.Consumer;
 import java8.util.function.Function;
@@ -614,7 +613,17 @@ public class Context implements Closeable {
 			if (closing_.compareAndSet(false, true)) {
 				clearRefreshTimer();
 
-				if (pendingCount_.get() > 0) {
+				final int pendingCount;
+				final CompletableFuture<Void> inFlightPublish;
+				try {
+					eventLock_.lock();
+					pendingCount = pendingCount_.get();
+					inFlightPublish = publishFutures_.isEmpty() ? null : publishFutures_.iterator().next();
+				} finally {
+					eventLock_.unlock();
+				}
+
+				if (pendingCount > 0) {
 					final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
 					closingFuture_.set(newClosingFuture);
 
@@ -646,7 +655,6 @@ public class Context implements Closeable {
 				} else {
 					// The queue is empty here, but a publish started by a concurrent flush()
 					// may still be in flight and could restore events on failure.
-					final CompletableFuture<Void> inFlightPublish = publishFuture_.get();
 					if (inFlightPublish != null) {
 						final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
 						closingFuture_.set(newClosingFuture);
@@ -713,6 +721,7 @@ public class Context implements Closeable {
 				Exposure[] exposures = null;
 				GoalAchievement[] achievements = null;
 				int eventCount;
+				final CompletableFuture<Void> result = new CompletableFuture<Void>();
 
 				try {
 					eventLock_.lock();
@@ -730,6 +739,8 @@ public class Context implements Closeable {
 						}
 
 						pendingCount_.set(0);
+						// ContextPublisher callbacks must not synchronously close this context.
+						publishFutures_.add(result);
 					}
 				} finally {
 					eventLock_.unlock();
@@ -758,16 +769,6 @@ public class Context implements Closeable {
 					event.exposures = exposures;
 					event.goals = achievements;
 
-					final CompletableFuture<Void> result = new CompletableFuture<Void>();
-					publishFuture_.set(result);
-					result.whenComplete(new BiConsumer<Void, Throwable>() {
-						@Override
-						public void accept(Void ignoredResult, Throwable ignoredException) {
-							// A stale reference must not make a later close() wait forever.
-							publishFuture_.compareAndSet(result, null);
-						}
-					});
-
 					final Exposure[] finalExposures = exposures;
 					final GoalAchievement[] finalAchievements = achievements;
 					final int finalEventCount = eventCount;
@@ -784,6 +785,12 @@ public class Context implements Closeable {
 							} catch (final Throwable ignored) {
 								// diagnostic logger failures must not affect publish accounting
 							} finally {
+								try {
+									eventLock_.lock();
+									publishFutures_.remove(result);
+								} finally {
+									eventLock_.unlock();
+								}
 								result.complete(null);
 							}
 						}
@@ -805,6 +812,7 @@ public class Context implements Closeable {
 									}
 								}
 								pendingCount_.addAndGet(finalEventCount);
+								publishFutures_.remove(result);
 							} finally {
 								eventLock_.unlock();
 							}
@@ -1319,7 +1327,7 @@ public class Context implements Closeable {
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
-	private final AtomicReference<CompletableFuture<Void>> publishFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	private final Set<CompletableFuture<Void>> publishFutures_ = new HashSet<CompletableFuture<Void>>();
 
 	private final ReentrantLock timeoutLock_ = new ReentrantLock();
 	private volatile ScheduledFuture<?> timeout_ = null;
