@@ -2839,7 +2839,7 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void publisherCanCloseContextInline() {
+	void publisherCanCloseContextInline() throws Exception {
 		final Context context = createReadyContext();
 		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
 		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
@@ -2850,8 +2850,8 @@ class ContextTest extends TestUtils {
 		context.track("goal", mapOf("amount", 1));
 
 		final CompletableFuture<Void> publishResult = context.publishAsync();
-		publishResult.join();
-		closeResult.get().join();
+		publishResult.get(2, TimeUnit.SECONDS);
+		closeResult.get().get(2, TimeUnit.SECONDS);
 
 		assertTrue(context.isClosed());
 		assertEquals(0, context.getPendingCount());
@@ -2859,24 +2859,30 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void publisherCanCloseContextFromWorkerThread() {
+	void publisherCanCloseContextFromWorkerThread() throws Exception {
 		final Context context = createReadyContext();
 		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
 		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
 			final CompletableFuture<Void> transportResult = new CompletableFuture<>();
-			new Thread(() -> {
-				final CompletableFuture<Void> result = context.closeAsync();
-				closeResult.set(result);
-				result.join();
-				transportResult.complete(null);
-			}).start();
+			final Thread worker = new Thread(() -> {
+				try {
+					final CompletableFuture<Void> result = context.closeAsync();
+					closeResult.set(result);
+					result.get(2, TimeUnit.SECONDS);
+					transportResult.complete(null);
+				} catch (Exception exception) {
+					transportResult.completeExceptionally(exception);
+				}
+			});
+			worker.setDaemon(true);
+			worker.start();
 			return transportResult;
 		});
 		context.track("goal", mapOf("amount", 1));
 
 		final CompletableFuture<Void> publishResult = context.publishAsync();
-		publishResult.join();
-		closeResult.get().join();
+		publishResult.get(2, TimeUnit.SECONDS);
+		closeResult.get().get(2, TimeUnit.SECONDS);
 
 		assertTrue(context.isClosed());
 		assertEquals(0, context.getPendingCount());
@@ -2884,26 +2890,34 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void publisherCanCloseContextFromExecutorCallback() {
+	void publisherCanCloseContextFromExecutorCallback() throws Exception {
 		final Context context = createReadyContext();
-		final ExecutorService executor = Executors.newSingleThreadExecutor();
+		final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
+			final Thread thread = new Thread(runnable);
+			thread.setDaemon(true);
+			return thread;
+		});
 		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
 		try {
 			when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
 				final CompletableFuture<Void> transportResult = new CompletableFuture<>();
 				executor.execute(() -> {
-					final CompletableFuture<Void> result = context.closeAsync();
-					closeResult.set(result);
-					result.join();
-					transportResult.complete(null);
+					try {
+						final CompletableFuture<Void> result = context.closeAsync();
+						closeResult.set(result);
+						result.get(2, TimeUnit.SECONDS);
+						transportResult.complete(null);
+					} catch (Exception exception) {
+						transportResult.completeExceptionally(exception);
+					}
 				});
 				return transportResult;
 			});
 			context.track("goal", mapOf("amount", 1));
 
 			final CompletableFuture<Void> publishResult = context.publishAsync();
-			publishResult.join();
-			closeResult.get().join();
+			publishResult.get(2, TimeUnit.SECONDS);
+			closeResult.get().get(2, TimeUnit.SECONDS);
 
 			assertTrue(context.isClosed());
 			assertEquals(0, context.getPendingCount());
