@@ -398,8 +398,7 @@ public class Context implements Closeable {
 				failure = e;
 			}
 
-			final RuntimeException holdoutFailure = triggerApplicableHoldoutExposures(assignment.holdouts,
-					assignment.unitType);
+			final RuntimeException holdoutFailure = triggerApplicableHoldoutExposures(assignment);
 			if (failure == null) {
 				failure = holdoutFailure;
 			}
@@ -410,17 +409,28 @@ public class Context implements Closeable {
 		}
 	}
 
-	// Fires every holdout applicable to a unit type, independent of whether the covered
+	// Fires every holdout applicable to the given assignment, independent of whether the covered
 	// experiment that surfaced them is the one ultimately selected for a treatment/variable
-	// lookup: the contract fires on first evaluation, not first selection. One throwing logger
-	// must not stop siblings, so failures are collected and the first one re-thrown only after
-	// every holdout has had a chance to fire.
-	private RuntimeException triggerApplicableHoldoutExposures(final Experiment[] holdouts, final String unitType) {
+	// lookup: the contract fires on first evaluation, not first selection. When the assignment
+	// carries a pinned holdoutAssignments snapshot (see Assignment.holdoutAssignments), each
+	// entry is fired directly rather than re-resolved, so the exposure always reflects the exact
+	// epoch the suppression decision was made from - a refresh landing between decision and
+	// trigger can never publish a holdout exposure from a different iteration than the one that
+	// governed this assignment. The override path never takes that snapshot, so it falls back to
+	// a live-by-id resolution. One throwing logger must not stop siblings, so failures are
+	// collected and the first one re-thrown only after every holdout has had a chance to fire.
+	private RuntimeException triggerApplicableHoldoutExposures(final Assignment assignment) {
 		RuntimeException failure = null;
+		final Experiment[] holdouts = assignment.holdouts;
 		if (holdouts != null) {
-			for (final Experiment holdout : holdouts) {
+			final Assignment[] pinned = assignment.holdoutAssignments;
+			for (int i = 0; i < holdouts.length; ++i) {
 				try {
-					triggerHoldoutExposure(holdout, unitType);
+					if (pinned != null) {
+						triggerHoldoutExposure(pinned[i]);
+					} else {
+						triggerHoldoutExposure(holdouts[i], assignment.unitType);
+					}
 				} catch (final RuntimeException e) {
 					if (failure == null) {
 						failure = e;
@@ -432,7 +442,10 @@ public class Context implements Closeable {
 	}
 
 	private void triggerHoldoutExposure(final Experiment holdoutExperiment, final String unitType) {
-		final Assignment holdoutAssignment = getHoldoutAssignment(holdoutExperiment, unitType);
+		triggerHoldoutExposure(getHoldoutAssignment(holdoutExperiment, unitType));
+	}
+
+	private void triggerHoldoutExposure(final Assignment holdoutAssignment) {
 		if ((holdoutAssignment != null) && holdoutAssignment.exposed.compareAndSet(false, true)) {
 			enqueueExposure(holdoutAssignment);
 		}
@@ -819,11 +832,18 @@ public class Context implements Closeable {
 		boolean audienceMismatch;
 		// Held out by a union of applicable holdouts: no exposure for this experiment, control
 		// values only. `holdouts` is the resolved applicable list (by id+iteration identity, see
-		// holdoutSetMatches), used both to invalidate this cached assignment when coverage changes
-		// and to trigger each holdout's own exposure once this experiment is evaluated (see
-		// triggerExposure).
+		// holdoutSetMatches), used to invalidate this cached assignment when coverage changes.
 		boolean suppressed;
 		Experiment[] holdouts;
+		// The holdout Assignment objects the suppression decision above was made from, in the
+		// same order as `holdouts`, resolved via getHoldoutAssignment at the same instant as the
+		// decision (an entry is null only for an unconfigured unit type). triggerExposure fires
+		// exactly these rather than re-resolving `holdouts` against whatever data is live by the
+		// time exposure runs, so a refresh landing in between can never publish an exposure for a
+		// different epoch than the one the decision was made from. Null when no such snapshot was
+		// taken (the override path, which never decides suppression from holdouts); the trigger
+		// falls back to a live resolution of `holdouts` in that case.
+		Assignment[] holdoutAssignments;
 		Map<String, Object> variables = Collections.emptyMap();
 
 		final AtomicBoolean exposed = new AtomicBoolean(false);
@@ -940,15 +960,23 @@ public class Context implements Closeable {
 						// pinned HoldoutAssignment (see getHoldoutAssignment) rather than recomputed
 						// from the live definition here, so suppression and the holdout's own
 						// exposure always agree, even after a same-iteration seed/split refresh.
-						for (final Experiment holdout : experiment.holdouts) {
-							final Assignment holdoutAssignment = Context.this.getHoldoutAssignment(holdout,
-									unitType);
+						// Every applicable holdout is resolved - the loop never stops at the first
+						// one that suppresses - because each one still owes its own exposure, and the
+						// resolved objects are pinned below (Assignment.holdoutAssignments) so
+						// triggerExposure fires exactly this decision's snapshot rather than
+						// re-resolving `holdouts` against data that may have moved to a different
+						// iteration by the time exposure runs.
+						final Assignment[] holdoutAssignments = new Assignment[experiment.holdouts.length];
+						for (int i = 0; i < experiment.holdouts.length; ++i) {
+							final Assignment holdoutAssignment = Context.this
+									.getHoldoutAssignment(experiment.holdouts[i], unitType);
+							holdoutAssignments[i] = holdoutAssignment;
 							if ((holdoutAssignment != null) && isHeldOutBy(holdoutAssignment.variant,
 									holdoutAssignment.armCount, experiment.data.fullOnVariant)) {
 								suppressed = true;
-								break;
 							}
 						}
+						assignment.holdoutAssignments = holdoutAssignments;
 					}
 					assignment.suppressed = suppressed;
 
@@ -1068,8 +1096,7 @@ public class Context implements Closeable {
 			for (final ContextExperiment experimentVariables : keyExperimentVariables) {
 				final Assignment assignment = getAssignment(experimentVariables.data.name);
 				if (!peek) {
-					final RuntimeException holdoutFailure = triggerApplicableHoldoutExposures(assignment.holdouts,
-							assignment.unitType);
+					final RuntimeException holdoutFailure = triggerApplicableHoldoutExposures(assignment);
 					if (failure == null) {
 						failure = holdoutFailure;
 					}

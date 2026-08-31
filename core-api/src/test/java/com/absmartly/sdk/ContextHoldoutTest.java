@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -1015,6 +1016,54 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_post"));
 		// the pre-refresh verdict is unchanged by the refresh.
 		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_pre"));
+	}
+
+	// A refresh landing between the suppression decision and the exposure trigger must not let
+	// the published event mix two different holdout epochs. H@iteration1's arm does not suppress
+	// E; getTreatment(E) decides E's normal variant and queues E's own exposure. The event logger
+	// runs synchronously inside that enqueue (after E is queued, before the holdout trigger loop
+	// executes) and installs a refresh that bumps H to iteration2 with an arm that WOULD suppress
+	// E. The published event must still carry E's ordinary exposure together with H@iteration1's
+	// arm - the pair the decision was actually made from - never H@iteration2's arm.
+	//
+	// Fails against pre-change code: triggerApplicableHoldoutExposures re-resolves
+	// `assignment.holdouts` via getHoldoutAssignment at trigger time rather than firing a pinned
+	// snapshot, so by the time the trigger loop runs, getHoldoutAssignment sees the refreshed
+	// (iteration2) holdout definition, finds the iteration1 cache entry stale, recomputes against
+	// iteration2's arm (suppressing), and publishes E's ordinary exposure alongside a
+	// contradictory iteration2 variant-0 holdout exposure instead of iteration1's variant-1 one.
+	@Test
+	void triggerFiresHoldoutExposureFromDecisionEpochDespiteRefreshRacingBetweenDecisionAndTrigger() {
+		final Experiment holdoutIteration1 = newHoldout(11, "holdout_h", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_epoch_race"), 11);
+
+		final Experiment holdoutIteration2 = newHoldout(11, "holdout_h", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO);
+		holdoutIteration2.iteration = 2;
+		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_epoch_race"), 11);
+		when(dataProvider.getContextData()).thenReturn(CompletableFuture
+				.completedFuture(contextDataOf(new Experiment[]{holdoutIteration2}, refreshedExperiment)));
+
+		final Context context = createReadyContext(
+				contextDataOf(new Experiment[]{holdoutIteration1}, experiment));
+
+		doAnswer(invocation -> {
+			final Object data = invocation.getArgument(2);
+			if ((data instanceof Exposure) && (((Exposure) data).id == 1)) {
+				context.refreshAsync().join();
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_epoch_race")); // not suppressed under iteration1
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_epoch_race", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						false, false, false),
+				holdoutExposure(11, "holdout_h", 1)); // iteration1's arm, not iteration2's
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	// --- Cross-SDK parity vectors -----------------------------------------------------------
