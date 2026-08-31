@@ -316,6 +316,11 @@ public class Context implements Closeable {
 	//
 	// Only unexposed assignments are evicted. Eviction creates a new exposed flag, so evicting an
 	// already-exposed assignment could publish a duplicate or contradictory experiment exposure.
+	// This is not protecting a pristine record: publish() reads event.units from the live units_
+	// map, so an exposure queued before this setUnit call may already carry the late unit. The
+	// decision behind it was still made without that unit, and recomputation cannot repair a
+	// record already queued - it can only add a second, conflicting one. The guard avoids
+	// compounding a degraded record, rather than pretending it is correct.
 	private void invalidateAssignmentsPinnedWithMissingUnit(final String unitType) {
 		final Iterator<Assignment> it = assignmentCache_.values().iterator();
 		while (it.hasNext()) {
