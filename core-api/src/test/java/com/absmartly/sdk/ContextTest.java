@@ -3041,4 +3041,33 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isClosed());
 		assertTrue(context.getPendingCount() > 0);
 	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void cancellingPublishResultDoesNotSettleInternalPublish() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final CompletableFuture<Void> publisherFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publisherFuture)
+				.thenReturn(CompletableFuture.completedFuture(null));
+
+		final CompletableFuture<Void> publishResult = context.publishAsync();
+		assertTrue(publishResult.cancel(false));
+
+		final CompletableFuture<Void> closeResult = context.closeAsync();
+		assertFalse(closeResult.isDone());
+		assertFalse(context.isClosed());
+
+		final RuntimeException failure = new RuntimeException("publish failed");
+		publisherFuture.completeExceptionally(failure);
+
+		assertThrows(CompletionException.class, closeResult::join);
+		assertTrue(context.getPendingCount() > 0);
+		assertFalse(context.isClosed() && context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> retryPublish = assertDoesNotThrow(context::publishAsync);
+		retryPublish.join();
+		assertEquals(0, context.getPendingCount());
+	}
 }

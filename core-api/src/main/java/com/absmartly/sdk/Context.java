@@ -725,6 +725,18 @@ public class Context implements Closeable {
 				GoalAchievement[] achievements = null;
 				int eventCount;
 				final CompletableFuture<Void> result = new CompletableFuture<Void>();
+				final CompletableFuture<Void> callerResult = new CompletableFuture<Void>();
+				result.handle(new BiFunction<Void, Throwable, Void>() {
+					@Override
+					public Void apply(Void ignoredResult, Throwable exception) {
+						if (exception != null) {
+							callerResult.completeExceptionally(exception);
+						} else {
+							callerResult.complete(null);
+						}
+						return null;
+					}
+				});
 
 				try {
 					eventLock_.lock();
@@ -817,7 +829,7 @@ public class Context implements Closeable {
 						publishResult = eventHandler_.publish(this, event);
 					} catch (final Throwable throwable) {
 						onPublishFailure.apply(throwable);
-						return result;
+						return callerResult;
 					}
 
 					// The Publish log event runs in its own stage so a logger exception cannot be
@@ -843,7 +855,7 @@ public class Context implements Closeable {
 
 					publishResult.exceptionally(onPublishFailure);
 
-					return result;
+					return callerResult;
 				}
 			}
 		} else {
