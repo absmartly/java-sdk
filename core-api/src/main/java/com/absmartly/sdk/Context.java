@@ -811,12 +811,6 @@ public class Context implements Closeable {
 									}
 								}
 								pendingCount_.addAndGet(finalEventCount);
-								// A publish failing after close finalized must leave the context usable,
-								// because the restored events are still deliverable.
-								if (pendingCount_.get() > 0 && (closed_.get() || closing_.get())) {
-									closed_.set(false);
-									closing_.set(false);
-								}
 							} finally {
 								eventLock_.unlock();
 							}
