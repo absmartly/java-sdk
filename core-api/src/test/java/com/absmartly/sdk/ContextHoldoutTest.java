@@ -1277,6 +1277,36 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(2, context.getPendingCount());
 	}
 
+	// Regression test: a throwing logger for a suppressed experiment's ONLY holdout exposure must
+	// still schedule a flush. There is no ordinary exposure to fall back on for scheduling (the
+	// covered experiment is suppressed), so enqueueExposure's own setTimeout() call is the only
+	// thing that can ever flush this queued exposure - if it is skipped because logEvent threw,
+	// the exposure is stranded in the queue for the lifetime of the context. The exception from
+	// the logger must still propagate to the caller.
+	//
+	// Fails against pre-change code: setTimeout() is called after logEvent() with no finally, so
+	// the throw from the holdout exposure's logEvent call skips setTimeout() entirely - the
+	// exposure is queued (pendingCount == 1) but scheduler.schedule is never invoked.
+	@Test
+	void throwingLoggerOnSuppressedExperimentsOnlyHoldoutStillSchedulesFlush() {
+		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(), any(Exposure.class));
+
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_stranded_flush"), 11);
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
+
+		when(scheduler.schedule((Runnable) any(), eq(100L), eq(TimeUnit.MILLISECONDS)))
+				.thenReturn(mock(java.util.concurrent.ScheduledFuture.class));
+
+		assertThrows(RuntimeException.class, () -> context.getTreatment("exp_stranded_flush"));
+
+		// the holdout's exposure was queued (this experiment has no exposure of its own - it is
+		// suppressed) and a flush was scheduled for it despite the throw.
+		assertEquals(1, context.getPendingCount());
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(100L),
+				eq(TimeUnit.MILLISECONDS));
+	}
+
 	// Malformed holdouts are omitted from the id index; references to omitted entries must not
 	// affect normal experiment assignment.
 	@Test

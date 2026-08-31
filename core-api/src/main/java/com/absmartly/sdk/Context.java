@@ -479,9 +479,14 @@ public class Context implements Closeable {
 			eventLock_.unlock();
 		}
 
-		logEvent(ContextEventLogger.EventType.Exposure, exposure);
-
-		setTimeout();
+		try {
+			logEvent(ContextEventLogger.EventType.Exposure, exposure);
+		} finally {
+			// Scheduled even if the callback above throws: the exposure is already appended and
+			// counted, so a skipped schedule would leave it queued with nothing left to flush it
+			// (setTimeout is idempotent, so scheduling here is never a duplicate concern).
+			setTimeout();
+		}
 	}
 
 	public int peekTreatment(@Nonnull final String experimentName) {
