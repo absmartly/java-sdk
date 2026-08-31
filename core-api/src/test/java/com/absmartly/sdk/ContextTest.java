@@ -1,6 +1,7 @@
 package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -2832,5 +2833,80 @@ class ContextTest extends TestUtils {
 		assertEquals(0, context.getPendingCount());
 
 		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void closeAsyncAwaitsPublishStartedBeforeCloseAndRestoresEventsOnFailure() {
+		final Context context = createReadyContext();
+
+		context.track("goal_a", mapOf("amount", 1));
+		assertEquals(1, context.getPendingCount());
+
+		final CompletableFuture<Void> publishFuture1 = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture1);
+
+		// publishAsync() flushes the queue immediately, so pendingCount_ is already 0
+		// by the time closeAsync() runs below, with the publisher future still open.
+		final CompletableFuture<Void> publishResult = context.publishAsync();
+		assertEquals(0, context.getPendingCount());
+
+		final CompletableFuture<Void> closeFuture = context.closeAsync();
+		assertFalse(closeFuture.isDone());
+		assertFalse(context.isClosed());
+
+		final Exception failure = new Exception("publish failed");
+		publishFuture1.completeExceptionally(failure);
+
+		assertThrows(CompletionException.class, publishResult::join);
+		assertThrows(CompletionException.class, closeFuture::join);
+
+		assertFalse(context.isClosed());
+		assertTrue(context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> publishFuture2 = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture2);
+
+		final CompletableFuture<Void> retryPublish = assertDoesNotThrow(context::publishAsync);
+		assertEquals(0, context.getPendingCount());
+
+		publishFuture2.complete(null);
+		retryPublish.join();
+
+		final CompletableFuture<Void> closeFuture2 = context.closeAsync();
+		closeFuture2.join();
+
+		assertTrue(context.isClosed());
+		assertEquals(0, context.getPendingCount());
+
+		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void closeAsyncCompletesWhenAwaitedPublishSucceeds() {
+		final Context context = createReadyContext();
+
+		context.track("goal_a", mapOf("amount", 1));
+		assertEquals(1, context.getPendingCount());
+
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> publishResult = context.publishAsync();
+		assertEquals(0, context.getPendingCount());
+
+		final CompletableFuture<Void> closeFuture = context.closeAsync();
+		assertFalse(closeFuture.isDone());
+		assertFalse(context.isClosed());
+
+		publishFuture.complete(null);
+		publishResult.join();
+		closeFuture.join();
+
+		assertTrue(context.isClosed());
+		assertEquals(0, context.getPendingCount());
+
+		verify(eventHandler, Mockito.times(1)).publish(any(), any());
 	}
 }

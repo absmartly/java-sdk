@@ -12,6 +12,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
+import java8.util.function.BiConsumer;
+import java8.util.function.BiFunction;
 import java8.util.function.Consumer;
 import java8.util.function.Function;
 
@@ -642,10 +644,45 @@ public class Context implements Closeable {
 
 					return newClosingFuture;
 				} else {
+					// The queue is empty here, but a publish started by a concurrent flush()
+					// may still be in flight and could restore events on failure.
+					final CompletableFuture<Void> inFlightPublish = publishFuture_.get();
+					if (inFlightPublish != null) {
+						final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
+						closingFuture_.set(newClosingFuture);
+
+						inFlightPublish.handle(new BiFunction<Void, Throwable, Void>() {
+							@Override
+							public Void apply(Void ignoredResult, Throwable exception) {
+								// Same rule as the flush-driven failure path: only close once
+								// no events remain to retry.
+								if ((exception == null) || (pendingCount_.get() == 0)) {
+									closed_.set(true);
+								}
+								closing_.set(false);
+
+								if (exception != null) {
+									newClosingFuture.completeExceptionally(exception);
+								} else {
+									newClosingFuture.complete(null);
+									Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+								}
+								return null;
+							}
+						});
+
+						return newClosingFuture;
+					}
+
 					closed_.set(true);
 					closing_.set(false);
 
 					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+
+					// Nothing was pending here, so no closingFuture_ was published for this
+					// attempt; return directly to avoid picking up a stale future left behind
+					// by an earlier failed close attempt.
+					return CompletableFuture.completedFuture(null);
 				}
 			}
 
@@ -722,6 +759,14 @@ public class Context implements Closeable {
 					event.goals = achievements;
 
 					final CompletableFuture<Void> result = new CompletableFuture<Void>();
+					publishFuture_.set(result);
+					result.whenComplete(new BiConsumer<Void, Throwable>() {
+						@Override
+						public void accept(Void ignoredResult, Throwable ignoredException) {
+							// A stale reference must not make a later close() wait forever.
+							publishFuture_.compareAndSet(result, null);
+						}
+					});
 
 					final Exposure[] finalExposures = exposures;
 					final GoalAchievement[] finalAchievements = achievements;
@@ -1263,6 +1308,7 @@ public class Context implements Closeable {
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	private final AtomicReference<CompletableFuture<Void>> publishFuture_ = new AtomicReference<CompletableFuture<Void>>();
 
 	private final ReentrantLock timeoutLock_ = new ReentrantLock();
 	private volatile ScheduledFuture<?> timeout_ = null;
