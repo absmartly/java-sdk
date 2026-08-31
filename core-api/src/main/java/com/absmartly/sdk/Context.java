@@ -641,11 +641,22 @@ public class Context implements Closeable {
 					CompletableFuture.allOf(closingPublishes).thenAccept(new Consumer<Void>() {
 						@Override
 						public void accept(Void x) {
-							closed_.set(true);
+							boolean finalized = false;
+							try {
+								eventLock_.lock();
+								if (pendingCount_.get() == 0) {
+									closed_.set(true);
+									finalized = true;
+								}
+							} finally {
+								eventLock_.unlock();
+							}
 							closing_.set(false);
 							newClosingFuture.complete(null);
 
-							Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+							if (finalized) {
+								Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+							}
 						}
 					}).exceptionally(new Function<Throwable, Void>() {
 						@Override
@@ -675,8 +686,15 @@ public class Context implements Closeable {
 							public Void apply(Void ignoredResult, Throwable exception) {
 								// Same rule as the flush-driven failure path: only close once
 								// no events remain to retry.
-								if ((exception == null) || (pendingCount_.get() == 0)) {
-									closed_.set(true);
+								boolean finalized = false;
+								try {
+									eventLock_.lock();
+									if (pendingCount_.get() == 0) {
+										closed_.set(true);
+										finalized = true;
+									}
+								} finally {
+									eventLock_.unlock();
 								}
 								closing_.set(false);
 
@@ -684,7 +702,9 @@ public class Context implements Closeable {
 									newClosingFuture.completeExceptionally(exception);
 								} else {
 									newClosingFuture.complete(null);
-									Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+									if (finalized) {
+										Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+									}
 								}
 								return null;
 							}
@@ -693,10 +713,21 @@ public class Context implements Closeable {
 						return newClosingFuture;
 					}
 
-					closed_.set(true);
+					boolean finalized = false;
+					try {
+						eventLock_.lock();
+						if (pendingCount_.get() == 0) {
+							closed_.set(true);
+							finalized = true;
+						}
+					} finally {
+						eventLock_.unlock();
+					}
 					closing_.set(false);
 
-					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+					if (finalized) {
+						Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+					}
 
 					// Nothing was pending here, so no closingFuture_ was published for this
 					// attempt; return directly to avoid picking up a stale future left behind
