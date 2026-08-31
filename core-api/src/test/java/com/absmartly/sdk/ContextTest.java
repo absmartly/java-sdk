@@ -2940,9 +2940,8 @@ class ContextTest extends TestUtils {
 		context.track("goal", mapOf("amount", 1));
 
 		final CompletableFuture<Void> publisherFuture = new CompletableFuture<>();
-		final CompletableFuture<Void> retryFuture = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publisherFuture)
-				.thenReturn(retryFuture);
+				.thenReturn(CompletableFuture.completedFuture(null));
 		final CountDownLatch loggerEntered = new CountDownLatch(1);
 		final CountDownLatch releaseLogger = new CountDownLatch(1);
 		Mockito.doAnswer(invocation -> {
@@ -2964,7 +2963,6 @@ class ContextTest extends TestUtils {
 		releaseLogger.countDown();
 		failureThread.join();
 		assertThrows(CompletionException.class, publishResult::join);
-		retryFuture.complete(null);
 		assertThrows(CompletionException.class, closeResult::join);
 		assertFalse(context.isClosed() && context.getPendingCount() > 0);
 	}
