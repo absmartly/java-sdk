@@ -627,9 +627,8 @@ public class Context implements Closeable {
 					final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
 					closingFuture_.set(newClosingFuture);
 
-					final CompletableFuture<?>[] closingPublishes = new CompletableFuture<?>[inFlightPublishes.length
-							+ 1];
-					System.arraycopy(inFlightPublishes, 0, closingPublishes, 0, inFlightPublishes.length);
+					final CompletableFuture<?>[] closingPublishes = Arrays.copyOf(inFlightPublishes,
+							inFlightPublishes.length + 1);
 					closingPublishes[inFlightPublishes.length] = flush();
 					CompletableFuture.allOf(closingPublishes).thenAccept(new Consumer<Void>() {
 						@Override
