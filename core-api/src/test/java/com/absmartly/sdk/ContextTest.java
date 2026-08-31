@@ -3070,4 +3070,20 @@ class ContextTest extends TestUtils {
 		retryPublish.join();
 		assertEquals(0, context.getPendingCount());
 	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCanCloseContextSynchronously() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> context.closeAsync());
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		publishResult.join();
+
+		assertTrue(context.isClosed());
+		assertEquals(0, context.getPendingCount());
+		assertTrue(context.closeAsync().isDone());
+	}
 }
