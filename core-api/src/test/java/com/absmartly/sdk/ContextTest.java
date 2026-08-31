@@ -2975,4 +2975,35 @@ class ContextTest extends TestUtils {
 			assertFalse(context.isClosed() && context.getPendingCount() > 0);
 		}
 	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void closeAwaitsEveryOverlappingPublishBeforeFinalizing() {
+		final Context context = createReadyContext();
+		final CompletableFuture<Void> publisherFutureA = new CompletableFuture<>();
+		final CompletableFuture<Void> publisherFutureB = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publisherFutureA, publisherFutureB);
+
+		context.track("goal_a", mapOf("amount", 1));
+		final CompletableFuture<Void> publishResultA = context.publishAsync();
+		context.track("goal_b", mapOf("amount", 2));
+		final CompletableFuture<Void> publishResultB = context.publishAsync();
+
+		publisherFutureB.complete(null);
+		publishResultB.join();
+
+		final CompletableFuture<Void> closeFuture = context.closeAsync();
+		assertFalse(closeFuture.isDone());
+		assertFalse(context.isClosed());
+
+		publisherFutureA.completeExceptionally(new Exception("publish A failed"));
+		assertThrows(CompletionException.class, publishResultA::join);
+		assertThrows(CompletionException.class, closeFuture::join);
+		assertFalse(context.isClosed());
+		assertTrue(context.getPendingCount() > 0);
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		assertDoesNotThrow(context::publishAsync).join();
+		assertEquals(0, context.getPendingCount());
+	}
 }

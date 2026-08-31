@@ -614,11 +614,11 @@ public class Context implements Closeable {
 				clearRefreshTimer();
 
 				final int pendingCount;
-				final CompletableFuture<Void> inFlightPublish;
+				final CompletableFuture<?>[] inFlightPublishes;
 				try {
 					eventLock_.lock();
 					pendingCount = pendingCount_.get();
-					inFlightPublish = publishFutures_.isEmpty() ? null : publishFutures_.iterator().next();
+					inFlightPublishes = publishFutures_.toArray(new CompletableFuture<?>[publishFutures_.size()]);
 				} finally {
 					eventLock_.unlock();
 				}
@@ -627,7 +627,10 @@ public class Context implements Closeable {
 					final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
 					closingFuture_.set(newClosingFuture);
 
-					flush().thenAccept(new Consumer<Void>() {
+					final CompletableFuture<?>[] closingPublishes = new CompletableFuture<?>[inFlightPublishes.length + 1];
+					System.arraycopy(inFlightPublishes, 0, closingPublishes, 0, inFlightPublishes.length);
+					closingPublishes[inFlightPublishes.length] = flush();
+					CompletableFuture.allOf(closingPublishes).thenAccept(new Consumer<Void>() {
 						@Override
 						public void accept(Void x) {
 							closed_.set(true);
@@ -655,11 +658,11 @@ public class Context implements Closeable {
 				} else {
 					// The queue is empty here, but a publish started by a concurrent flush()
 					// may still be in flight and could restore events on failure.
-					if (inFlightPublish != null) {
+					if (inFlightPublishes.length > 0) {
 						final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
 						closingFuture_.set(newClosingFuture);
 
-						inFlightPublish.handle(new BiFunction<Void, Throwable, Void>() {
+						CompletableFuture.allOf(inFlightPublishes).handle(new BiFunction<Void, Throwable, Void>() {
 							@Override
 							public Void apply(Void ignoredResult, Throwable exception) {
 								// Same rule as the flush-driven failure path: only close once
