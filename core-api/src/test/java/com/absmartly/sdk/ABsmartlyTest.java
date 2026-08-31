@@ -364,7 +364,48 @@ class ABsmartlyTest extends TestUtils {
 
 			absmartly.close();
 
-			verify(scheduler, Mockito.timeout(5000).times(1)).awaitTermination(anyLong(), any());
+			// scheduler was injected by the caller, so close() must leave it under caller ownership
+			verify(scheduler, Mockito.times(0)).shutdown();
+			verify(scheduler, Mockito.times(0)).awaitTermination(anyLong(), any());
+			verify(scheduler, Mockito.times(0)).shutdownNow();
+		}
+	}
+
+	@Test
+	void closeLeavesInjectedSchedulerRunning() throws IOException {
+		final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1);
+		try {
+			final ABsmartlyConfig config = ABsmartlyConfig.create()
+					.setClient(client)
+					.setScheduler(scheduler);
+
+			final ABsmartly absmartly = ABsmartly.create(config);
+			absmartly.close();
+
+			assertFalse(scheduler.isShutdown());
+		} finally {
+			scheduler.shutdownNow();
+		}
+	}
+
+	@Test
+	void closeShutsDownSelfCreatedScheduler() throws IOException, InterruptedException {
+		try (final MockedConstruction<ScheduledThreadPoolExecutor> schedulerCtor = mockConstruction(
+				ScheduledThreadPoolExecutor.class, (mock, context) -> {
+					when(mock.awaitTermination(anyLong(), any())).thenReturn(true);
+				})) {
+			final ABsmartlyConfig config = ABsmartlyConfig.create()
+					.setClient(client);
+
+			final ABsmartly absmartly = ABsmartly.create(config);
+			assertEquals(1, schedulerCtor.constructed().size());
+
+			final ScheduledExecutorService createdScheduler = schedulerCtor.constructed().get(0);
+
+			absmartly.close();
+
+			verify(createdScheduler, Mockito.times(1)).shutdown();
+			verify(createdScheduler, Mockito.times(1)).awaitTermination(anyLong(), any());
 		}
 	}
 }

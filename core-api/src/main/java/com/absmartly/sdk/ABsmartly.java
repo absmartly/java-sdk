@@ -89,6 +89,7 @@ public class ABsmartly implements Closeable {
 		variableParser_ = config.getVariableParser();
 		audienceDeserializer_ = config.getAudienceDeserializer();
 		scheduler_ = config.getScheduler();
+		ownsScheduler_ = scheduler_ == null;
 
 		if ((contextDataProvider_ == null) || (contextEventHandler_ == null)) {
 			client_ = config.getClient();
@@ -155,7 +156,8 @@ public class ABsmartly implements Closeable {
 				client_.close();
 			}
 		} finally {
-			if (scheduler_ != null) {
+			// A caller-supplied scheduler remains under caller ownership and must be left running.
+			if ((scheduler_ != null) && ownsScheduler_) {
 				scheduler_.shutdown();
 				try {
 					if (!scheduler_.awaitTermination(5000, TimeUnit.MILLISECONDS)) {
@@ -178,4 +180,5 @@ public class ABsmartly implements Closeable {
 
 	private AudienceDeserializer audienceDeserializer_;
 	private ScheduledExecutorService scheduler_;
+	private final boolean ownsScheduler_;
 }
