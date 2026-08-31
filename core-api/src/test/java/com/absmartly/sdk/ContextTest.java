@@ -3086,4 +3086,52 @@ class ContextTest extends TestUtils {
 		assertEquals(0, context.getPendingCount());
 		assertTrue(context.closeAsync().isDone());
 	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCloseThenThrowReopensContextForRetry() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final RuntimeException failure = new RuntimeException("publisher threw");
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+			context.closeAsync();
+			throw failure;
+		}).thenReturn(CompletableFuture.completedFuture(null));
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		final CompletionException actual = assertThrows(CompletionException.class, publishResult::join);
+		assertSame(failure, actual.getCause());
+		assertTrue(context.getPendingCount() > 0);
+		assertFalse(context.isClosed());
+		assertFalse(context.isClosed() && context.getPendingCount() > 0);
+
+		assertDoesNotThrow(context::publishAsync).join();
+		assertEquals(0, context.getPendingCount());
+		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCloseThenFailedFutureReopensContextForRetry() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final RuntimeException failure = new RuntimeException("publisher failed");
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+			context.closeAsync();
+			return failedFuture(failure);
+		}).thenReturn(CompletableFuture.completedFuture(null));
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		final CompletionException actual = assertThrows(CompletionException.class, publishResult::join);
+		assertSame(failure, actual.getCause());
+		assertTrue(context.getPendingCount() > 0);
+		assertFalse(context.isClosed());
+		assertFalse(context.isClosed() && context.getPendingCount() > 0);
+
+		assertDoesNotThrow(context::publishAsync).join();
+		assertEquals(0, context.getPendingCount());
+		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
 }
