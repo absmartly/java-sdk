@@ -797,7 +797,11 @@ public class Context implements Closeable {
 								eventLock_.unlock();
 							}
 
-							Context.this.logError(throwable);
+							try {
+								Context.this.logError(throwable);
+							} catch (final Throwable ignored) {
+								// diagnostic logger failures must not affect publish accounting
+							}
 							result.completeExceptionally(throwable);
 							try {
 								eventLock_.lock();
