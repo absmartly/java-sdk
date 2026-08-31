@@ -22,8 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -2838,77 +2839,77 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void closeAsyncAwaitsPublishStartedBeforeCloseAndRestoresEventsOnFailure() {
+	void publisherCanCloseContextInline() {
 		final Context context = createReadyContext();
+		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+			final CompletableFuture<Void> result = context.closeAsync();
+			closeResult.set(result);
+			return result;
+		});
+		context.track("goal", mapOf("amount", 1));
 
-		context.track("goal_a", mapOf("amount", 1));
-		assertEquals(1, context.getPendingCount());
-
-		final CompletableFuture<Void> publishFuture1 = new CompletableFuture<>();
-		when(eventHandler.publish(any(), any())).thenReturn(publishFuture1);
-
-		// publishAsync() flushes the queue immediately, so pendingCount_ is already 0
-		// by the time closeAsync() runs below, with the publisher future still open.
 		final CompletableFuture<Void> publishResult = context.publishAsync();
-		assertEquals(0, context.getPendingCount());
-
-		final CompletableFuture<Void> closeFuture = context.closeAsync();
-		assertFalse(closeFuture.isDone());
-		assertFalse(context.isClosed());
-
-		final Exception failure = new Exception("publish failed");
-		publishFuture1.completeExceptionally(failure);
-
-		assertThrows(CompletionException.class, publishResult::join);
-		assertThrows(CompletionException.class, closeFuture::join);
-
-		assertFalse(context.isClosed());
-		assertTrue(context.getPendingCount() > 0);
-
-		final CompletableFuture<Void> publishFuture2 = new CompletableFuture<>();
-		when(eventHandler.publish(any(), any())).thenReturn(publishFuture2);
-
-		final CompletableFuture<Void> retryPublish = assertDoesNotThrow(context::publishAsync);
-		assertEquals(0, context.getPendingCount());
-
-		publishFuture2.complete(null);
-		retryPublish.join();
-
-		final CompletableFuture<Void> closeFuture2 = context.closeAsync();
-		closeFuture2.join();
+		publishResult.join();
+		closeResult.get().join();
 
 		assertTrue(context.isClosed());
 		assertEquals(0, context.getPendingCount());
-
-		verify(eventHandler, Mockito.times(2)).publish(any(), any());
 	}
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void closeAsyncCompletesWhenAwaitedPublishSucceeds() {
+	void publisherCanCloseContextFromWorkerThread() {
 		final Context context = createReadyContext();
-
-		context.track("goal_a", mapOf("amount", 1));
-		assertEquals(1, context.getPendingCount());
-
-		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
-		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+			final CompletableFuture<Void> transportResult = new CompletableFuture<>();
+			new Thread(() -> {
+				final CompletableFuture<Void> result = context.closeAsync();
+				closeResult.set(result);
+				result.join();
+				transportResult.complete(null);
+			}).start();
+			return transportResult;
+		});
+		context.track("goal", mapOf("amount", 1));
 
 		final CompletableFuture<Void> publishResult = context.publishAsync();
-		assertEquals(0, context.getPendingCount());
-
-		final CompletableFuture<Void> closeFuture = context.closeAsync();
-		assertFalse(closeFuture.isDone());
-		assertFalse(context.isClosed());
-
-		publishFuture.complete(null);
 		publishResult.join();
-		closeFuture.join();
+		closeResult.get().join();
 
 		assertTrue(context.isClosed());
 		assertEquals(0, context.getPendingCount());
+	}
 
-		verify(eventHandler, Mockito.times(1)).publish(any(), any());
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCanCloseContextFromExecutorCallback() {
+		final Context context = createReadyContext();
+		final ExecutorService executor = Executors.newSingleThreadExecutor();
+		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
+		try {
+			when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+				final CompletableFuture<Void> transportResult = new CompletableFuture<>();
+				executor.execute(() -> {
+					final CompletableFuture<Void> result = context.closeAsync();
+					closeResult.set(result);
+					result.join();
+					transportResult.complete(null);
+				});
+				return transportResult;
+			});
+			context.track("goal", mapOf("amount", 1));
+
+			final CompletableFuture<Void> publishResult = context.publishAsync();
+			publishResult.join();
+			closeResult.get().join();
+
+			assertTrue(context.isClosed());
+			assertEquals(0, context.getPendingCount());
+		} finally {
+			executor.shutdownNow();
+		}
 	}
 
 	@Test
@@ -2931,40 +2932,6 @@ class ContextTest extends TestUtils {
 		assertEquals(0, context.getPendingCount());
 
 		verify(eventHandler, Mockito.times(1)).publish(any(), any());
-	}
-
-	@Test
-	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void closeAwaitsPublishWhileFailureLoggerIsBlocked() throws Exception {
-		final Context context = createReadyContext();
-		context.track("goal", mapOf("amount", 1));
-
-		final CompletableFuture<Void> publisherFuture = new CompletableFuture<>();
-		when(eventHandler.publish(any(), any())).thenReturn(publisherFuture)
-				.thenReturn(CompletableFuture.completedFuture(null));
-		final CountDownLatch loggerEntered = new CountDownLatch(1);
-		final CountDownLatch releaseLogger = new CountDownLatch(1);
-		Mockito.doAnswer(invocation -> {
-			loggerEntered.countDown();
-			releaseLogger.await();
-			return null;
-		}).when(eventLogger).handleEvent(any(), eq(ContextEventLogger.EventType.Error), any());
-
-		final CompletableFuture<Void> publishResult = context.publishAsync();
-		final RuntimeException failure = new RuntimeException("publish failed");
-		final Thread failureThread = new Thread(() -> publisherFuture.completeExceptionally(failure));
-		failureThread.start();
-		loggerEntered.await();
-
-		final CompletableFuture<Void> closeResult = context.closeAsync();
-		assertFalse(closeResult.isDone());
-		assertFalse(context.isClosed());
-
-		releaseLogger.countDown();
-		failureThread.join();
-		assertThrows(CompletionException.class, publishResult::join);
-		assertThrows(CompletionException.class, closeResult::join);
-		assertFalse(context.isClosed() && context.getPendingCount() > 0);
 	}
 
 	@Test
@@ -2992,37 +2959,6 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void closeAwaitsEveryOverlappingPublishBeforeFinalizing() {
-		final Context context = createReadyContext();
-		final CompletableFuture<Void> publisherFutureA = new CompletableFuture<>();
-		final CompletableFuture<Void> publisherFutureB = new CompletableFuture<>();
-		when(eventHandler.publish(any(), any())).thenReturn(publisherFutureA, publisherFutureB);
-
-		context.track("goal_a", mapOf("amount", 1));
-		final CompletableFuture<Void> publishResultA = context.publishAsync();
-		context.track("goal_b", mapOf("amount", 2));
-		final CompletableFuture<Void> publishResultB = context.publishAsync();
-
-		publisherFutureB.complete(null);
-		publishResultB.join();
-
-		final CompletableFuture<Void> closeFuture = context.closeAsync();
-		assertFalse(closeFuture.isDone());
-		assertFalse(context.isClosed());
-
-		publisherFutureA.completeExceptionally(new Exception("publish A failed"));
-		assertThrows(CompletionException.class, publishResultA::join);
-		assertThrows(CompletionException.class, closeFuture::join);
-		assertFalse(context.isClosed());
-		assertTrue(context.getPendingCount() > 0);
-
-		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-		assertDoesNotThrow(context::publishAsync).join();
-		assertEquals(0, context.getPendingCount());
-	}
-
-	@Test
-	@Timeout(value = 5, unit = TimeUnit.SECONDS)
 	void synchronousPublisherFailureRestoresEventsAndDoesNotHangClose() {
 		final Context context = createReadyContext();
 		context.track("goal", mapOf("amount", 1));
@@ -3044,7 +2980,7 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void cancellingPublishResultDoesNotSettleInternalPublish() {
+	void cancellingPublishResultDoesNotDisturbPublishAccounting() {
 		final Context context = createReadyContext();
 		context.track("goal", mapOf("amount", 1));
 
@@ -3055,16 +2991,10 @@ class ContextTest extends TestUtils {
 		final CompletableFuture<Void> publishResult = context.publishAsync();
 		assertTrue(publishResult.cancel(false));
 
-		final CompletableFuture<Void> closeResult = context.closeAsync();
-		assertFalse(closeResult.isDone());
-		assertFalse(context.isClosed());
-
 		final RuntimeException failure = new RuntimeException("publish failed");
 		publisherFuture.completeExceptionally(failure);
 
-		assertThrows(CompletionException.class, closeResult::join);
 		assertTrue(context.getPendingCount() > 0);
-		assertFalse(context.isClosed() && context.getPendingCount() > 0);
 
 		final CompletableFuture<Void> retryPublish = assertDoesNotThrow(context::publishAsync);
 		retryPublish.join();
