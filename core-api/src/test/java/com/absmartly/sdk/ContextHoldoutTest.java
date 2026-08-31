@@ -1247,6 +1247,47 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
+	// Kills a narrower variant of the "re-resolve the null live at trigger time" mutant that
+	// setUnitRecomputesSuppressionCoherentlyWhenLateResolvedHoldoutSuppresses cannot reach: once
+	// an Assignment is already exposed, setUnit's `!exposed` guard deliberately leaves its null
+	// snapshot entry in the cache forever (Defect 2), so a null pinned entry can still reach
+	// triggerApplicableHoldoutExposures on a LATER evaluation of the SAME already-exposed
+	// assignment - specifically via the variable-key path, which re-triggers every candidate's
+	// holdouts unconditionally on each call, independent of that candidate's own exposed state.
+	// Correct code passes the pinned null straight to triggerHoldoutExposure(Assignment), which
+	// no-ops on null every time, so the holdout is never fired for this unit's life once the
+	// snapshot went stale exposed. The mutant instead re-resolves live once the unit is present
+	// and fires a fresh, contradictory "held out" exposure next to the "participated" one already
+	// published.
+	@Test
+	void triggerApplicableHoldoutExposuresNeverLiveResolvesAPinnedNullEntryForAnAlreadyExposedAssignment() {
+		final String coveredUnitType = "user_id";
+		final Experiment experiment = coveredBy(
+				newExperiment(1, "exp_a_mutant_pinned_null", coveredUnitType, 1), 11);
+		experiment.variants[1].config = "{\"my_var\":\"value_from_variant\"}";
+		final Experiment holdout = newHoldout(11, "holdout_a_mutant_pinned_null", coveredUnitType,
+				HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO, "full"); // holds UID out once resolvable
+
+		final Context context = createReadyContext(ContextConfig.create(), // no unit installed yet
+				contextDataOf(new Experiment[]{holdout}, experiment));
+
+		// fullOn resolves and exposes without ever needing coveredUnitType; the holdout's null
+		// snapshot entry never suppresses and, being null both here (unit absent) and under the
+		// mutant's live resolution (uid still null in units_), never fires either.
+		assertEquals(1, context.getTreatment("exp_a_mutant_pinned_null"));
+		assertEquals(1, context.getPendingCount()); // own exposure only
+
+		context.setUnit(coveredUnitType, UID); // exposed guard: cache entry survives with pinned null
+
+		// re-evaluating the same already-exposed assignment via the variable-key path, which
+		// unconditionally re-triggers every candidate's applicable holdouts on every call.
+		assertEquals("value_from_variant", context.getVariableValue("my_var", "default"));
+
+		// correct code: pinned[0] is still null, triggerHoldoutExposure(null) no-ops - no second
+		// exposure, ever, for this permanently-degraded assignment.
+		assertEquals(1, context.getPendingCount());
+	}
+
 	// Multiple holdouts applicable to one covered experiment, each declaring a different (and
 	// irrelevant, per Defect 1) unitType, guard against wrong-index matching or stopping the
 	// eviction scan at the wrong entry. Every applicable holdout is resolved against the SAME
@@ -1289,6 +1330,185 @@ class ContextHoldoutTest extends TestUtils {
 		context.setUnit(UNIT_TYPE, UID); // nothing cached yet - must not throw
 
 		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_no_prior_assignment"));
+	}
+
+	// A redundant setUnit call for a unit type that is already installed with the same uid must
+	// be a pure no-op: no exception, no re-evaluation, no duplicate exposure.
+	@Test
+	void setUnitCalledTwiceWithSameUidIsANoOpAndDoesNotThrow() {
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_set_unit_twice"), 11);
+		final Experiment holdout = newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO); // not held out
+
+		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experiment));
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_set_unit_twice"));
+		assertEquals(2, context.getPendingCount()); // own exposure + holdout's
+
+		context.setUnit(UNIT_TYPE, UID); // same unit type, same uid: must not throw
+
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_set_unit_twice"));
+		assertEquals(2, context.getPendingCount()); // unchanged: no duplicate exposure, cache untouched
+	}
+
+	// Kills the "evict on holdoutAssignments != null alone" mutant (dropping the check that some
+	// entry is actually null): a cached, unexposed assignment whose holdout snapshot is fully
+	// resolved (no null entries, because the unit was already present when it was computed) must
+	// survive a redundant setUnit call for that same unit type. The distinguishing signal is an
+	// attribute change made between the peek and the redundant setUnit call: experimentMatches
+	// never considers attributes, so a retained cache entry keeps the audience verdict (and thus
+	// the variant) it was computed with, while a wrongly-evicted entry would recompute against
+	// the now-matching attribute and land on a different variant entirely.
+	//
+	// Fails against `(holdoutAssignments != null) && unitType.equals(assignment.unitType)` alone:
+	// the array is non-null (one resolved holdout entry) and the unit type matches, so the entry
+	// is evicted even though it holds no null entry, and the redundant setUnit call silently
+	// re-decides the experiment.
+	@Test
+	void setUnitRedundantCallDoesNotEvictFullyResolvedUnexposedHoldoutSnapshot() {
+		final String audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_redundant_set_unit"), 11);
+		experiment.audienceStrict = true;
+		experiment.audience = audience;
+		final Experiment holdout = newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO); // not held out
+
+		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experiment));
+		context.setAttribute("age", 5); // mismatches: forces control regardless of holdout
+
+		// resolved with the unit already present: holdoutAssignments holds no null entry.
+		assertEquals(0, context.peekTreatment("exp_redundant_set_unit")); // audience mismatch -> control
+		assertEquals(0, context.getPendingCount()); // peek never exposes
+
+		context.setAttribute("age", 25); // now matches; experimentMatches ignores attributes though
+		context.setUnit(UNIT_TYPE, UID); // redundant: same unit type, same uid already installed
+
+		// still the pinned, audience-mismatched decision: a wrongly-evicted entry would recompute
+		// under the now-matching attribute and land on NORMAL_VARIANT instead.
+		assertEquals(0, context.getTreatment("exp_redundant_set_unit"));
+		assertEquals(2, context.getPendingCount()); // own exposure (audience-mismatch) + holdout's
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_redundant_set_unit", UNIT_TYPE, 0, clock.millis(), false, true, false, false,
+						false, true),
+				holdoutExposure(11, "holdout_a", 1));
+		expected.attributes = new Attribute[]{new Attribute("age", 5, clock.millis()),
+				new Attribute("age", 25, clock.millis())};
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Task 3: peekVariableValue populates the same cache as getAssignment/getTreatment, and
+	// getVariableValue has its own per-candidate holdout triggering. A late-resolved SUPPRESSING
+	// holdout must flip the recomputed decision (fullOn -> held out), which is only observable if
+	// the cache entry was actually recomputed rather than live-patched: a live patch-up would
+	// leave the fullOn variant (and its variable value) untouched and merely append a
+	// contradictory holdout exposure next to it.
+	@Test
+	void peekVariableValueThenSetUnitThenGetVariableValueRecomputesUnderLateSuppressingHoldout() {
+		final String coveredUnitType = "user_id";
+		final Experiment experiment = coveredBy(
+				newExperiment(1, "exp_var_late_unit_suppress", coveredUnitType, 1), 11);
+		experiment.variants[1].config = "{\"my_var\":\"value_from_variant\"}";
+		final Experiment holdout = newHoldout(11, "holdout_var_late", coveredUnitType, HOLDOUT_A_SEED_HI,
+				HOLDOUT_A_SEED_LO, "full"); // holds UID out once resolvable
+
+		final Context context = createReadyContext(ContextConfig.create(), // no unit installed yet
+				contextDataOf(new Experiment[]{holdout}, experiment));
+
+		// fullOn resolves without needing coveredUnitType; the holdout's null snapshot entry
+		// never suppresses, so the fullOn variant's variable value wins.
+		assertEquals("value_from_variant", context.peekVariableValue("my_var", "default"));
+		assertEquals(0, context.getPendingCount());
+
+		context.setUnit(coveredUnitType, UID);
+
+		// recomputed from a coherent decision: the now-resolvable holdout holds UID out, so the
+		// experiment is suppressed and control values (no "my_var" key) are returned.
+		assertEquals("default", context.getVariableValue("my_var", "default"));
+		assertEquals(1, context.getPendingCount()); // holdout's own exposure only
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
+				holdoutExposure(coveredUnitType, 11, "holdout_var_late", 0));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Task 4a: overrides never take a holdoutAssignments snapshot (the override branch in
+	// getAssignment never calls getHoldoutAssignment), so invalidateAssignmentsPinnedWithMissingUnit
+	// leaves an overridden assignment untouched regardless of a late setUnit - by design, it
+	// relies on triggerApplicableHoldoutExposures' live-resolution fallback (pinned == null) at
+	// the moment of exposure instead. Pinning this: the unit is absent when the override is
+	// peeked, arrives via setUnit before the assignment is ever exposed, and the holdout must
+	// still be correctly resolved (live, against the now-present unit) when exposure finally
+	// fires.
+	@Test
+	void setUnitDoesNotEvictOverrideAssignmentAndHoldoutResolvesLiveAtExposureTime() {
+		final String coveredUnitType = "user_id";
+		final Experiment experiment = coveredBy(
+				newExperiment(1, "exp_override_late_unit", coveredUnitType, 0), 11);
+		final Experiment holdout = newHoldout(11, "holdout_override_late", coveredUnitType, HOLDOUT_B_SEED_HI,
+				HOLDOUT_B_SEED_LO, "full"); // not held out once resolvable
+
+		final ContextConfig config = ContextConfig.create().setOverride("exp_override_late_unit", 3);
+		final Context context = createReadyContext(config, // no unit installed yet
+				contextDataOf(new Experiment[]{holdout}, experiment));
+
+		assertEquals(3, context.peekTreatment("exp_override_late_unit")); // override wins; not exposed
+
+		context.setUnit(coveredUnitType, UID); // no snapshot to evict; override assignment untouched
+
+		assertEquals(3, context.getTreatment("exp_override_late_unit")); // override still wins
+		assertEquals(2, context.getPendingCount()); // override's own exposure + holdout's (live-resolved)
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
+				new Exposure(1, "exp_override_late_unit", coveredUnitType, 3, clock.millis(), false, true, true,
+						false, false, false),
+				holdoutExposure(coveredUnitType, 11, "holdout_override_late", 1));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Task 4b: a custom assignment takes the ordinary snapshot path (getAssignment's non-override
+	// branch), so it is subject to the same null-snapshot eviction as any other covered
+	// experiment. The custom assignment can only apply once the experiment's own unit is present
+	// (it is read inside the traffic-eligibility branch, which is itself gated on the unit), so
+	// initially it cannot apply at all; after the late setUnit forces a coherent recompute, the
+	// custom assignment applies normally.
+	@Test
+	void setUnitEvictsNullSnapshotForCustomAssignmentAndCustomAppliesAfterRecompute() {
+		final String coveredUnitType = "user_id";
+		final Experiment experiment = coveredBy(
+				newExperiment(1, "exp_custom_late_unit", coveredUnitType, 0), 11);
+		final Experiment holdout = newHoldout(11, "holdout_custom_late", coveredUnitType, HOLDOUT_B_SEED_HI,
+				HOLDOUT_B_SEED_LO, "full"); // not held out once resolvable
+
+		final ContextConfig config = ContextConfig.create().setCustomAssignment("exp_custom_late_unit", 3);
+		final Context context = createReadyContext(config, // no unit installed yet
+				contextDataOf(new Experiment[]{holdout}, experiment));
+
+		// the custom assignment is read only inside the uid-present branch, so with the unit
+		// absent it cannot apply at all: control values.
+		assertEquals(0, context.peekTreatment("exp_custom_late_unit"));
+
+		context.setUnit(coveredUnitType, UID); // evicts the null-snapshot cache entry
+
+		assertEquals(3, context.getTreatment("exp_custom_late_unit")); // custom applies now
+		assertEquals(2, context.getPendingCount()); // own exposure + holdout's
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
+				new Exposure(1, "exp_custom_late_unit", coveredUnitType, 3, clock.millis(), true, true, false, false,
+						true, false),
+				holdoutExposure(coveredUnitType, 11, "holdout_custom_late", 1));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	// --- Cross-SDK parity vectors -----------------------------------------------------------
