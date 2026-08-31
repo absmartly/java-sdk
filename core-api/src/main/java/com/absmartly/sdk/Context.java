@@ -613,24 +613,11 @@ public class Context implements Closeable {
 			if (closing_.compareAndSet(false, true)) {
 				clearRefreshTimer();
 
-				final int pendingCount;
-				final CompletableFuture<?>[] inFlightPublishes;
-				try {
-					eventLock_.lock();
-					pendingCount = pendingCount_.get();
-					inFlightPublishes = publishFutures_.toArray(new CompletableFuture<?>[publishFutures_.size()]);
-				} finally {
-					eventLock_.unlock();
-				}
-
-				if (pendingCount > 0) {
+				if (pendingCount_.get() > 0) {
 					final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
 					closingFuture_.set(newClosingFuture);
 
-					final CompletableFuture<?>[] closingPublishes = Arrays.copyOf(inFlightPublishes,
-							inFlightPublishes.length + 1);
-					closingPublishes[inFlightPublishes.length] = flush();
-					CompletableFuture.allOf(closingPublishes).thenAccept(new Consumer<Void>() {
+					flush().thenAccept(new Consumer<Void>() {
 						@Override
 						public void accept(Void x) {
 							closed_.set(true);
@@ -656,35 +643,6 @@ public class Context implements Closeable {
 
 					return newClosingFuture;
 				} else {
-					// The queue is empty here, but a publish started by a concurrent flush()
-					// may still be in flight and could restore events on failure.
-					if (inFlightPublishes.length > 0) {
-						final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
-						closingFuture_.set(newClosingFuture);
-
-						CompletableFuture.allOf(inFlightPublishes).handle(new BiFunction<Void, Throwable, Void>() {
-							@Override
-							public Void apply(Void ignoredResult, Throwable exception) {
-								// Same rule as the flush-driven failure path: only close once
-								// no events remain to retry.
-								if ((exception == null) || (pendingCount_.get() == 0)) {
-									closed_.set(true);
-								}
-								closing_.set(false);
-
-								if (exception != null) {
-									newClosingFuture.completeExceptionally(exception);
-								} else {
-									newClosingFuture.complete(null);
-									Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-								}
-								return null;
-							}
-						});
-
-						return newClosingFuture;
-					}
-
 					closed_.set(true);
 					closing_.set(false);
 
@@ -754,8 +712,6 @@ public class Context implements Closeable {
 						}
 
 						pendingCount_.set(0);
-						// ContextPublisher callbacks must not synchronously close this context.
-						publishFutures_.add(result);
 					}
 				} finally {
 					eventLock_.unlock();
@@ -814,12 +770,6 @@ public class Context implements Closeable {
 								// diagnostic logger failures must not affect publish accounting
 							}
 							result.completeExceptionally(throwable);
-							try {
-								eventLock_.lock();
-								publishFutures_.remove(result);
-							} finally {
-								eventLock_.unlock();
-							}
 							return null;
 						}
 					};
@@ -843,12 +793,6 @@ public class Context implements Closeable {
 								// diagnostic logger failures must not affect publish accounting
 							} finally {
 								result.complete(null);
-								try {
-									eventLock_.lock();
-									publishFutures_.remove(result);
-								} finally {
-									eventLock_.unlock();
-								}
 							}
 						}
 					});
@@ -1358,7 +1302,6 @@ public class Context implements Closeable {
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
-	private final Set<CompletableFuture<Void>> publishFutures_ = new HashSet<CompletableFuture<Void>>();
 
 	private final ReentrantLock timeoutLock_ = new ReentrantLock();
 	private volatile ScheduledFuture<?> timeout_ = null;
