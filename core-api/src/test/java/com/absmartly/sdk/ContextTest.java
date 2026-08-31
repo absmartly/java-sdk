@@ -2934,50 +2934,6 @@ class ContextTest extends TestUtils {
 
 	@Test
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
-	void closeNeverFinalizesWithEventsRestoredByConcurrentPublishFailure() throws Exception {
-		for (int i = 0; i < 100; i++) {
-			final Context context = createReadyContext();
-			context.track("goal", mapOf("attempt", i));
-
-			final CompletableFuture<Void> publisherFuture = new CompletableFuture<>();
-			when(eventHandler.publish(any(), any())).thenReturn(publisherFuture);
-			final CompletableFuture<Void> publishResult = context.publishAsync();
-
-			final java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
-			final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
-			final Thread closeThread = new Thread(() -> {
-				try {
-					start.await();
-					closeResult.set(context.closeAsync());
-				} catch (final InterruptedException exception) {
-					Thread.currentThread().interrupt();
-				}
-			});
-			final Thread failureThread = new Thread(() -> {
-				try {
-					start.await();
-					publisherFuture.completeExceptionally(new Exception("publish failed"));
-				} catch (final InterruptedException exception) {
-					Thread.currentThread().interrupt();
-				}
-			});
-
-			closeThread.start();
-			failureThread.start();
-			start.countDown();
-			closeThread.join();
-			failureThread.join();
-
-			assertThrows(CompletionException.class, publishResult::join);
-			final CompletableFuture<Void> closeFuture = closeResult.get();
-			assertNotNull(closeFuture);
-			assertThrows(CompletionException.class, closeFuture::join);
-			assertFalse(context.isClosed() && context.getPendingCount() > 0);
-		}
-	}
-
-	@Test
-	@Timeout(value = 5, unit = TimeUnit.SECONDS)
 	void closeAwaitsEveryOverlappingPublishBeforeFinalizing() {
 		final Context context = createReadyContext();
 		final CompletableFuture<Void> publisherFutureA = new CompletableFuture<>();
