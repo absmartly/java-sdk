@@ -299,8 +299,70 @@ public class Context implements Closeable {
 			}
 
 			units_.put(unitType, trimmed);
+
+			invalidateAssignmentsPinnedWithMissingUnit(unitType);
 		} finally {
 			writeLock.unlock();
+		}
+	}
+
+	// A cached Assignment's holdoutAssignments[i] is null exactly when unitType was absent at the
+	// time getAssignment() resolved holdout i (see the snapshot loop below getHoldoutAssignment).
+	// The trigger loop pins that snapshot and skips a null entry rather than re-resolving it live
+	// (triggerHoldoutExposure(Assignment)), so once uid becomes available the pinned null would
+	// never fire - permanently losing an exposure that is now perfectly evaluable. Re-resolving
+	// the null in place instead of evicting is wrong: the suppression decision on the cached
+	// Assignment was computed while the unit was missing (holdout treated as not-suppressing), so
+	// firing a freshly-resolved holdout exposure next to it would publish "held out" alongside
+	// "participated" for the same unit - an incoherent pair that reintroduces the exact
+	// decision/exposure mismatch the pinned snapshot exists to prevent. Evicting the cache entry
+	// instead forces getAssignment() to recompute suppression and every exposure from one
+	// coherent decision made with the now-complete unit set.
+	//
+	// The null entry was produced by getHoldoutAssignment(holdout, assignment.unitType) - the
+	// COVERED experiment's unit type, i.e. the value resolved into assignment.unitType and passed
+	// as `unitType` to every getHoldoutAssignment call in that snapshot loop. A referenced
+	// holdout's own declared unitType (holdout.unitType) is never read for that lookup, and
+	// nothing requires it to match the covered experiment's, so comparing against it instead is
+	// the wrong predicate: it can miss the eviction this unit installation actually unblocks, or
+	// evict entries this installation has nothing to do with. Comparing against assignment.unitType
+	// (equals invoked on the non-null setUnit argument since Experiment.unitType is nullable) is
+	// the value resolution actually used.
+	//
+	// Only entries whose null snapshot belongs to an assignment requiring exactly this unitType
+	// are evicted - unrelated cached assignments (whose holdouts already had their unit, or that
+	// hold no holdouts at all) are left untouched, so an unrelated setUnit() call never discards
+	// unaffected cache state.
+	//
+	// An assignment already exposed is left alone even if it holds a null entry: `exposed` is not
+	// re-created by eviction, so removing an exposed Assignment would let the next getTreatment()
+	// build a fresh one with exposed==false, re-publishing (or, if the newly-resolved holdout now
+	// suppresses, contradicting) an exposure already recorded for that unit. publish() reads
+	// event.units from the live units_ map at publish time, so an exposure queued before this
+	// setUnit call may already carry the late unit regardless - the record is degraded either
+	// way, and this guard exists only to avoid compounding that with a second, contradictory one,
+	// not to pretend the degraded record is correct.
+	//
+	// The recomputed Assignment may legitimately choose a different variant than an earlier
+	// peekTreatment() returned for the same experiment: that peek ran with an incomplete unit set,
+	// and peekTreatment() never publishes an exposure, so there is nothing stale to reconcile.
+	private void invalidateAssignmentsPinnedWithMissingUnit(final String unitType) {
+		final Iterator<Assignment> it = assignmentCache_.values().iterator();
+		while (it.hasNext()) {
+			final Assignment assignment = it.next();
+			if (assignment.exposed.get()) {
+				continue;
+			}
+
+			final Assignment[] holdoutAssignments = assignment.holdoutAssignments;
+			if ((holdoutAssignments != null) && unitType.equals(assignment.unitType)) {
+				for (final Assignment holdoutAssignment : holdoutAssignments) {
+					if (holdoutAssignment == null) {
+						it.remove();
+						break;
+					}
+				}
+			}
 		}
 	}
 
