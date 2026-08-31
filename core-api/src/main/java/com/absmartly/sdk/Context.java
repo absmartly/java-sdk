@@ -776,7 +776,40 @@ public class Context implements Closeable {
 					final GoalAchievement[] finalAchievements = achievements;
 					final int finalEventCount = eventCount;
 
-					final CompletableFuture<Void> publishResult = eventHandler_.publish(this, event);
+					final Function<Throwable, Void> onPublishFailure = new Function<Throwable, Void>() {
+						@Override
+						public Void apply(Throwable throwable) {
+							try {
+								eventLock_.lock();
+								if (finalExposures != null) {
+									for (int i = finalExposures.length - 1; i >= 0; i--) {
+										exposures_.add(0, finalExposures[i]);
+									}
+								}
+								if (finalAchievements != null) {
+									for (int i = finalAchievements.length - 1; i >= 0; i--) {
+										achievements_.add(0, finalAchievements[i]);
+									}
+								}
+								pendingCount_.addAndGet(finalEventCount);
+								publishFutures_.remove(result);
+							} finally {
+								eventLock_.unlock();
+							}
+
+							Context.this.logError(throwable);
+							result.completeExceptionally(throwable);
+							return null;
+						}
+					};
+
+					final CompletableFuture<Void> publishResult;
+					try {
+						publishResult = eventHandler_.publish(this, event);
+					} catch (final Throwable throwable) {
+						onPublishFailure.apply(throwable);
+						return result;
+					}
 
 					// The Publish log event runs in its own stage so a logger exception cannot be
 					// mistaken for a publisher failure and trigger event restoration.
@@ -799,33 +832,7 @@ public class Context implements Closeable {
 						}
 					});
 
-					publishResult.exceptionally(new Function<Throwable, Void>() {
-						@Override
-						public Void apply(Throwable throwable) {
-							try {
-								eventLock_.lock();
-								if (finalExposures != null) {
-									for (int i = finalExposures.length - 1; i >= 0; i--) {
-										exposures_.add(0, finalExposures[i]);
-									}
-								}
-								if (finalAchievements != null) {
-									for (int i = finalAchievements.length - 1; i >= 0; i--) {
-										achievements_.add(0, finalAchievements[i]);
-									}
-								}
-								pendingCount_.addAndGet(finalEventCount);
-								publishFutures_.remove(result);
-							} finally {
-								eventLock_.unlock();
-							}
-
-							Context.this.logError(throwable);
-
-							result.completeExceptionally(throwable);
-							return null;
-						}
-					});
+					publishResult.exceptionally(onPublishFailure);
 
 					return result;
 				}

@@ -3006,4 +3006,25 @@ class ContextTest extends TestUtils {
 		assertDoesNotThrow(context::publishAsync).join();
 		assertEquals(0, context.getPendingCount());
 	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void synchronousPublisherFailureRestoresEventsAndDoesNotHangClose() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final RuntimeException failure = new RuntimeException("publisher threw");
+		when(eventHandler.publish(any(), any())).thenThrow(failure);
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		final CompletionException actual = assertThrows(CompletionException.class, publishResult::join);
+		assertSame(failure, actual.getCause());
+		assertTrue(context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> closeResult = assertDoesNotThrow(context::closeAsync);
+		assertTrue(closeResult.isDone());
+		assertThrows(CompletionException.class, closeResult::join);
+		assertFalse(context.isClosed());
+		assertTrue(context.getPendingCount() > 0);
+	}
 }
