@@ -6,10 +6,12 @@ import static org.mockito.Mockito.*;
 import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java8.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
@@ -372,6 +374,7 @@ class ABsmartlyTest extends TestUtils {
 	}
 
 	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
 	void closeLeavesInjectedSchedulerRunning() throws IOException {
 		final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1);
 		try {
@@ -389,6 +392,7 @@ class ABsmartlyTest extends TestUtils {
 	}
 
 	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
 	void closeShutsDownSelfCreatedScheduler() throws IOException, InterruptedException {
 		try (final MockedConstruction<ScheduledThreadPoolExecutor> schedulerCtor = mockConstruction(
 				ScheduledThreadPoolExecutor.class, (mock, context) -> {
