@@ -102,6 +102,10 @@ class ContextHoldoutTest extends TestUtils {
 				eventHandler, eventLogger, variableParser, audienceMatcher);
 	}
 
+	Context createReadyContextWithoutUnits(ContextData data) {
+		return createReadyContext(ContextConfig.create(), data);
+	}
+
 	static Experiment newExperiment(int id, String name) {
 		return newExperiment(id, name, UNIT_TYPE, 0);
 	}
@@ -1086,7 +1090,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_user_id", coveredUnitType, HOLDOUT_B_SEED_HI,
 				HOLDOUT_B_SEED_LO, "full"); // not held out for UID once resolvable
 
-		final Context context = createReadyContext(ContextConfig.create(), // no unit installed yet
+		final Context context = createReadyContextWithoutUnits( // no unit installed yet
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
 		// peekTreatment resolves the full-on variant without ever needing coveredUnitType; the
@@ -1128,7 +1132,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_user_id", coveredUnitType, HOLDOUT_B_SEED_HI,
 				HOLDOUT_B_SEED_LO, "full");
 
-		final Context context = createReadyContext(ContextConfig.create(),
+		final Context context = createReadyContextWithoutUnits(
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
 		assertEquals(2, context.getTreatment("exp_exposed_before_unit"));
@@ -1204,7 +1208,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_declares_b", "B", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO,
 				"full");
 
-		final Context context = createReadyContext(ContextConfig.create(), // neither "A" nor "B" installed
+		final Context context = createReadyContextWithoutUnits( // neither "A" nor "B" installed
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
 		assertEquals(2, context.peekTreatment("exp_mismatched_unit_type")); // null snapshot: "A" is absent
@@ -1229,7 +1233,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_user_id_suppress", coveredUnitType, HOLDOUT_A_SEED_HI,
 				HOLDOUT_A_SEED_LO, "full"); // holds UID out once resolvable
 
-		final Context context = createReadyContext(ContextConfig.create(),
+		final Context context = createReadyContextWithoutUnits(
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
 		assertEquals(2, context.peekTreatment("exp_null_snapshot_suppresses")); // null snapshot never suppresses
@@ -1268,7 +1272,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_a_mutant_pinned_null", coveredUnitType,
 				HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO, "full"); // holds UID out once resolvable
 
-		final Context context = createReadyContext(ContextConfig.create(), // no unit installed yet
+		final Context context = createReadyContextWithoutUnits( // no unit installed yet
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
 		// fullOn resolves and exposes without ever needing coveredUnitType; the holdout's null
@@ -1305,7 +1309,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdoutC = newHoldout(13, "holdout_13", coveredUnitType, HOLDOUT_B_SEED_HI,
 				HOLDOUT_B_SEED_LO, "full");
 
-		final Context context = createReadyContext(ContextConfig.create(),
+		final Context context = createReadyContextWithoutUnits(
 				contextDataOf(new Experiment[]{holdoutA, holdoutB, holdoutC}, experiment));
 
 		assertEquals(2, context.peekTreatment("exp_multi_holdout_unit_types"));
@@ -1324,7 +1328,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_a", UNIT_TYPE, HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO,
 				"full");
 
-		final Context context = createReadyContext(ContextConfig.create(),
+		final Context context = createReadyContextWithoutUnits(
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
 		context.setUnit(UNIT_TYPE, UID); // nothing cached yet - must not throw
@@ -1414,7 +1418,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_var_late", coveredUnitType, HOLDOUT_A_SEED_HI,
 				HOLDOUT_A_SEED_LO, "full"); // holds UID out once resolvable
 
-		final Context context = createReadyContext(ContextConfig.create(), // no unit installed yet
+		final Context context = createReadyContextWithoutUnits( // no unit installed yet
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
 		// fullOn resolves without needing coveredUnitType; the holdout's null snapshot entry
