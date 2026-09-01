@@ -322,7 +322,8 @@ class ABSmartlyTest extends TestUtils {
 			final ArgumentCaptor<AudienceMatcher> audienceMatcher = ArgumentCaptor.forClass(AudienceMatcher.class);
 
 			contextStatic.verify(
-					() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(), any(),
+					() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
+							any(),
 							any()),
 					Mockito.times(1));
 			contextStatic.verify(
