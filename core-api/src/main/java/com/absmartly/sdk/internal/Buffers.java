@@ -1,7 +1,5 @@
 package com.absmartly.sdk.internal;
 
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-
 public abstract class Buffers {
 	private Buffers() {}
 
@@ -30,9 +28,29 @@ public abstract class Buffers {
 	}
 
 	static public int encodeUTF8(byte[] buf, int offset, CharSequence value) {
-		// Platform encoder: a surrogate pair must produce one four-byte UTF-8 sequence.
-		final byte[] bytes = value.toString().getBytes(StandardCharsets.UTF_8);
-		System.arraycopy(bytes, 0, buf, offset, bytes.length);
-		return bytes.length;
+		final int start = offset;
+		for (int i = 0; i < value.length(); ++i) {
+			final char c = value.charAt(i);
+			if (c < 0x80) {
+				buf[offset++] = (byte) c;
+			} else if (c < 0x800) {
+				buf[offset++] = (byte) (0xc0 | (c >> 6));
+				buf[offset++] = (byte) (0x80 | (c & 0x3f));
+			} else if (Character.isHighSurrogate(c) && i + 1 < value.length()
+					&& Character.isLowSurrogate(value.charAt(i + 1))) {
+				// A surrogate pair is one code point and requires one four-byte sequence.
+				final int codePoint = Character.toCodePoint(c, value.charAt(++i));
+				buf[offset++] = (byte) (0xf0 | (codePoint >> 18));
+				buf[offset++] = (byte) (0x80 | ((codePoint >> 12) & 0x3f));
+				buf[offset++] = (byte) (0x80 | ((codePoint >> 6) & 0x3f));
+				buf[offset++] = (byte) (0x80 | (codePoint & 0x3f));
+			} else {
+				final char encoded = Character.isHighSurrogate(c) || Character.isLowSurrogate(c) ? '\ufffd' : c;
+				buf[offset++] = (byte) (0xe0 | (encoded >> 12));
+				buf[offset++] = (byte) (0x80 | ((encoded >> 6) & 0x3f));
+				buf[offset++] = (byte) (0x80 | (encoded & 0x3f));
+			}
+		}
+		return offset - start;
 	}
 }

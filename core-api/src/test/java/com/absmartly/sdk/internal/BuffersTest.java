@@ -3,6 +3,7 @@ package com.absmartly.sdk.internal;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
@@ -100,5 +101,36 @@ class BuffersTest extends TestUtils {
 			assertArrayEquals(expected, Arrays.copyOfRange(actualOffset, 3, 3 + encodeLengthOffset));
 			assertEquals(expected.length, encodeLengthOffset);
 		}
+	}
+
+	@Test
+	void encodeUTF8ByteWidths() {
+		assertEncoding("A", new byte[]{0x41});
+		assertEncoding("é", new byte[]{(byte) 0xc3, (byte) 0xa9});
+		assertEncoding("世", new byte[]{(byte) 0xe4, (byte) 0xb8, (byte) 0x96});
+	}
+
+	@Test
+	void encodeUTF8SurrogatePair() {
+		assertEncoding("😀", new byte[]{(byte) 0xf0, (byte) 0x9f, (byte) 0x98, (byte) 0x80});
+	}
+
+	@Test
+	void encodeUTF8MixedContentMatchesPlatformEncoder() {
+		final String value = "Aé世😀";
+		assertEncoding(value, value.getBytes(StandardCharsets.UTF_8));
+	}
+
+	@Test
+	void encodeUTF8UnpairedSurrogatesAsReplacementCharacter() {
+		final byte[] replacement = new byte[]{(byte) 0xef, (byte) 0xbf, (byte) 0xbd};
+		assertEncoding("\ud83d", replacement);
+		assertEncoding("\ude00", replacement);
+	}
+
+	private void assertEncoding(String value, byte[] expected) {
+		final byte[] actual = new byte[expected.length];
+		assertEquals(expected.length, Buffers.encodeUTF8(actual, 0, value));
+		assertArrayEquals(expected, actual);
 	}
 }
