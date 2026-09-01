@@ -133,7 +133,7 @@ class ABSmartlyTest extends TestUtils {
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
 				contextStatic
-						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class),
+						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class),
 								any(),
 								any(), any()))
 						.thenReturn(contextMock);
@@ -150,8 +150,8 @@ class ABSmartlyTest extends TestUtils {
 						.forClass(CompletableFuture.class);
 				final ArgumentCaptor<ContextDataProvider> dataProviderCaptor = ArgumentCaptor
 						.forClass(ContextDataProvider.class);
-				final ArgumentCaptor<ContextPublisher> eventHandlerCaptor = ArgumentCaptor
-						.forClass(ContextPublisher.class);
+				final ArgumentCaptor<ContextEventHandler> eventHandlerCaptor = ArgumentCaptor
+						.forClass(ContextEventHandler.class);
 				final ArgumentCaptor<ContextEventLogger> eventLoggerCaptor = ArgumentCaptor
 						.forClass(ContextEventLogger.class);
 				final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor
@@ -160,7 +160,7 @@ class ABSmartlyTest extends TestUtils {
 						.forClass(AudienceMatcher.class);
 
 				contextStatic.verify(
-						() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+						() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
 								any(), any()),
 						Mockito.times(1));
 				contextStatic.verify(
@@ -175,7 +175,7 @@ class ABSmartlyTest extends TestUtils {
 				assertTrue(schedulerCaptor.getValue() instanceof ScheduledThreadPoolExecutor);
 				assertSame(dataFuture, dataFutureCaptor.getValue());
 				assertTrue(dataProviderCaptor.getValue() instanceof DefaultContextDataProvider);
-				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextPublisher);
+				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextEventHandler);
 				assertNull(eventLoggerCaptor.getValue());
 				assertTrue(variableParserCaptor.getValue() instanceof DefaultVariableParser);
 				assertNotNull(audienceMatcherCaptor.getValue());
@@ -197,7 +197,7 @@ class ABSmartlyTest extends TestUtils {
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
 				contextStatic
-						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class),
+						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class),
 								any(),
 								any(), any()))
 						.thenReturn(contextMock);
@@ -216,8 +216,8 @@ class ABSmartlyTest extends TestUtils {
 						.forClass(CompletableFuture.class);
 				final ArgumentCaptor<ContextDataProvider> dataProviderCaptor = ArgumentCaptor
 						.forClass(ContextDataProvider.class);
-				final ArgumentCaptor<ContextPublisher> eventHandlerCaptor = ArgumentCaptor
-						.forClass(ContextPublisher.class);
+				final ArgumentCaptor<ContextEventHandler> eventHandlerCaptor = ArgumentCaptor
+						.forClass(ContextEventHandler.class);
 				final ArgumentCaptor<ContextEventLogger> eventLoggerCaptor = ArgumentCaptor
 						.forClass(ContextEventLogger.class);
 				final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor
@@ -226,7 +226,7 @@ class ABSmartlyTest extends TestUtils {
 						.forClass(AudienceMatcher.class);
 
 				contextStatic.verify(
-						() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+						() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
 								any(), any()),
 						Mockito.times(1));
 				contextStatic.verify(
@@ -241,7 +241,7 @@ class ABSmartlyTest extends TestUtils {
 				assertTrue(schedulerCaptor.getValue() instanceof ScheduledThreadPoolExecutor);
 				assertDoesNotThrow(() -> assertSame(data, dataFutureCaptor.getValue().get()));
 				assertTrue(dataProviderCaptor.getValue() instanceof DefaultContextDataProvider);
-				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextPublisher);
+				assertTrue(eventHandlerCaptor.getValue() instanceof DefaultContextEventHandler);
 				assertNull(eventLoggerCaptor.getValue());
 				assertTrue(variableParserCaptor.getValue() instanceof DefaultVariableParser);
 				assertNotNull(audienceMatcherCaptor.getValue());
@@ -298,7 +298,7 @@ class ABSmartlyTest extends TestUtils {
 						})) {
 			final Context contextMock = mock(Context.class);
 			contextStatic
-					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
 							any(), any()))
 					.thenReturn(contextMock);
 
@@ -314,15 +314,15 @@ class ABSmartlyTest extends TestUtils {
 					.forClass(CompletableFuture.class);
 			final ArgumentCaptor<ContextDataProvider> dataProviderCaptor = ArgumentCaptor
 					.forClass(ContextDataProvider.class);
-			final ArgumentCaptor<ContextPublisher> eventHandlerCaptor = ArgumentCaptor
-					.forClass(ContextPublisher.class);
+			final ArgumentCaptor<ContextEventHandler> eventHandlerCaptor = ArgumentCaptor
+					.forClass(ContextEventHandler.class);
 			final ArgumentCaptor<ContextEventLogger> eventLoggerCaptor = ArgumentCaptor
 					.forClass(ContextEventLogger.class);
 			final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor.forClass(VariableParser.class);
 			final ArgumentCaptor<AudienceMatcher> audienceMatcher = ArgumentCaptor.forClass(AudienceMatcher.class);
 
 			contextStatic.verify(
-					() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(), any(),
+					() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(), any(),
 							any()),
 					Mockito.times(1));
 			contextStatic.verify(
@@ -356,7 +356,7 @@ class ABSmartlyTest extends TestUtils {
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 			final Context contextMock = mock(Context.class);
 			contextStatic
-					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextPublisher.class), any(),
+					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
 							any(), any()))
 					.thenReturn(contextMock);
 
