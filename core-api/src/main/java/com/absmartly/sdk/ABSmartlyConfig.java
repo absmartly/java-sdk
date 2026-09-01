@@ -20,30 +20,10 @@ public class ABSmartlyConfig {
 		return this;
 	}
 
-	public ContextPublisher getContextPublisher() {
+	public ContextEventHandler getContextEventHandler() {
 		return contextEventHandler_;
 	}
 
-	public ABSmartlyConfig setContextPublisher(@Nonnull final ContextPublisher contextPublisher) {
-		contextEventHandler_ = contextPublisher;
-		return this;
-	}
-
-	/**
-	 * @deprecated Use {@link #getContextPublisher()} instead.
-	 */
-	@Deprecated
-	public ContextEventHandler getContextEventHandler() {
-		if (contextEventHandler_ instanceof ContextEventHandler) {
-			return (ContextEventHandler) contextEventHandler_;
-		}
-		return null;
-	}
-
-	/**
-	 * @deprecated Use {@link #setContextPublisher(ContextPublisher)} instead.
-	 */
-	@Deprecated
 	public ABSmartlyConfig setContextEventHandler(@Nonnull final ContextEventHandler contextEventHandler) {
 		contextEventHandler_ = contextEventHandler;
 		return this;
@@ -95,7 +75,7 @@ public class ABSmartlyConfig {
 	}
 
 	private ContextDataProvider contextDataProvider_;
-	private ContextPublisher contextEventHandler_;
+	private ContextEventHandler contextEventHandler_;
 
 	private ContextEventLogger contextEventLogger_;
 	private VariableParser variableParser_;
