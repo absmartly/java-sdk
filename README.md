@@ -23,7 +23,7 @@ If you target Android 6.0 or earlier, a few extra steps are outlined below for i
 
 #### Gradle
 
-To install the ABsmartly SDK, place the following in your `build.gradle` and replace {VERSION} with the latest SDK version available in MavenCentral.
+To install the ABSmartly SDK, place the following in your `build.gradle` and replace {VERSION} with the latest SDK version available in MavenCentral.
 
 ```gradle
 dependencies {
@@ -33,7 +33,7 @@ dependencies {
 
 #### Maven
 
-To install the ABsmartly SDK, place the following in your `pom.xml` and replace {VERSION} with the latest SDK version available in MavenCentral.
+To install the ABSmartly SDK, place the following in your `pom.xml` and replace {VERSION} with the latest SDK version available in MavenCentral.
 
 ```xml
 <dependency>
@@ -68,7 +68,7 @@ This example assumes an Api Key, an Application, and an Environment have been cr
 ```java
 import com.absmartly.sdk.*;
 
-final ABsmartly sdk = ABsmartly.builder()
+final ABSmartly sdk = ABSmartly.builder()
     .endpoint("https://your-company.absmartly.io/v1")
     .apiKey(System.getenv("ABSMARTLY_APIKEY"))
     .application("website")
@@ -76,7 +76,7 @@ final ABsmartly sdk = ABsmartly.builder()
     .build();
 ```
 
-The builder pattern lets you configure the SDK with named parameters, removing the need to configure `ClientConfig` and `ABsmartlyConfig` manually.
+The builder pattern lets you configure the SDK with named parameters, removing the need to configure `ClientConfig` and `ABSmartlyConfig` manually.
 
 #### Alternative: Using Configuration Objects
 
@@ -91,10 +91,10 @@ final ClientConfig clientConfig = ClientConfig.create()
 
 final Client absmartlyClient = Client.create(clientConfig);
 
-final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create()
+final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
     .setClient(absmartlyClient);
 
-final ABsmartly sdk = ABsmartly.create(sdkConfig);
+final ABSmartly sdk = ABSmartly.create(sdkConfig);
 ```
 
 **SDK Options**
@@ -136,10 +136,10 @@ import org.conscrypt.Conscrypt;
 
     final Client absmartlyClient = Client.create(clientConfig, httpClient);
 
-    final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create()
+    final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
         .setClient(absmartlyClient);
 
-    final ABsmartly sdk = ABsmartly.create(sdkConfig);
+    final ABSmartly sdk = ABSmartly.create(sdkConfig);
     // ...
 ```
 
@@ -346,7 +346,7 @@ Usage:
 
 ```java
 // For all contexts, during SDK initialization
-final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create();
+final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create();
 sdkConfig.setContextEventLogger(new CustomEventLogger());
 
 // OR, alternatively, during a particular context initialization
@@ -394,7 +394,7 @@ public class Application {
     private String environment;
 
     @Bean
-    public ABsmartly absmartly() {
+    public ABSmartly absmartly() {
         final ClientConfig clientConfig = ClientConfig.create()
             .setEndpoint(endpoint)
             .setAPIKey(apiKey)
@@ -403,10 +403,10 @@ public class Application {
 
         final Client client = Client.create(clientConfig);
 
-        final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create()
+        final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
             .setClient(client);
 
-        return ABsmartly.create(sdkConfig);
+        return ABSmartly.create(sdkConfig);
     }
 
     public static void main(String[] args) {
@@ -432,7 +432,7 @@ import jakarta.servlet.http.HttpSession;
 public class ProductController {
 
     @Autowired
-    private ABsmartly absmartly;
+    private ABSmartly absmartly;
 
     @GetMapping("/product")
     public ModelAndView showProduct(HttpSession session) {
@@ -470,7 +470,7 @@ public class ABSmartlyProducer {
 
     @Produces
     @ApplicationScoped
-    public ABsmartly produceABSmartly() {
+    public ABSmartly produceABSmartly() {
         final ClientConfig clientConfig = ClientConfig.create()
             .setEndpoint(System.getenv("ABSMARTLY_ENDPOINT"))
             .setAPIKey(System.getenv("ABSMARTLY_API_KEY"))
@@ -479,10 +479,10 @@ public class ABSmartlyProducer {
 
         final Client client = Client.create(clientConfig);
 
-        final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create()
+        final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
             .setClient(client);
 
-        return ABsmartly.create(sdkConfig);
+        return ABSmartly.create(sdkConfig);
     }
 }
 
@@ -498,7 +498,7 @@ import jakarta.servlet.http.HttpServletRequest;
 public class ProductResource {
 
     @Inject
-    private ABsmartly absmartly;
+    private ABSmartly absmartly;
 
     @Inject
     private HttpServletRequest request;
@@ -533,7 +533,7 @@ import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static ABsmartly sdk;
+    private static ABSmartly sdk;
     private Context absmartlyContext;
 
     @Override
@@ -550,10 +550,10 @@ public class MainActivity extends AppCompatActivity {
 
             final Client client = Client.create(clientConfig);
 
-            final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create()
+            final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
                 .setClient(client);
 
-            sdk = ABsmartly.create(sdkConfig);
+            sdk = ABSmartly.create(sdkConfig);
         }
 
         // Create context for this user
@@ -630,10 +630,10 @@ final ClientConfig clientConfig = ClientConfig.create()
 
 final Client client = Client.create(clientConfig, httpClient);
 
-final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create()
+final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
     .setClient(client);
 
-final ABsmartly sdk = ABsmartly.create(sdkConfig);
+final ABSmartly sdk = ABSmartly.create(sdkConfig);
 
 final ContextConfig contextConfig = ContextConfig.create()
     .setUnit("session_id", "abc123");
@@ -654,7 +654,7 @@ import java.util.concurrent.*;
 public class CancellableContextExample {
 
     public static void main(String[] args) throws Exception {
-        final ABsmartly sdk = ABsmartly.builder()
+        final ABSmartly sdk = ABSmartly.builder()
             .endpoint("https://your-company.absmartly.io/v1")
             .apiKey("YOUR-API-KEY")
             .application("website")
@@ -703,7 +703,7 @@ import java8.util.concurrent.CompletableFuture;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static ABsmartly sdk; // Initialize SDK once (typically in Application class)
+    private static ABSmartly sdk; // Initialize SDK once (typically in Application class)
     private CompletableFuture<Context> contextFuture;
     private Context absmartlyContext;
 

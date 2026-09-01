@@ -12,10 +12,10 @@ public class Example {
 				.setApplication(System.getenv("ABSMARTLY_APP"))
 				.setEnvironment(System.getenv("ABSMARTLY_ENV"));
 
-		final ABsmartlyConfig sdkConfig = ABsmartlyConfig.create()
+		final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
 				.setClient(Client.create(clientConfig));
 
-		final ABsmartly sdk = ABsmartly.create(sdkConfig);
+		final ABSmartly sdk = ABSmartly.create(sdkConfig);
 
 		final ContextConfig contextConfig = ContextConfig.create()
 				.setUnit("session_id", "bf06d8cb5d8137290c4abb64155584fbdb64d8")
