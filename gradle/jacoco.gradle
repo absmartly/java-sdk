@@ -2,7 +2,7 @@ apply plugin: "jacoco"
 
 
 jacoco {
-	toolVersion = "0.8.6"
+	toolVersion = "0.8.12"
 }
 
 
@@ -10,7 +10,7 @@ project.tasks.withType(JacocoReport) {
 	group "Verification"
 
 	reports {
-		xml.enabled = true
-		html.enabled = true
+		xml.required = true
+		html.required = true
 	}
 }

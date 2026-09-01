@@ -3,6 +3,7 @@ package com.absmartly.sdk.internal;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
@@ -100,5 +101,62 @@ class BuffersTest extends TestUtils {
 			assertArrayEquals(expected, Arrays.copyOfRange(actualOffset, 3, 3 + encodeLengthOffset));
 			assertEquals(expected.length, encodeLengthOffset);
 		}
+	}
+
+	@Test
+	void encodeUTF8ByteWidths() {
+		assertEncoding("A", new byte[]{0x41});
+		assertEncoding("é", new byte[]{(byte) 0xc3, (byte) 0xa9});
+		assertEncoding("世", new byte[]{(byte) 0xe4, (byte) 0xb8, (byte) 0x96});
+	}
+
+	@Test
+	void encodeUTF8SurrogatePair() {
+		assertEncoding("😀", new byte[]{(byte) 0xf0, (byte) 0x9f, (byte) 0x98, (byte) 0x80});
+	}
+
+	@Test
+	void encodeUTF8MixedContentMatchesPlatformEncoder() {
+		final String value = "Aé世😀";
+		assertEncoding(value, value.getBytes(StandardCharsets.UTF_8));
+	}
+
+	@Test
+	void encodeUTF8UnpairedSurrogatesMatchLegacyEncoding() {
+		assertEncoding("\ud83d", new byte[]{(byte) 0xed, (byte) 0xa0, (byte) 0xbd});
+		assertEncoding("\ude00", new byte[]{(byte) 0xed, (byte) 0xb8, (byte) 0x80});
+	}
+
+	@Test
+	void encodeUTF8MatchesLegacyEncodingExceptForSurrogatePairs() {
+		final List<String> values = listOf("ASCII", "é", "世", "\ud83d", "\ude00", "Aé世\ud83dB\ude00");
+		for (final String value : values) {
+			assertEncoding(value, encodeUTF8ByCodeUnit(value));
+		}
+	}
+
+	private void assertEncoding(String value, byte[] expected) {
+		final byte[] actual = new byte[expected.length];
+		assertEquals(expected.length, Buffers.encodeUTF8(actual, 0, value));
+		assertArrayEquals(expected, actual);
+	}
+
+	private byte[] encodeUTF8ByCodeUnit(String value) {
+		final byte[] encoded = new byte[value.length() * 3];
+		int offset = 0;
+		for (int i = 0; i < value.length(); ++i) {
+			final char c = value.charAt(i);
+			if (c < 0x80) {
+				encoded[offset++] = (byte) c;
+			} else if (c < 0x800) {
+				encoded[offset++] = (byte) (0xc0 | (c >> 6));
+				encoded[offset++] = (byte) (0x80 | (c & 0x3f));
+			} else {
+				encoded[offset++] = (byte) (0xe0 | (c >> 12));
+				encoded[offset++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+				encoded[offset++] = (byte) (0x80 | (c & 0x3f));
+			}
+		}
+		return Arrays.copyOf(encoded, offset);
 	}
 }

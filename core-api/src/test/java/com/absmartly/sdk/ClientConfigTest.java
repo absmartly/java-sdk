@@ -1,7 +1,6 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import java.util.Properties;
@@ -102,5 +101,81 @@ class ClientConfigTest extends TestUtils {
 		assertSame(deserializer, config.getContextDataDeserializer());
 		assertSame(serializer, config.getContextEventSerializer());
 		assertSame(executor, config.getExecutor());
+	}
+
+	@Test
+	void testEmptyEndpointUrl() {
+		final ClientConfig config = ClientConfig.create()
+				.setEndpoint("")
+				.setAPIKey("api-key-test")
+				.setEnvironment("test")
+				.setApplication("website");
+
+		assertEquals("", config.getEndpoint());
+	}
+
+	@Test
+	void testNullEndpointUrl() {
+		final ClientConfig config = ClientConfig.create()
+				.setAPIKey("api-key-test")
+				.setEnvironment("test")
+				.setApplication("website");
+
+		assertNull(config.getEndpoint());
+	}
+
+	@Test
+	void testEmptyApiKey() {
+		final ClientConfig config = ClientConfig.create()
+				.setEndpoint("https://test.endpoint.com")
+				.setAPIKey("")
+				.setEnvironment("test")
+				.setApplication("website");
+
+		assertEquals("", config.getAPIKey());
+	}
+
+	@Test
+	void testNullApiKey() {
+		final ClientConfig config = ClientConfig.create()
+				.setEndpoint("https://test.endpoint.com")
+				.setEnvironment("test")
+				.setApplication("website");
+
+		assertNull(config.getAPIKey());
+	}
+
+	@Test
+	void testMissingPropertiesPrefix() {
+		final Properties props = new Properties();
+		props.putAll(TestUtils.mapOf(
+				"endpoint", "https://test.endpoint.com",
+				"environment", "test",
+				"apikey", "api-key-test",
+				"application", "website"));
+
+		final ClientConfig config = ClientConfig.createFromProperties(props, "absmartly.");
+
+		assertNull(config.getEndpoint());
+		assertNull(config.getAPIKey());
+		assertNull(config.getEnvironment());
+		assertNull(config.getApplication());
+	}
+
+	@Test
+	void testCreateFromPropertiesWithEmptyPrefix() {
+		final Properties props = new Properties();
+		props.putAll(TestUtils.mapOf(
+				"endpoint", "https://test.endpoint.com",
+				"environment", "test",
+				"apikey", "api-key-test",
+				"application", "website"));
+
+		final ClientConfig config = ClientConfig.createFromProperties(props);
+
+		assertEquals("https://test.endpoint.com", config.getEndpoint());
+		assertEquals("api-key-test", config.getAPIKey());
+		assertEquals("test", config.getEnvironment());
+		assertEquals("website", config.getApplication());
 	}
 }

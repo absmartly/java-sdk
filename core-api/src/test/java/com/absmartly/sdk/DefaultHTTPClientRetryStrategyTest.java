@@ -64,4 +64,24 @@ class DefaultHTTPClientRetryStrategyTest extends TestUtils {
 
 		assertTrue(Math.abs(maxIntervalMs - previous) <= 1);
 	}
+
+	@Test
+	void doesNotRetryNonRetryableCodes() {
+		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(7, 1_000);
+		final HttpContext context = new BasicHttpContext();
+
+		for (int code : setOf(200, 400, 404, 500, 504)) {
+			assertFalse(strategy.retryRequest(new SimpleHttpResponse(code), 1, context));
+		}
+	}
+
+	@Test
+	void zeroMaxRetriesDisablesRetrying() {
+		final DefaultHTTPClientRetryStrategy strategy = new DefaultHTTPClientRetryStrategy(0, 1_000);
+		final HttpRequest request = SimpleRequestBuilder.get("http://localhost/v1/context").build();
+		final HttpContext context = new BasicHttpContext();
+
+		assertFalse(strategy.retryRequest(new SimpleHttpResponse(503), 1, context));
+		assertFalse(strategy.retryRequest(request, new ConnectTimeoutException("timeout"), 1, context));
+	}
 }

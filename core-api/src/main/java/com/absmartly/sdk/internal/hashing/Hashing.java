@@ -14,7 +14,9 @@ public abstract class Hashing {
 
 	public static byte[] hashUnit(CharSequence unit) {
 		final int n = unit.length();
-		final int bufferLen = n << 1;
+		// Up to 4 UTF-8 bytes per UTF-16 code unit (3-byte BMP chars, and 4-byte
+		// astral chars span two code units). n << 1 underflowed for 3-byte chars.
+		final int bufferLen = n * 4;
 
 		byte[] buffer = threadBuffer.get();
 		if (buffer.length < bufferLen) {

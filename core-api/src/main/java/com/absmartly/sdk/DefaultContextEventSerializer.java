@@ -28,7 +28,7 @@ public class DefaultContextEventSerializer implements ContextEventSerializer {
 		try {
 			return writer_.writeValueAsBytes(event);
 		} catch (JsonProcessingException e) {
-			log.error("", e);
+			log.error("Failed to serialize publish event: {}", e.getMessage(), e);
 			return null;
 		}
 	}

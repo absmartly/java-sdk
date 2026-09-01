@@ -11,12 +11,8 @@ public abstract class Clock {
 	}
 
 	static public Clock systemUTC() {
-		if (utc_ != null) {
-			return utc_;
-		}
-
-		return utc_ = new SystemClockUTC();
+		return utc_;
 	}
 
-	static SystemClockUTC utc_;
+	static final SystemClockUTC utc_ = new SystemClockUTC();
 }

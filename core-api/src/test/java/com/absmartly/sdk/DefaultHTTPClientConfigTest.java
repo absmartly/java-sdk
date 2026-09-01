@@ -59,4 +59,57 @@ class DefaultHTTPClientConfigTest extends TestUtils {
 				.setHTTPVersionPolicy(HTTPVersionPolicy.FORCE_HTTP_1);
 		assertEquals(HTTPVersionPolicy.FORCE_HTTP_1, config.getHTTPVersionPolicy());
 	}
+
+	@Test
+	void testNegativeConnectTimeout() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+				.setConnectTimeout(-1);
+		assertEquals(-1, config.getConnectTimeout());
+	}
+
+	@Test
+	void testNegativeConnectionKeepAlive() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+				.setConnectionKeepAlive(-1);
+		assertEquals(-1, config.getConnectionKeepAlive());
+	}
+
+	@Test
+	void testNegativeConnectionRequestTimeout() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+				.setConnectionRequestTimeout(-1);
+		assertEquals(-1, config.getConnectionRequestTimeout());
+	}
+
+	@Test
+	void testNegativeRetryInterval() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+				.setRetryInterval(-1);
+		assertEquals(-1, config.getRetryInterval());
+	}
+
+	@Test
+	void testZeroMaxRetries() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+				.setMaxRetries(0);
+		assertEquals(0, config.getMaxRetries());
+	}
+
+	@Test
+	void testNegativeMaxRetries() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create()
+				.setMaxRetries(-1);
+		assertEquals(-1, config.getMaxRetries());
+	}
+
+	@Test
+	void testDefaultValues() {
+		final DefaultHTTPClientConfig config = DefaultHTTPClientConfig.create();
+		assertEquals(3000, config.getConnectTimeout());
+		assertEquals(30000, config.getConnectionKeepAlive());
+		assertEquals(1000, config.getConnectionRequestTimeout());
+		assertEquals(5, config.getMaxRetries());
+		assertEquals(333, config.getRetryInterval());
+		assertEquals(HTTPVersionPolicy.NEGOTIATE, config.getHTTPVersionPolicy());
+	}
 }

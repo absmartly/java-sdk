@@ -13,10 +13,15 @@ import java8.util.function.Supplier;
 
 import javax.annotation.Nonnull;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
 public class Client implements Closeable {
+	private static final Logger log = LoggerFactory.getLogger(Client.class);
+
 	static public Client create(@Nonnull final ClientConfig config) {
 		return new Client(config, DefaultHTTPClient.create(DefaultHTTPClientConfig.create()));
 	}
@@ -29,6 +34,15 @@ public class Client implements Closeable {
 		final String endpoint = config.getEndpoint();
 		if ((endpoint == null) || endpoint.isEmpty()) {
 			throw new IllegalArgumentException("Missing Endpoint configuration");
+		}
+
+		if (!endpoint.startsWith("https://")) {
+			if (endpoint.startsWith("http://")) {
+				log.warn("ABSmartly SDK endpoint is not using HTTPS. API keys will be transmitted in plaintext: {}",
+						endpoint);
+			} else {
+				throw new IllegalArgumentException("Endpoint must use http:// or https:// protocol: " + endpoint);
+			}
 		}
 
 		final String apiKey = config.getAPIKey();
@@ -46,7 +60,9 @@ public class Client implements Closeable {
 			throw new IllegalArgumentException("Missing Environment configuration");
 		}
 
-		url_ = endpoint + "/context";
+		final String normalizedEndpoint = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1)
+				: endpoint;
+		url_ = normalizedEndpoint + "/context";
 		httpClient_ = httpClient;
 		deserializer_ = config.getContextDataDeserializer();
 		serializer_ = config.getContextEventSerializer();
@@ -86,8 +102,19 @@ public class Client implements Closeable {
 								final int code = response.getStatusCode();
 								if ((code / 100) == 2) {
 									final byte[] content = response.getContent();
-									dataFuture.complete(
-											deserializer_.deserialize(response.getContent(), 0, content.length));
+									if (content == null || content.length == 0) {
+										dataFuture.completeExceptionally(new IllegalStateException(
+												"Empty response body from context data endpoint"));
+									} else {
+										final ContextData result = deserializer_.deserialize(content, 0,
+												content.length);
+										if (result != null) {
+											dataFuture.complete(result);
+										} else {
+											dataFuture.completeExceptionally(new IllegalStateException(
+													"Failed to deserialize context data response"));
+										}
+									}
 								} else {
 									dataFuture.completeExceptionally(new Exception(response.getStatusMessage()));
 								}
