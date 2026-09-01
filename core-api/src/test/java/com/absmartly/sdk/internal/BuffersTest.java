@@ -122,15 +122,41 @@ class BuffersTest extends TestUtils {
 	}
 
 	@Test
-	void encodeUTF8UnpairedSurrogatesAsReplacementCharacter() {
-		final byte[] replacement = new byte[]{(byte) 0xef, (byte) 0xbf, (byte) 0xbd};
-		assertEncoding("\ud83d", replacement);
-		assertEncoding("\ude00", replacement);
+	void encodeUTF8UnpairedSurrogatesMatchLegacyEncoding() {
+		assertEncoding("\ud83d", new byte[]{(byte) 0xed, (byte) 0xa0, (byte) 0xbd});
+		assertEncoding("\ude00", new byte[]{(byte) 0xed, (byte) 0xb8, (byte) 0x80});
+	}
+
+	@Test
+	void encodeUTF8MatchesLegacyEncodingExceptForSurrogatePairs() {
+		final List<String> values = listOf("ASCII", "é", "世", "\ud83d", "\ude00", "Aé世\ud83dB\ude00");
+		for (final String value : values) {
+			assertEncoding(value, encodeUTF8ByCodeUnit(value));
+		}
 	}
 
 	private void assertEncoding(String value, byte[] expected) {
 		final byte[] actual = new byte[expected.length];
 		assertEquals(expected.length, Buffers.encodeUTF8(actual, 0, value));
 		assertArrayEquals(expected, actual);
+	}
+
+	private byte[] encodeUTF8ByCodeUnit(String value) {
+		final byte[] encoded = new byte[value.length() * 3];
+		int offset = 0;
+		for (int i = 0; i < value.length(); ++i) {
+			final char c = value.charAt(i);
+			if (c < 0x80) {
+				encoded[offset++] = (byte) c;
+			} else if (c < 0x800) {
+				encoded[offset++] = (byte) (0xc0 | (c >> 6));
+				encoded[offset++] = (byte) (0x80 | (c & 0x3f));
+			} else {
+				encoded[offset++] = (byte) (0xe0 | (c >> 12));
+				encoded[offset++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+				encoded[offset++] = (byte) (0x80 | (c & 0x3f));
+			}
+		}
+		return Arrays.copyOf(encoded, offset);
 	}
 }
