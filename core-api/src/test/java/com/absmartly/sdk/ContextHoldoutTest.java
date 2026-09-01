@@ -1558,11 +1558,10 @@ class ContextHoldoutTest extends TestUtils {
 	// Kills the "evict on holdoutAssignments != null alone" mutant (dropping the check that some
 	// entry is actually null): a cached, unexposed assignment whose holdout snapshot is fully
 	// resolved (no null entries, because the unit was already present when it was computed) must
-	// survive a redundant setUnit call for that same unit type. The distinguishing signal is an
-	// attribute change made between the peek and the redundant setUnit call: experimentMatches
-	// never considers attributes, so a retained cache entry keeps the audience verdict (and thus
-	// the variant) it was computed with, while a wrongly-evicted entry would recompute against
-	// the now-matching attribute and land on a different variant entirely.
+	// survive a redundant setUnit call for that same unit type. The distinguishing signal is a
+	// same-iteration split refresh, which both experimentMatches and audienceMatches ignore: a
+	// retained entry stays pinned to its original variant, while a wrongly-evicted entry recomputes
+	// against the new split and lands on a different variant.
 	//
 	// Fails against `(holdoutAssignments != null) && unitType.equals(assignment.unitType)` alone:
 	// the array is non-null (one resolved holdout entry) and the unit type matches, so the entry
@@ -1570,37 +1569,35 @@ class ContextHoldoutTest extends TestUtils {
 	// re-decides the experiment.
 	@Test
 	void setUnitRedundantCallDoesNotEvictFullyResolvedUnexposedHoldoutSnapshot() {
-		final String audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
-
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_redundant_set_unit"), 11);
-		experiment.audienceStrict = true;
-		experiment.audience = audience;
 		final Experiment holdout = newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO); // not held out
 
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experiment));
-		context.setAttribute("age", 5); // mismatches: forces control regardless of holdout
 
 		// resolved with the unit already present: holdoutAssignments holds no null entry.
-		assertEquals(0, context.peekTreatment("exp_redundant_set_unit")); // audience mismatch -> control
+		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_redundant_set_unit"));
 		assertEquals(0, context.getPendingCount()); // peek never exposes
 
-		context.setAttribute("age", 25); // now matches; experimentMatches ignores attributes though
+		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_redundant_set_unit"), 11);
+		refreshedExperiment.split = new double[]{1.0, 0.0}; // a recomputation must land in variant 0
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(new Experiment[]{holdout}, refreshedExperiment));
+		refreshing.join();
+
 		context.setUnit(UNIT_TYPE, UID); // redundant: same unit type, same uid already installed
 
-		// still the pinned, audience-mismatched decision: a wrongly-evicted entry would recompute
-		// under the now-matching attribute and land on NORMAL_VARIANT instead.
-		assertEquals(0, context.getTreatment("exp_redundant_set_unit"));
-		assertEquals(2, context.getPendingCount()); // own exposure (audience-mismatch) + holdout's
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_redundant_set_unit"));
+		assertEquals(2, context.getPendingCount()); // own exposure + holdout's
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
 		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_redundant_set_unit", UNIT_TYPE, 0, clock.millis(), false, true, false, false,
-						false, true),
+				new Exposure(1, "exp_redundant_set_unit", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						false, false, false),
 				holdoutExposure(11, "holdout_a", 1));
-		expected.attributes = new Attribute[]{new Attribute("age", 5, clock.millis()),
-				new Attribute("age", 25, clock.millis())};
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
