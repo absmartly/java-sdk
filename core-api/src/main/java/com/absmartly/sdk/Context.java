@@ -26,6 +26,11 @@ import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.*;
 
 public class Context implements Closeable {
+	private static final int ASSIGNMENT_UNEXPOSED = 0;
+	private static final int ASSIGNMENT_EXPOSED = 1;
+	private static final int ASSIGNMENT_RETIRED = 2;
+	private static final int MAX_EXPOSURE_ATTEMPTS = 3;
+
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
@@ -314,7 +319,7 @@ public class Context implements Closeable {
 	// Holdouts in this snapshot are resolved using assignment.unitType, not each holdout's declared
 	// unitType, so only that unit installation invalidates a null entry.
 	//
-	// Only unexposed assignments are evicted. Eviction creates a new exposed flag, so evicting an
+	// Only unexposed assignments are evicted. Eviction creates a new exposure state, so evicting an
 	// already-exposed assignment could publish a duplicate or contradictory experiment exposure.
 	// This is not protecting a pristine record: publish() reads event.units from the live units_
 	// map, so an exposure queued before this setUnit call may already carry the late unit. The
@@ -325,15 +330,13 @@ public class Context implements Closeable {
 		final Iterator<Assignment> it = assignmentCache_.values().iterator();
 		while (it.hasNext()) {
 			final Assignment assignment = it.next();
-			if (assignment.exposed.get()) {
-				continue;
-			}
-
 			final Assignment[] holdoutAssignments = assignment.holdoutAssignments;
 			if ((holdoutAssignments != null) && unitType.equals(assignment.unitType)) {
 				for (final Assignment holdoutAssignment : holdoutAssignments) {
 					if (holdoutAssignment == null) {
-						it.remove();
+						if (assignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED, ASSIGNMENT_RETIRED)) {
+							it.remove();
+						}
 						break;
 					}
 				}
@@ -407,12 +410,20 @@ public class Context implements Closeable {
 	public int getTreatment(@Nonnull final String experimentName) {
 		checkReady(true);
 
-		final Assignment assignment = getAssignment(experimentName);
-		if (!assignment.exposed.get()) {
-			triggerExposure(assignment);
-		}
+		return getExposedTreatmentVariant(getAssignment(experimentName));
+	}
 
-		return assignment.variant;
+	private int getExposedTreatmentVariant(final Assignment assignment) {
+		return exposeTreatmentAssignment(assignment).variant;
+	}
+
+	private Assignment exposeTreatmentAssignment(final Assignment assignment) {
+		return settleExposure(assignment, new Function<Assignment, Assignment>() {
+			@Override
+			public Assignment apply(final Assignment retired) {
+				return getAssignment(retired.name);
+			}
+		});
 	}
 
 	// A suppressed assignment (held out by an applicable holdout) never publishes its own
@@ -420,12 +431,12 @@ public class Context implements Closeable {
 	// either exposure still triggers evaluation of every holdout applicable to this unit type,
 	// keeping both holdout arms symmetric regardless of which covered experiment triggered it.
 	// The trigger loop below must run even if the exposure above throws (e.g. a
-	// ContextEventLogger implementation that throws): `exposed` is already CAS'd true by the
+	// ContextEventLogger implementation that throws): the exposure state is already CAS'd by the
 	// time we get here, so a skipped holdout trigger would never be retried for this context's
 	// life. Failures are collected and re-thrown once every holdout has had a chance to fire,
 	// rather than swallowed or allowed to abort the loop early.
-	private void triggerExposure(final Assignment assignment) {
-		if (assignment.exposed.compareAndSet(false, true)) {
+	private int triggerExposure(final Assignment assignment) {
+		if (assignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED, ASSIGNMENT_EXPOSED)) {
 			RuntimeException failure = null;
 			try {
 				if (!assignment.suppressed) {
@@ -443,7 +454,9 @@ public class Context implements Closeable {
 			if (failure != null) {
 				throw failure;
 			}
+			return ASSIGNMENT_EXPOSED;
 		}
+		return assignment.exposureState.get();
 	}
 
 	// Fires every holdout applicable to the given assignment, independent of whether the covered
@@ -483,7 +496,8 @@ public class Context implements Closeable {
 	}
 
 	private void triggerHoldoutExposure(final Assignment holdoutAssignment) {
-		if ((holdoutAssignment != null) && holdoutAssignment.exposed.compareAndSet(false, true)) {
+		if ((holdoutAssignment != null) && holdoutAssignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED,
+				ASSIGNMENT_EXPOSED)) {
 			enqueueExposure(holdoutAssignment);
 		}
 	}
@@ -558,19 +572,39 @@ public class Context implements Closeable {
 	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
 		checkReady(true);
 
-		final Assignment assignment = getVariableAssignment(key, false);
+		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false));
 		if (assignment != null) {
 			if (assignment.variables != null) {
-				if (!assignment.exposed.get()) {
-					triggerExposure(assignment);
-				}
-
 				if (assignment.variables.containsKey(key)) {
 					return assignment.variables.get(key);
 				}
 			}
 		}
 		return defaultValue;
+	}
+
+	private Assignment exposeVariableAssignment(final String key, final Assignment assignment) {
+		return settleExposure(assignment, new Function<Assignment, Assignment>() {
+			@Override
+			public Assignment apply(final Assignment retired) {
+				return getVariableAssignment(key, false);
+			}
+		});
+	}
+
+	private Assignment settleExposure(final Assignment assignment, final Function<Assignment, Assignment> resolver) {
+		Assignment current = assignment;
+		for (int attempt = 0; current != null; ++attempt) {
+			if (triggerExposure(current) != ASSIGNMENT_RETIRED) {
+				return current;
+			}
+			if (attempt + 1 >= MAX_EXPOSURE_ATTEMPTS) {
+				// Exhaustion returns the attempted assignment that lost to a concurrent retirement.
+				return current;
+			}
+			current = resolver.apply(current);
+		}
+		return current;
 	}
 
 	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
@@ -888,14 +922,14 @@ public class Context implements Closeable {
 		Assignment[] holdoutAssignments;
 		Map<String, Object> variables = Collections.emptyMap();
 
-		final AtomicBoolean exposed = new AtomicBoolean(false);
+		final AtomicInteger exposureState = new AtomicInteger(ASSIGNMENT_UNEXPOSED);
 	}
 
 	// Pins the (iteration, unitType) a holdout's Assignment was computed against. This is the same
 	// granularity experimentMatches uses for ordinary experiments: seedHi/seedLo/split are
 	// deliberately excluded so a live seed or percentage edit - which does not change who is
 	// covered - never invalidates an already-exposed unit's arm. Only an iteration bump, a genuine
-	// re-randomization epoch, replaces the cached verdict (and its `exposed` flag), exactly as it
+	// re-randomization epoch, replaces the cached verdict (and its exposure state), exactly as it
 	// does for ordinary experiments. armCount is deliberately excluded here too: it is pinned on
 	// Assignment itself (see armCount below), bundled with the arm number it was computed
 	// against, so the cached arm is always interpreted under its own arity rather than being
@@ -1524,11 +1558,11 @@ public class Context implements Closeable {
 	// experiment's own set of applicable holdouts is still current (holdoutSetMatches), is its
 	// (id, iteration) pair - never a full Experiment comparison. Rationale: the governing
 	// invariant is that a unit must never appear in both arms of the same holdout within one
-	// context's lifetime, which the once-per-context `exposed` AtomicBoolean on each cached
+	// context's lifetime, which the once-per-context exposure state on each cached
 	// Assignment enforces only as long as the entry it lives on is not needlessly replaced.
 	// seedHi/seedLo/split/name/variants/applications/audience/customFieldValues can all change
 	// without altering who is a member, so none of them may invalidate the entry - doing so
-	// would reset `exposed` and let an already-exposed unit be re-assigned into the other arm on
+	// would reset exposure and let an already-exposed unit be re-assigned into the other arm on
 	// the very next refresh. Only an iteration bump is a genuine re-randomization epoch and
 	// legitimately replaces the entry (and thus resets exposure), matching how experimentMatches
 	// already treats iteration for ordinary experiments.

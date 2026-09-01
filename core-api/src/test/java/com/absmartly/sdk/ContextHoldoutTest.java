@@ -2,6 +2,7 @@ package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -11,10 +12,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java8.util.concurrent.CompletableFuture;
+import java8.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -213,6 +217,49 @@ class ContextHoldoutTest extends TestUtils {
 
 	Exposure holdoutExposure(String unitType, int id, String name, int variant) {
 		return new Exposure(id, name, unitType, variant, clock.millis(), true, true, false, false, false, false);
+	}
+
+	Object getAssignment(Context context, String experimentName) throws Exception {
+		final Method method = Context.class.getDeclaredMethod("getAssignment", String.class);
+		method.setAccessible(true);
+		return method.invoke(context, experimentName);
+	}
+
+	Object exposeTreatmentAssignment(Context context, Object assignment) throws Exception {
+		final Method method = Context.class.getDeclaredMethod("exposeTreatmentAssignment", assignment.getClass());
+		method.setAccessible(true);
+		return method.invoke(context, assignment);
+	}
+
+	int getExposedTreatmentVariant(Context context, Object assignment) throws Exception {
+		final Method method = Context.class.getDeclaredMethod("getExposedTreatmentVariant", assignment.getClass());
+		method.setAccessible(true);
+		return (Integer) method.invoke(context, assignment);
+	}
+
+	Object exposeVariableAssignment(Context context, String key, Object assignment) throws Exception {
+		final Method method = Context.class.getDeclaredMethod("exposeVariableAssignment", String.class,
+				assignment.getClass());
+		method.setAccessible(true);
+		return method.invoke(context, key, assignment);
+	}
+
+	void retireAssignment(Object assignment) throws Exception {
+		final Field field = assignment.getClass().getDeclaredField("exposureState");
+		field.setAccessible(true);
+		((AtomicInteger) field.get(assignment)).set(2);
+	}
+
+	int assignmentVariant(Object assignment) throws Exception {
+		final Field field = assignment.getClass().getDeclaredField("variant");
+		field.setAccessible(true);
+		return field.getInt(assignment);
+	}
+
+	Object settleExposure(Context context, Object assignment, Function<Object, Object> resolver) throws Exception {
+		final Method method = Context.class.getDeclaredMethod("settleExposure", assignment.getClass(), Function.class);
+		method.setAccessible(true);
+		return method.invoke(context, assignment, resolver);
 	}
 
 	// A held-out unit gets control values and emits only the holdout exposure.
@@ -1125,7 +1172,7 @@ class ContextHoldoutTest extends TestUtils {
 	// Assignment, the next getTreatment builds a fresh one with exposed==false, and the
 	// experiment's exposure is published twice for the same unit.
 	@Test
-	void setUnitDoesNotEvictAlreadyExposedAssignmentSoNoDuplicateExposure() {
+	void setUnitDoesNotEvictAlreadyExposedAssignmentSoNoDuplicateExposure() throws Exception {
 		final String coveredUnitType = "user_id";
 		final Experiment experiment = coveredBy(
 				newExperiment(1, "exp_exposed_before_unit", coveredUnitType, 2), 11);
@@ -1137,11 +1184,13 @@ class ContextHoldoutTest extends TestUtils {
 
 		assertEquals(2, context.getTreatment("exp_exposed_before_unit"));
 		assertEquals(1, context.getPendingCount());
+		final Object exposed = getAssignment(context, "exp_exposed_before_unit");
 
 		context.setUnit(coveredUnitType, UID);
 
 		assertEquals(2, context.getTreatment("exp_exposed_before_unit"));
 		assertEquals(1, context.getPendingCount()); // unchanged: no duplicate exposure
+		assertSame(exposed, getAssignment(context, "exp_exposed_before_unit"));
 	}
 
 	// Selectivity: an unrelated unit type must never touch cache entries at all, exposed or not.
@@ -1249,6 +1298,158 @@ class ContextHoldoutTest extends TestUtils {
 		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
 				holdoutExposure(coveredUnitType, 11, "holdout_user_id_suppress", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void detachedTreatmentAssignmentCannotPublishBesideSuppressingReplacement() throws Exception {
+		final String unitType = "user_id";
+		final String experimentName = "exp_detached_suppressed";
+		final Experiment experiment = coveredBy(newExperiment(1, experimentName, unitType, 2), 11);
+		final Experiment holdout = newHoldout(11, "holdout_detached_suppressed", unitType,
+				HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO, "full");
+		final Context context = createReadyContextWithoutUnits(
+				contextDataOf(new Experiment[]{holdout}, experiment));
+
+		final Object retained = getAssignment(context, experimentName);
+		context.setUnit(unitType, UID);
+		assertEquals(0, context.getTreatment(experimentName));
+		assertEquals(1, context.getPendingCount());
+
+		exposeTreatmentAssignment(context, retained);
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
+				publishedEvent(unitType, UID, holdoutExposure(unitType, 11, "holdout_detached_suppressed", 0)));
+	}
+
+	@Test
+	void detachedTreatmentAssignmentRetriesCurrentEntryWithoutLosingExposure() throws Exception {
+		final String unitType = "user_id";
+		final String experimentName = "exp_detached_retry";
+		final Experiment experiment = coveredBy(newExperiment(1, experimentName, unitType, 2), 11);
+		final Experiment holdout = newHoldout(11, "holdout_detached_retry", unitType,
+				HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO, "full");
+		final Context context = createReadyContextWithoutUnits(
+				contextDataOf(new Experiment[]{holdout}, experiment));
+
+		final Object retained = getAssignment(context, experimentName);
+		context.setUnit(unitType, UID);
+		exposeTreatmentAssignment(context, retained);
+
+		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.getTreatment(experimentName));
+		assertEquals(2, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
+				publishedEvent(unitType, UID,
+						new Exposure(1, experimentName, unitType, 2, clock.millis(), true, true, false, true, false,
+								false),
+						holdoutExposure(unitType, 11, "holdout_detached_retry", 1)));
+	}
+
+	@Test
+	void detachedTreatmentReturnsTheReplacementVariant() throws Exception {
+		final String unitType = "user_id";
+		final String experimentName = "exp_detached_variant";
+		final Experiment experiment = coveredBy(newExperiment(1, experimentName, unitType, 2), 11);
+		final Experiment holdout = newHoldout(11, "holdout_detached_variant", unitType,
+				HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO, "full");
+		final Context context = createReadyContextWithoutUnits(
+				contextDataOf(new Experiment[]{holdout}, experiment));
+
+		final Object retained = getAssignment(context, experimentName);
+		context.setUnit(unitType, UID);
+
+		assertEquals(0, getExposedTreatmentVariant(context, retained));
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void treatmentExposureSettlesAfterTwoConsecutiveRetirements() throws Exception {
+		final Experiment first = newExperiment(1, "exp_first", 2);
+		final Experiment second = newExperiment(2, "exp_second", 1);
+		final Experiment settled = newExperiment(3, "exp_settled", 1);
+		final Context context = createReadyContext(contextDataOf(first, second, settled));
+		final Object firstAssignment = getAssignment(context, first.name);
+		final Object secondAssignment = getAssignment(context, second.name);
+		final Object settledAssignment = getAssignment(context, settled.name);
+		retireAssignment(firstAssignment);
+		retireAssignment(secondAssignment);
+
+		final Object result = settleExposure(context, firstAssignment, new Function<Object, Object>() {
+			int call;
+
+			@Override
+			public Object apply(Object ignored) {
+				return call++ == 0 ? secondAssignment : settledAssignment;
+			}
+		});
+
+		assertSame(settledAssignment, result);
+		assertEquals(1, assignmentVariant(result));
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void exposureSettlementStopsAfterTheBoundedNumberOfRetirements() throws Exception {
+		final Experiment experiment = newExperiment(1, "exp_bounded_retry", 1);
+		final Context context = createReadyContext(contextDataOf(experiment));
+		final Object retired = getAssignment(context, experiment.name);
+		retireAssignment(retired);
+		final AtomicInteger resolutions = new AtomicInteger();
+
+		settleExposure(context, retired, new Function<Object, Object>() {
+			@Override
+			public Object apply(Object ignored) {
+				if (resolutions.incrementAndGet() > 2) {
+					throw new AssertionError("exposure retry exceeded its bound");
+				}
+				return retired;
+			}
+		});
+
+		assertEquals(2, resolutions.get());
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void detachedVariableAssignmentReresolvesTheKeyToANewWinningExperiment() throws Exception {
+		final String unitType = "user_id";
+		final Experiment original = coveredBy(newExperiment(2, "exp_detached_variable_old", unitType, 1), 11);
+		original.variants[1].config = "{\"detached_var\":\"old\"}";
+		final Experiment holdout = newHoldout(11, "holdout_detached_variable", unitType,
+				HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO, "full");
+		final Context context = createReadyContextWithoutUnits(
+				contextDataOf(new Experiment[]{holdout}, original));
+
+		final Object retained = getAssignment(context, original.name);
+		context.setUnit(unitType, UID);
+
+		final Experiment winner = coveredBy(newExperiment(1, "exp_detached_variable_winner", unitType, 1), 11);
+		winner.variants[1].config = "{\"detached_var\":\"new winner\"}";
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(new Experiment[]{holdout}, winner, original));
+		refreshing.join();
+
+		final Object resolved = exposeVariableAssignment(context, "detached_var", retained);
+		assertEquals(1, assignmentVariant(resolved));
+		assertEquals(2, context.getPendingCount());
+		assertEquals("new winner", context.getVariableValue("detached_var", "default"));
+		assertEquals(2, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
+				publishedEvent(unitType, UID,
+						holdoutExposure(unitType, 11, "holdout_detached_variable", 1),
+						new Exposure(1, winner.name, unitType, 1, clock.millis(), true, true, false, true, false,
+								false)));
 	}
 
 	// Kills a narrower variant of the "re-resolve the null live at trigger time" mutant that
@@ -1724,6 +1925,28 @@ class ContextHoldoutTest extends TestUtils {
 
 		// both exposures were queued for publish despite holdout A's logger call throwing.
 		assertEquals(2, context.getPendingCount());
+	}
+
+	@Test
+	void throwingLoggerDoesNotMakeExperimentOrHoldoutExposureRetryable() {
+		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(),
+				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof Exposure) && (((Exposure) o).id == 1)));
+
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_throwing_logger_terminal"), 11);
+		final Experiment holdout = newHoldout(11, "holdout_terminal", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
+		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experiment));
+
+		assertThrows(RuntimeException.class, () -> context.getTreatment(experiment.name));
+		Mockito.reset(eventLogger);
+		assertEquals(NORMAL_VARIANT, context.getTreatment(experiment.name));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
+				publishedEvent(UID,
+						new Exposure(1, experiment.name, UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+								false, false, false),
+						holdoutExposure(11, "holdout_terminal", 1)));
 	}
 
 	// Regression test: a throwing logger for a suppressed experiment's ONLY holdout exposure must
