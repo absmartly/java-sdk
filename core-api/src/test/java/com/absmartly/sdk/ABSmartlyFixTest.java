@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.json.ContextData;
 
-class ABsmartlyFixTest extends TestUtils {
+class ABSmartlyFixTest extends TestUtils {
 	Client client;
 
 	@BeforeEach
@@ -22,10 +22,10 @@ class ABsmartlyFixTest extends TestUtils {
 
 	@Test
 	void createContextThrowsAfterClose() throws IOException {
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 		absmartly.close();
 
 		assertThrows(IllegalStateException.class, () -> {
@@ -35,10 +35,10 @@ class ABsmartlyFixTest extends TestUtils {
 
 	@Test
 	void createContextWithThrowsAfterClose() throws IOException {
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 		absmartly.close();
 
 		assertThrows(IllegalStateException.class, () -> {
@@ -51,11 +51,11 @@ class ABsmartlyFixTest extends TestUtils {
 		final ContextDataProvider dataProvider = mock(ContextDataProvider.class);
 		when(dataProvider.getContextData()).thenReturn(mock(CompletableFuture.class));
 
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client)
 				.setContextDataProvider(dataProvider);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 		absmartly.close();
 
 		assertThrows(IllegalStateException.class, absmartly::getContextData);
@@ -65,11 +65,11 @@ class ABsmartlyFixTest extends TestUtils {
 	void closeIsIdempotent() throws IOException {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
 
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client)
 				.setScheduler(scheduler);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 		absmartly.close();
 		absmartly.close();
 

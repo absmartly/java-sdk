@@ -25,7 +25,7 @@ import com.sun.net.httpserver.HttpServer;
  * Hermetic end-to-end integration test that drives the public SDK API against a real local
  * HTTP server (JDK built-in {@link HttpServer}) on an ephemeral port. This exercises the
  * SDK's real Apache HttpAsyncClient transport (no Java-level mocking) and asserts the
- * on-the-wire request shape documented in the ABsmartly SDK ↔ Collector wire contract:
+	 * on-the-wire request shape documented in the ABSmartly SDK ↔ Collector wire contract:
  * <ul>
  * <li>GET /context with {@code application}/{@code environment} query params and NO auth
  * headers (Java authenticates the fetch via query params).</li>
@@ -131,7 +131,7 @@ class LocalHttpServerIntegrationTest {
 		final String application = "www";
 		final String environment = "test-env";
 
-		final ABsmartly sdk = ABsmartly.builder()
+		final ABSmartly sdk = ABSmartly.builder()
 				.endpoint(endpoint)
 				.apiKey("test-api-key")
 				.application(application)

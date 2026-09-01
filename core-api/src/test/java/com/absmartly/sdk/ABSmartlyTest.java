@@ -20,7 +20,7 @@ import org.mockito.Mockito;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
 
-class ABsmartlyTest extends TestUtils {
+class ABSmartlyTest extends TestUtils {
 	Client client;
 
 	@BeforeEach
@@ -30,19 +30,19 @@ class ABsmartlyTest extends TestUtils {
 
 	@Test
 	void create() {
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 		assertNotNull(absmartly);
 	}
 
 	@Test
 	void createThrowsWithInvalidConfig() {
 		assertThrows(IllegalArgumentException.class, () -> {
-			final ABsmartlyConfig config = ABsmartlyConfig.create();
+			final ABSmartlyConfig config = ABSmartlyConfig.create();
 
-			final ABsmartly absmartly = ABsmartly.create(config);
+			final ABSmartly absmartly = ABSmartly.create(config);
 		}, "Missing Client instance configuration");
 	}
 
@@ -53,7 +53,7 @@ class ABsmartlyTest extends TestUtils {
 						DefaultContextDataProvider.class)) {
 			clientStatic.when(() -> Client.create(any(ClientConfig.class))).thenReturn(client);
 
-			final ABsmartly absmartly = ABsmartly.builder()
+			final ABSmartly absmartly = ABSmartly.builder()
 					.endpoint("https://test.absmartly.io/v1")
 					.apiKey("test-api-key")
 					.application("website")
@@ -75,7 +75,7 @@ class ABsmartlyTest extends TestUtils {
 	@Test
 	void builderThrowsWithMissingEndpoint() {
 		assertThrows(IllegalArgumentException.class, () -> {
-			ABsmartly.builder()
+			ABSmartly.builder()
 					.apiKey("test-api-key")
 					.application("website")
 					.environment("production")
@@ -86,7 +86,7 @@ class ABsmartlyTest extends TestUtils {
 	@Test
 	void builderThrowsWithMissingApiKey() {
 		assertThrows(IllegalArgumentException.class, () -> {
-			ABsmartly.builder()
+			ABSmartly.builder()
 					.endpoint("https://test.absmartly.io/v1")
 					.application("website")
 					.environment("production")
@@ -97,7 +97,7 @@ class ABsmartlyTest extends TestUtils {
 	@Test
 	void builderThrowsWithMissingApplication() {
 		assertThrows(IllegalArgumentException.class, () -> {
-			ABsmartly.builder()
+			ABSmartly.builder()
 					.endpoint("https://test.absmartly.io/v1")
 					.apiKey("test-api-key")
 					.environment("production")
@@ -108,7 +108,7 @@ class ABsmartlyTest extends TestUtils {
 	@Test
 	void builderThrowsWithMissingEnvironment() {
 		assertThrows(IllegalArgumentException.class, () -> {
-			ABsmartly.builder()
+			ABSmartly.builder()
 					.endpoint("https://test.absmartly.io/v1")
 					.apiKey("test-api-key")
 					.application("website")
@@ -118,7 +118,7 @@ class ABsmartlyTest extends TestUtils {
 
 	@Test
 	void createContext() {
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client);
 
 		final CompletableFuture<ContextData> dataFuture = (CompletableFuture<ContextData>) mock(
@@ -127,7 +127,7 @@ class ABsmartlyTest extends TestUtils {
 				DefaultContextDataProvider.class, (mock, context) -> {
 					when(mock.getContextData()).thenReturn(dataFuture);
 				})) {
-			final ABsmartly absmartly = ABsmartly.create(config);
+			final ABSmartly absmartly = ABSmartly.create(config);
 			assertEquals(1, dataProviderCtor.constructed().size());
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
@@ -185,13 +185,13 @@ class ABsmartlyTest extends TestUtils {
 
 	@Test
 	void createContextWith() {
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client);
 
 		final ContextData data = new ContextData();
 		try (final MockedConstruction<DefaultContextDataProvider> dataProviderCtor = mockConstruction(
 				DefaultContextDataProvider.class)) {
-			final ABsmartly absmartly = ABsmartly.create(config);
+			final ABSmartly absmartly = ABSmartly.create(config);
 			assertEquals(1, dataProviderCtor.constructed().size());
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
@@ -255,11 +255,11 @@ class ABsmartlyTest extends TestUtils {
 		final ContextDataProvider dataProvider = mock(ContextDataProvider.class);
 		when(dataProvider.getContextData()).thenReturn(dataFuture);
 
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client)
 				.setContextDataProvider(dataProvider);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 
 		final CompletableFuture<ContextData> contextDataFuture = absmartly.getContextData();
 		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
@@ -279,7 +279,7 @@ class ABsmartlyTest extends TestUtils {
 		final AudienceDeserializer audienceDeserializer = mock(AudienceDeserializer.class);
 		final VariableParser variableParser = mock(VariableParser.class);
 
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client)
 				.setContextDataProvider(dataProvider)
 				.setContextEventHandler(eventHandler)
@@ -288,7 +288,7 @@ class ABsmartlyTest extends TestUtils {
 				.setAudienceDeserializer(audienceDeserializer)
 				.setVariableParser(variableParser);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class);
 				final MockedConstruction<AudienceMatcher> audienceMatcherCtor = mockConstruction(AudienceMatcher.class,
@@ -347,11 +347,11 @@ class ABsmartlyTest extends TestUtils {
 	void close() throws IOException, InterruptedException {
 		final ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
 
-		final ABsmartlyConfig config = ABsmartlyConfig.create()
+		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client)
 				.setScheduler(scheduler);
 
-		final ABsmartly absmartly = ABsmartly.create(config);
+		final ABSmartly absmartly = ABSmartly.create(config);
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 			final Context contextMock = mock(Context.class);
@@ -378,11 +378,11 @@ class ABsmartlyTest extends TestUtils {
 	void closeLeavesInjectedSchedulerRunning() throws IOException {
 		final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1);
 		try {
-			final ABsmartlyConfig config = ABsmartlyConfig.create()
+			final ABSmartlyConfig config = ABSmartlyConfig.create()
 					.setClient(client)
 					.setScheduler(scheduler);
 
-			final ABsmartly absmartly = ABsmartly.create(config);
+			final ABSmartly absmartly = ABSmartly.create(config);
 			absmartly.close();
 
 			assertFalse(scheduler.isShutdown());
@@ -398,10 +398,10 @@ class ABsmartlyTest extends TestUtils {
 				ScheduledThreadPoolExecutor.class, (mock, context) -> {
 					when(mock.awaitTermination(anyLong(), any())).thenReturn(true);
 				})) {
-			final ABsmartlyConfig config = ABsmartlyConfig.create()
+			final ABSmartlyConfig config = ABSmartlyConfig.create()
 					.setClient(client);
 
-			final ABsmartly absmartly = ABsmartly.create(config);
+			final ABSmartly absmartly = ABSmartly.create(config);
 			assertEquals(1, schedulerCtor.constructed().size());
 
 			final ScheduledExecutorService createdScheduler = schedulerCtor.constructed().get(0);
