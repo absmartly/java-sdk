@@ -818,15 +818,15 @@ public class Context implements Closeable {
 
 	private void checkNotClosed() {
 		if (closed_.get()) {
-			throw new IllegalStateException("ABsmartly Context is finalized.");
+			throw new IllegalStateException("ABSmartly Context is finalized.");
 		} else if (closing_.get()) {
-			throw new IllegalStateException("ABsmartly Context is closing.");
+			throw new IllegalStateException("ABSmartly Context is closing.");
 		}
 	}
 
 	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
-			throw new IllegalStateException("ABsmartly Context is not yet ready.");
+			throw new IllegalStateException("ABSmartly Context is not yet ready.");
 		} else if (expectNotClosed) {
 			checkNotClosed();
 		}

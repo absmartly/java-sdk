@@ -38,7 +38,7 @@ public class Client implements Closeable {
 
 		if (!endpoint.startsWith("https://")) {
 			if (endpoint.startsWith("http://")) {
-				log.warn("ABsmartly SDK endpoint is not using HTTPS. API keys will be transmitted in plaintext: {}",
+				log.warn("ABSmartly SDK endpoint is not using HTTPS. API keys will be transmitted in plaintext: {}",
 						endpoint);
 			} else {
 				throw new IllegalArgumentException("Endpoint must use http:// or https:// protocol: " + endpoint);

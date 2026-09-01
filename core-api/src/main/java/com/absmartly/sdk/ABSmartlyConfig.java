@@ -4,58 +4,103 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import javax.annotation.Nonnull;
 
-/**
- * @deprecated Use {@link com.absmartly.sdk.ABsmartlyConfig} instead.
- */
-@Deprecated
-public class ABSmartlyConfig extends ABsmartlyConfig {
+public class ABSmartlyConfig {
 	public static ABSmartlyConfig create() {
 		return new ABSmartlyConfig();
 	}
 
-	private ABSmartlyConfig() {
-		super();
+	private ABSmartlyConfig() {}
+
+	public ContextDataProvider getContextDataProvider() {
+		return contextDataProvider_;
 	}
 
-	@Override
-	public ABSmartlyConfig setClient(Client client) {
-		super.setClient(client);
-		return this;
-	}
-
-	@Override
 	public ABSmartlyConfig setContextDataProvider(@Nonnull final ContextDataProvider contextDataProvider) {
-		super.setContextDataProvider(contextDataProvider);
+		contextDataProvider_ = contextDataProvider;
 		return this;
 	}
 
-	@Override
+	public ContextPublisher getContextPublisher() {
+		return contextEventHandler_;
+	}
+
+	public ABSmartlyConfig setContextPublisher(@Nonnull final ContextPublisher contextPublisher) {
+		contextEventHandler_ = contextPublisher;
+		return this;
+	}
+
+	/**
+	 * @deprecated Use {@link #getContextPublisher()} instead.
+	 */
+	@Deprecated
+	public ContextEventHandler getContextEventHandler() {
+		if (contextEventHandler_ instanceof ContextEventHandler) {
+			return (ContextEventHandler) contextEventHandler_;
+		}
+		return null;
+	}
+
+	/**
+	 * @deprecated Use {@link #setContextPublisher(ContextPublisher)} instead.
+	 */
+	@Deprecated
 	public ABSmartlyConfig setContextEventHandler(@Nonnull final ContextEventHandler contextEventHandler) {
-		super.setContextEventHandler(contextEventHandler);
+		contextEventHandler_ = contextEventHandler;
 		return this;
 	}
 
-	@Override
+	public VariableParser getVariableParser() {
+		return variableParser_;
+	}
+
 	public ABSmartlyConfig setVariableParser(@Nonnull final VariableParser variableParser) {
-		super.setVariableParser(variableParser);
+		variableParser_ = variableParser;
 		return this;
 	}
 
-	@Override
+	public ScheduledExecutorService getScheduler() {
+		return scheduler_;
+	}
+
 	public ABSmartlyConfig setScheduler(@Nonnull final ScheduledExecutorService scheduler) {
-		super.setScheduler(scheduler);
+		scheduler_ = scheduler;
 		return this;
 	}
 
-	@Override
+	public ContextEventLogger getContextEventLogger() {
+		return contextEventLogger_;
+	}
+
 	public ABSmartlyConfig setContextEventLogger(@Nonnull final ContextEventLogger logger) {
-		super.setContextEventLogger(logger);
+		contextEventLogger_ = logger;
 		return this;
 	}
 
-	@Override
+	public AudienceDeserializer getAudienceDeserializer() {
+		return audienceDeserializer_;
+	}
+
 	public ABSmartlyConfig setAudienceDeserializer(@Nonnull final AudienceDeserializer audienceDeserializer) {
-		super.setAudienceDeserializer(audienceDeserializer);
+		audienceDeserializer_ = audienceDeserializer;
 		return this;
 	}
+
+	public Client getClient() {
+		return client_;
+	}
+
+	public ABSmartlyConfig setClient(Client client) {
+		client_ = client;
+		return this;
+	}
+
+	private ContextDataProvider contextDataProvider_;
+	private ContextPublisher contextEventHandler_;
+
+	private ContextEventLogger contextEventLogger_;
+	private VariableParser variableParser_;
+
+	private AudienceDeserializer audienceDeserializer_;
+	private ScheduledExecutorService scheduler_;
+	private Client client_;
 }
