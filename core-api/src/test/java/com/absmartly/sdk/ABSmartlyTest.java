@@ -6,10 +6,12 @@ import static org.mockito.Mockito.*;
 import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java8.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
@@ -45,6 +47,76 @@ class ABSmartlyTest extends TestUtils {
 	}
 
 	@Test
+	void builderCreatesWithConnectionParams() {
+		try (final MockedStatic<Client> clientStatic = mockStatic(Client.class);
+				final MockedConstruction<DefaultContextDataProvider> dataProviderCtor = mockConstruction(
+						DefaultContextDataProvider.class)) {
+			clientStatic.when(() -> Client.create(any(ClientConfig.class))).thenReturn(client);
+
+			final ABSmartly absmartly = ABSmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.apiKey("test-api-key")
+					.application("website")
+					.environment("production")
+					.build();
+			assertNotNull(absmartly);
+
+			final ArgumentCaptor<ClientConfig> clientConfigCaptor = ArgumentCaptor.forClass(ClientConfig.class);
+			clientStatic.verify(() -> Client.create(clientConfigCaptor.capture()), Mockito.times(1));
+
+			final ClientConfig capturedClientConfig = clientConfigCaptor.getValue();
+			assertEquals("https://test.absmartly.io/v1", capturedClientConfig.getEndpoint());
+			assertEquals("test-api-key", capturedClientConfig.getAPIKey());
+			assertEquals("website", capturedClientConfig.getApplication());
+			assertEquals("production", capturedClientConfig.getEnvironment());
+		}
+	}
+
+	@Test
+	void builderThrowsWithMissingEndpoint() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABSmartly.builder()
+					.apiKey("test-api-key")
+					.application("website")
+					.environment("production")
+					.build();
+		});
+	}
+
+	@Test
+	void builderThrowsWithMissingApiKey() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABSmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.application("website")
+					.environment("production")
+					.build();
+		});
+	}
+
+	@Test
+	void builderThrowsWithMissingApplication() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABSmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.apiKey("test-api-key")
+					.environment("production")
+					.build();
+		});
+	}
+
+	@Test
+	void builderThrowsWithMissingEnvironment() {
+		assertThrows(IllegalArgumentException.class, () -> {
+			ABSmartly.builder()
+					.endpoint("https://test.absmartly.io/v1")
+					.apiKey("test-api-key")
+					.application("website")
+					.build();
+		});
+	}
+
+	@Test
 	void createContext() {
 		final ABSmartlyConfig config = ABSmartlyConfig.create()
 				.setClient(client);
@@ -60,7 +132,10 @@ class ABSmartlyTest extends TestUtils {
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
-				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+				contextStatic
+						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class),
+								any(),
+								any(), any()))
 						.thenReturn(contextMock);
 
 				final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -84,13 +159,16 @@ class ABSmartlyTest extends TestUtils {
 				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
 						.forClass(AudienceMatcher.class);
 
-				contextStatic.verify(Mockito.timeout(5000).times(1),
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-				contextStatic.verify(Mockito.timeout(5000).times(1),
+				contextStatic.verify(
+						() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
+								any(), any()),
+						Mockito.times(1));
+				contextStatic.verify(
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
 								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
-								audienceMatcherCaptor.capture()));
+								audienceMatcherCaptor.capture()),
+						Mockito.times(1));
 
 				assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 				assertSame(contextConfig, configCaptor.getValue());
@@ -118,7 +196,10 @@ class ABSmartlyTest extends TestUtils {
 
 			try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 				final Context contextMock = mock(Context.class);
-				contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+				contextStatic
+						.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class),
+								any(),
+								any(), any()))
 						.thenReturn(contextMock);
 
 				final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -144,13 +225,16 @@ class ABSmartlyTest extends TestUtils {
 				final ArgumentCaptor<AudienceMatcher> audienceMatcherCaptor = ArgumentCaptor
 						.forClass(AudienceMatcher.class);
 
-				contextStatic.verify(Mockito.timeout(5000).times(1),
-						() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-				contextStatic.verify(Mockito.timeout(5000).times(1),
+				contextStatic.verify(
+						() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
+								any(), any()),
+						Mockito.times(1));
+				contextStatic.verify(
 						() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 								dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
 								eventLoggerCaptor.capture(), variableParserCaptor.capture(),
-								audienceMatcherCaptor.capture()));
+								audienceMatcherCaptor.capture()),
+						Mockito.times(1));
 
 				assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 				assertSame(contextConfig, configCaptor.getValue());
@@ -213,7 +297,9 @@ class ABSmartlyTest extends TestUtils {
 							assertSame(audienceDeserializer, context.arguments().get(0));
 						})) {
 			final Context contextMock = mock(Context.class);
-			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+			contextStatic
+					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
+							any(), any()))
 					.thenReturn(contextMock);
 
 			final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -235,12 +321,16 @@ class ABSmartlyTest extends TestUtils {
 			final ArgumentCaptor<VariableParser> variableParserCaptor = ArgumentCaptor.forClass(VariableParser.class);
 			final ArgumentCaptor<AudienceMatcher> audienceMatcher = ArgumentCaptor.forClass(AudienceMatcher.class);
 
-			contextStatic.verify(Mockito.timeout(5000).times(1),
-					() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()));
-			contextStatic.verify(Mockito.timeout(5000).times(1),
+			contextStatic.verify(
+					() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
+							any(),
+							any()),
+					Mockito.times(1));
+			contextStatic.verify(
 					() -> Context.create(clockCaptor.capture(), configCaptor.capture(), schedulerCaptor.capture(),
 							dataFutureCaptor.capture(), dataProviderCaptor.capture(), eventHandlerCaptor.capture(),
-							eventLoggerCaptor.capture(), variableParserCaptor.capture(), audienceMatcher.capture()));
+							eventLoggerCaptor.capture(), variableParserCaptor.capture(), audienceMatcher.capture()),
+					Mockito.times(1));
 
 			assertEquals(Clock.systemUTC(), clockCaptor.getValue());
 			assertSame(contextConfig, configCaptor.getValue());
@@ -266,7 +356,9 @@ class ABSmartlyTest extends TestUtils {
 
 		try (final MockedStatic<Context> contextStatic = mockStatic(Context.class)) {
 			final Context contextMock = mock(Context.class);
-			contextStatic.when(() -> Context.create(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+			contextStatic
+					.when(() -> Context.create(any(), any(), any(), any(), any(), any(ContextEventHandler.class), any(),
+							any(), any()))
 					.thenReturn(contextMock);
 
 			final ContextConfig contextConfig = ContextConfig.create().setUnit("user_id", "1234567");
@@ -275,7 +367,50 @@ class ABSmartlyTest extends TestUtils {
 
 			absmartly.close();
 
-			verify(scheduler, Mockito.timeout(5000).times(1)).awaitTermination(anyLong(), any());
+			// scheduler was injected by the caller, so close() must leave it under caller ownership
+			verify(scheduler, Mockito.times(0)).shutdown();
+			verify(scheduler, Mockito.times(0)).awaitTermination(anyLong(), any());
+			verify(scheduler, Mockito.times(0)).shutdownNow();
+		}
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void closeLeavesInjectedSchedulerRunning() throws IOException {
+		final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1);
+		try {
+			final ABSmartlyConfig config = ABSmartlyConfig.create()
+					.setClient(client)
+					.setScheduler(scheduler);
+
+			final ABSmartly absmartly = ABSmartly.create(config);
+			absmartly.close();
+
+			assertFalse(scheduler.isShutdown());
+		} finally {
+			scheduler.shutdownNow();
+		}
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void closeShutsDownSelfCreatedScheduler() throws IOException, InterruptedException {
+		try (final MockedConstruction<ScheduledThreadPoolExecutor> schedulerCtor = mockConstruction(
+				ScheduledThreadPoolExecutor.class, (mock, context) -> {
+					when(mock.awaitTermination(anyLong(), any())).thenReturn(true);
+				})) {
+			final ABSmartlyConfig config = ABSmartlyConfig.create()
+					.setClient(client);
+
+			final ABSmartly absmartly = ABSmartly.create(config);
+			assertEquals(1, schedulerCtor.constructed().size());
+
+			final ScheduledExecutorService createdScheduler = schedulerCtor.constructed().get(0);
+
+			absmartly.close();
+
+			verify(createdScheduler, Mockito.times(1)).shutdown();
+			verify(createdScheduler, Mockito.times(1)).awaitTermination(anyLong(), any());
 		}
 	}
 }

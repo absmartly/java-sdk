@@ -28,22 +28,32 @@ public abstract class Buffers {
 	}
 
 	static public int encodeUTF8(byte[] buf, int offset, CharSequence value) {
-		final int n = value.length();
-
-		int out = offset;
-		for (int i = 0; i < n; ++i) {
+		final int start = offset;
+		final int length = value.length();
+		for (int i = 0; i < length; ++i) {
 			final char c = value.charAt(i);
 			if (c < 0x80) {
-				buf[out++] = (byte) c;
+				buf[offset++] = (byte) c;
 			} else if (c < 0x800) {
-				buf[out++] = (byte) ((c >> 6) | 192);
-				buf[out++] = (byte) ((c & 63) | 128);
+				buf[offset++] = (byte) (0xc0 | (c >> 6));
+				buf[offset++] = (byte) (0x80 | (c & 0x3f));
 			} else {
-				buf[out++] = (byte) ((c >> 12) | 224);
-				buf[out++] = (byte) (((c >> 6) & 63) | 128);
-				buf[out++] = (byte) ((c & 63) | 128);
+				final char low = Character.isHighSurrogate(c) && i + 1 < length ? value.charAt(i + 1) : 0;
+				if (Character.isLowSurrogate(low)) {
+					// A surrogate pair is one code point and requires one four-byte sequence.
+					final int codePoint = Character.toCodePoint(c, low);
+					++i;
+					buf[offset++] = (byte) (0xf0 | (codePoint >> 18));
+					buf[offset++] = (byte) (0x80 | ((codePoint >> 12) & 0x3f));
+					buf[offset++] = (byte) (0x80 | ((codePoint >> 6) & 0x3f));
+					buf[offset++] = (byte) (0x80 | (codePoint & 0x3f));
+				} else {
+					buf[offset++] = (byte) (0xe0 | (c >> 12));
+					buf[offset++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+					buf[offset++] = (byte) (0x80 | (c & 0x3f));
+				}
 			}
 		}
-		return out - offset;
+		return offset - start;
 	}
 }

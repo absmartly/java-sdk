@@ -9,17 +9,18 @@ import javax.annotation.Nonnull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.type.TypeFactory;
+
+import com.absmartly.sdk.internal.JsonMapperUtils;
 
 public class DefaultVariableParser implements VariableParser {
 	private static final Logger log = LoggerFactory.getLogger(DefaultVariableParser.class);
 
 	public DefaultVariableParser() {
-		final ObjectMapper objectMapper = new ObjectMapper();
-		objectMapper.enable(MapperFeature.USE_STATIC_TYPING);
+		final ObjectMapper objectMapper = JsonMapperUtils.createStandardObjectMapper();
+
 		this.reader_ = objectMapper
 				.readerFor(TypeFactory.defaultInstance().constructMapType(HashMap.class, String.class, Object.class));
 		this.readerGeneric_ = objectMapper.readerFor(Object.class);
@@ -30,7 +31,8 @@ public class DefaultVariableParser implements VariableParser {
 		try {
 			return reader_.readValue(variableValues);
 		} catch (IOException e) {
-			log.error("", e);
+			log.error("Failed to parse variable values for experiment '{}', variant '{}': {}", experimentName,
+					variantName, e.getMessage(), e);
 			return null;
 		}
 	}
@@ -40,7 +42,7 @@ public class DefaultVariableParser implements VariableParser {
 		try {
 			return readerGeneric_.readValue(variableValue);
 		} catch (IOException e) {
-			log.error("", e);
+			log.error("Failed to parse custom field value for experiment '{}': {}", experimentName, e.getMessage(), e);
 			return null;
 		}
 	}

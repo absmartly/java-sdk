@@ -1,0 +1,15 @@
+// Enforces Java 1.6 API floor on production source of core-api using Animal Sniffer.
+// Test sources are excluded: their dependencies (JUnit 5, Mockito 5) require Java 11+ APIs.
+// java16:1.1 is the Java 1.6 signature despite the artifact name.
+if (project.name == "core-api") {
+	apply plugin: "ru.vyarus.animalsniffer"
+
+	animalsniffer {
+		sourceSets = [sourceSets.main]
+	}
+
+	dependencies {
+		// java16 1.1 contains the set of classes and members present in Java 1.6.
+		signature "org.codehaus.mojo.signature:java16:1.1@signature"
+	}
+}

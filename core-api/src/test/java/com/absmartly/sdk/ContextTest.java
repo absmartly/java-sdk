@@ -1,9 +1,11 @@
 package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -21,6 +23,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -31,6 +35,7 @@ import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
@@ -230,6 +235,29 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
+	void readyErrorReturnsNullOnSuccess() {
+		final Context context = createReadyContext();
+		assertNull(context.readyError());
+	}
+
+	@Test
+	void readyErrorReturnsExceptionOnFailedFuture() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isFailed());
+		assertNotNull(context.readyError());
+	}
+
+	@Test
+	void readyErrorReturnsExceptionOnAsyncFailure() {
+		final Context context = createContext(dataFuture);
+		final Exception error = new Exception("FAILED");
+		dataFuture.completeExceptionally(error);
+		context.waitUntilReady();
+		assertTrue(context.isFailed());
+		assertNotNull(context.readyError());
+	}
+
+	@Test
 	void callsEventLoggerWhenReady() {
 		final Context context = createContext(dataFuture);
 
@@ -321,21 +349,34 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
-		final String notReadyMessage = "ABSmartly Context is not yet ready";
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
+		final String notReadyMessage = "ABSmartly Context is not yet ready.";
 		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
-		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(notReadyMessage,
-				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+		assertEquals(new HashMap<>(), context.getVariableKeys());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
+	}
+
+	@Test
+	void returnsDefaultsWhenNotReady() {
+		final Context context = createContext(dataFuture);
+		assertFalse(context.isReady());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals("default", context.getVariableValue("banner.border", "default"));
+		assertEquals("default", context.peekVariableValue("banner.border", "default"));
+		assertTrue(context.getVariableKeys().isEmpty());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
 	}
 
 	@Test
@@ -354,17 +395,12 @@ class ContextTest extends TestUtils {
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
 
-		final String closingMessage = "ABSmartly Context is closing";
+		final String closingMessage = "ABSmartly Context is closing.";
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setAttributes(mapOf("attr1", "value1")))
-								.getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
@@ -375,24 +411,21 @@ class ContextTest extends TestUtils {
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
-								.getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
+						.getMessage());
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.track("goal1", null)).getMessage());
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::publish).getMessage());
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
-		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closingMessage,
-				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+		assertEquals(new HashMap<>(), context.getVariableKeys());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
 	}
 
 	@Test
@@ -410,17 +443,12 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		final String closedMessage = "ABSmartly Context is closed";
+		final String closedMessage = "ABSmartly Context is finalized.";
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setAttributes(mapOf("attr1", "value1")))
-								.getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverride("exp_test_ab", 2)).getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.setOverrides(mapOf("exp_test_ab", 2)))
 						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setUnit("test", "test"))
@@ -431,24 +459,56 @@ class ContextTest extends TestUtils {
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class,
 						() -> context.setCustomAssignments(mapOf("exp_test_ab", 2)))
-								.getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
+						.getMessage());
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.track("goal1", null)).getMessage());
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::publish).getMessage());
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
-		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
-						.getMessage());
-		assertEquals(closedMessage,
-				assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+		assertEquals(new HashMap<>(), context.getVariableKeys());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
+	}
+
+	@Test
+	void isFinalizedAliasesIsClosedAfterClose() {
+		final Context context = createReadyContext();
+		assertFalse(context.isFinalized());
+		assertFalse(context.isFinalizing());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.close();
+
+		assertTrue(context.isFinalized());
+		assertTrue(context.isClosed());
+	}
+
+	@Test
+	void finalizeAsyncIsAliasForCloseAsync() {
+		final Context context = createReadyContext();
+		assertFalse(context.isFinalized());
+
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
+
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> finalizeFuture = context.finalizeAsync();
+		assertTrue(context.isFinalizing());
+		assertFalse(context.isFinalized());
+
+		publishFuture.complete(null);
+		finalizeFuture.join();
+
+		assertTrue(context.isFinalized());
+		assertFalse(context.isFinalizing());
 	}
 
 	@Test
@@ -473,10 +533,10 @@ class ContextTest extends TestUtils {
 		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
 		when(scheduler.scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
-						.thenAnswer(invokation -> {
-							runnable.set(invokation.getArgument(0));
-							return mock(ScheduledFuture.class);
-						});
+				.thenAnswer(invokation -> {
+					runnable.set(invokation.getArgument(0));
+					return mock(ScheduledFuture.class);
+				});
 
 		dataFuture.complete(data);
 		context.waitUntilReady();
@@ -1814,7 +1874,7 @@ class ContextTest extends TestUtils {
 		final ScheduledFuture refreshTimer = mock(ScheduledFuture.class);
 		when(scheduler.scheduleWithFixedDelay(any(), eq(config.getRefreshInterval()),
 				eq(config.getRefreshInterval()), eq(TimeUnit.MILLISECONDS)))
-						.thenReturn(refreshTimer);
+				.thenReturn(refreshTimer);
 
 		final Context context = createContext(config, dataFutureReady);
 		assertTrue(context.isReady());
@@ -2202,5 +2262,756 @@ class ContextTest extends TestUtils {
 		assertNull(context.getCustomFieldValueType("exp_test_no_custom_fields", "overrides"));
 		assertNull(context.getCustomFieldValue("exp_test_no_custom_fields", "languages"));
 		assertNull(context.getCustomFieldValueType("exp_test_no_custom_fields", "languages"));
+	}
+
+	@Test
+	void getTreatmentQueuesExposureAfterPeek() {
+		final Context context = createReadyContext();
+
+		Arrays.stream(data.experiments).forEach(experiment -> context.peekTreatment(experiment.name));
+		context.peekTreatment("not_found");
+
+		assertEquals(0, context.getPendingCount());
+
+		Arrays.stream(data.experiments).forEach(experiment -> context.getTreatment(experiment.name));
+		context.getTreatment("not_found");
+
+		assertEquals(1 + data.experiments.length, context.getPendingCount());
+	}
+
+	@Test
+	void getTreatmentQueuesExposureWithBaseVariantOnUnknownExperiment() {
+		final Context context = createReadyContext();
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getTreatmentDoesNotReQueueExposureOnUnknownExperiment() {
+		final Context context = createReadyContext();
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(1, context.getPendingCount());
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		assertEquals(0, context.getTreatment("not_found"));
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void getTreatmentQueuesExposureWithCustomAssignmentVariant() {
+		final Context context = createReadyContext();
+
+		context.setCustomAssignment("exp_test_ab", 2);
+
+		assertEquals(2, context.getTreatment("exp_test_ab"));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 2, clock.millis(), true, true, false, false, true, false),
+		};
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void getVariableValueReturnsDefaultValueWhenUnassigned() {
+		final Context context = createReadyContext();
+
+		assertEquals(17, context.getVariableValue("card.width", 17));
+	}
+
+	@Test
+	void getVariableValueReturnsDefaultValueOnUnknownVariable() {
+		final Context context = createReadyContext();
+
+		assertEquals("default", context.getVariableValue("unknown_variable", "default"));
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void getVariableValueReturnsVariableValuesWhenOverridden() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 0);
+
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+	}
+
+	@Test
+	void getVariableValueQueuesExposureAfterPeekVariableValue() {
+		final Context context = createReadyContext();
+
+		context.peekVariableValue("banner.border", 17);
+		context.peekVariableValue("banner.size", 17);
+
+		assertEquals(0, context.getPendingCount());
+
+		context.getVariableValue("banner.border", 17);
+		context.getVariableValue("banner.size", 17);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void getVariableValueQueuesExposureOnce() {
+		final Context context = createReadyContext();
+
+		context.getVariableValue("banner.border", 17);
+		context.getVariableValue("banner.size", 17);
+
+		assertEquals(1, context.getPendingCount());
+
+		context.getVariableValue("banner.border", 17);
+		context.getVariableValue("banner.size", 17);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void peekVariableValueReturnsDefaultValueWhenUnassigned() {
+		final Context context = createReadyContext();
+
+		assertEquals(17, context.peekVariableValue("card.width", 17));
+	}
+
+	@Test
+	void peekVariableValueReturnsVariableValuesWhenOverridden() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 0);
+
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+	}
+
+	@Test
+	void peekVariableValueReturnsDefaultValueOnUnknownOverrideVariant() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 15);
+
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+	}
+
+	@Test
+	void refreshKeepsOverrides() {
+		final Context context = createReadyContext();
+
+		context.setOverride("exp_test_ab", 5);
+		assertEquals(5, context.getOverride("exp_test_ab"));
+
+		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
+
+		context.refresh();
+
+		assertEquals(5, context.getOverride("exp_test_ab"));
+		assertEquals(5, context.getTreatment("exp_test_ab"));
+	}
+
+	@Test
+	void refreshKeepsCustomAssignments() {
+		final Context context = createReadyContext();
+
+		context.setCustomAssignment("exp_test_ab", 2);
+		assertEquals(2, context.getCustomAssignment("exp_test_ab"));
+
+		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
+
+		context.refresh();
+
+		assertEquals(2, context.getCustomAssignment("exp_test_ab"));
+		assertEquals(2, context.getTreatment("exp_test_ab"));
+	}
+
+	@Test
+	void refreshDoesNotCallPublishWhenFailed() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isReady());
+		assertTrue(context.isFailed());
+
+		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
+
+		context.refresh();
+
+		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
+	}
+
+	@Test
+	void publishIncludesExposureData() {
+		final Context context = createReadyContext();
+
+		context.getTreatment("exp_test_ab");
+
+		assertEquals(1, context.getPendingCount());
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.exposures = new Exposure[]{
+				new Exposure(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+		};
+
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void publishIncludesGoalData() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125, "hours", 245));
+
+		assertEquals(1, context.getPendingCount());
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.goals = new GoalAchievement[]{
+				new GoalAchievement("goal1", clock.millis(), new TreeMap<>(mapOf("amount", 125, "hours", 245))),
+		};
+
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void publishIncludesAttributeData() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnits(units)
+				.setAttributes(mapOf("attr1", "value1"));
+
+		final Context context = createContext(config, dataFutureReady);
+
+		context.track("goal1", null);
+
+		final PublishEvent expected = new PublishEvent();
+		expected.hashed = true;
+		expected.publishedAt = clock.millis();
+		expected.units = publishUnits;
+		expected.goals = new GoalAchievement[]{
+				new GoalAchievement("goal1", clock.millis(), null),
+		};
+		expected.attributes = new Attribute[]{
+				new Attribute("attr1", "value1", clock.millis()),
+		};
+
+		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void publishClearsQueueOnSuccess() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.publish();
+
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	void publishPropagatesClientErrorOnFailure() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		final Exception failure = new Exception("publish error");
+		when(eventHandler.publish(any(), any())).thenReturn(failedFuture(failure));
+
+		final CompletionException actual = assertThrows(CompletionException.class, context::publish);
+		assertSame(failure, actual.getCause());
+	}
+
+	@Test
+	void closeDoesNotCallEventHandlerWhenQueueIsEmpty() {
+		final Context context = createReadyContext();
+		assertEquals(0, context.getPendingCount());
+
+		context.close();
+
+		assertTrue(context.isClosed());
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
+	}
+
+	@Test
+	void closeCallsEventHandlerWithPendingData() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+
+		context.close();
+
+		assertTrue(context.isClosed());
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), any());
+	}
+
+	@Test
+	void closeDoesNotCallEventHandlerWhenFailed() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isReady());
+		assertTrue(context.isFailed());
+
+		context.getTreatment("exp_test_abc");
+		context.track("goal1", mapOf("amount", 125));
+
+		context.close();
+
+		assertTrue(context.isClosed());
+		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
+	}
+
+	@Test
+	void closeAsyncReturnsSameFutureWhenCalledTwice() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> closeFuture1 = context.closeAsync();
+		final CompletableFuture<Void> closeFuture2 = context.closeAsync();
+
+		assertSame(closeFuture1, closeFuture2);
+
+		publishFuture.complete(null);
+		closeFuture1.join();
+
+		assertTrue(context.isClosed());
+	}
+
+	@Test
+	void closeAsyncReturnsCompletedFutureWhenAlreadyClosed() {
+		final Context context = createReadyContext();
+
+		context.close();
+		assertTrue(context.isClosed());
+
+		final CompletableFuture<Void> closeFuture = context.closeAsync();
+		assertTrue(closeFuture.isDone());
+	}
+
+	@Test
+	void trackQueuesGoalWithProperties() {
+		final Context context = createReadyContext();
+
+		final Map<String, Object> properties = mapOf("amount", 125, "hours", 245);
+		context.track("goal1", properties);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void trackQueuesGoalWithNullProperties() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", null);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void getVariableValueConflictingKeyOverlappingAudiences() {
+		for (final Experiment experiment : data.experiments) {
+			switch (experiment.name) {
+			case "exp_test_ab":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"arrow\"}";
+				break;
+			case "exp_test_abc":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			default:
+				break;
+			}
+		}
+
+		final Context context = createReadyContext(data);
+		context.setAttribute("age", 25);
+		assertEquals("arrow", context.getVariableValue("icon", "square"));
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void publishKeepsEventsPendingOnFailure() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		final Exception failure = new Exception("PUBLISH_FAILED");
+		when(eventHandler.publish(any(), any())).thenReturn(failedFuture(failure));
+
+		assertThrows(CompletionException.class, context::publish);
+
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void setOverrideSucceedsAfterClose() {
+		final Context context = createReadyContext();
+
+		context.close();
+		assertTrue(context.isClosed());
+
+		context.setOverride("exp_test_ab", 2);
+		assertEquals(2, context.getOverride("exp_test_ab"));
+	}
+
+	@Test
+	void setOverridesSucceedsAfterClose() {
+		final Context context = createReadyContext();
+
+		context.close();
+		assertTrue(context.isClosed());
+
+		context.setOverrides(mapOf("exp_test_ab", 2, "exp_test_abc", 1));
+		assertEquals(2, context.getOverride("exp_test_ab"));
+		assertEquals(1, context.getOverride("exp_test_abc"));
+	}
+
+	@Test
+	void peekVariableValueConflictingKeyOverlappingAudiences() {
+		for (final Experiment experiment : data.experiments) {
+			switch (experiment.name) {
+			case "exp_test_ab":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"arrow\"}";
+				break;
+			case "exp_test_abc":
+				assert (expectedVariants.get(experiment.name) != 0);
+				experiment.audienceStrict = true;
+				experiment.audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+				experiment.variants[expectedVariants.get(experiment.name)].config = "{\"icon\":\"circle\"}";
+				break;
+			default:
+				break;
+			}
+		}
+
+		final Context context = createReadyContext(data);
+		context.setAttribute("age", 25);
+		assertEquals("arrow", context.peekVariableValue("icon", "square"));
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void concurrentProducerDuringFailedPublishRestoresBothEvents() {
+		final Context context = createReadyContext();
+
+		context.track("goal_a", mapOf("amount", 1));
+		assertEquals(1, context.getPendingCount());
+
+		final CompletableFuture<Void> publishFuture1 = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture1);
+
+		final CompletableFuture<Void> asyncResult1 = context.publishAsync();
+		assertEquals(0, context.getPendingCount());
+
+		context.track("goal_b", mapOf("amount", 2));
+		assertEquals(1, context.getPendingCount());
+
+		final Exception failure = new Exception("publish failed");
+		publishFuture1.completeExceptionally(failure);
+
+		assertThrows(CompletionException.class, asyncResult1::join);
+		assertEquals(2, context.getPendingCount());
+
+		final CompletableFuture<Void> publishFuture2 = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture2);
+
+		final CompletableFuture<Void> asyncResult2 = context.publishAsync();
+		assertEquals(0, context.getPendingCount());
+
+		publishFuture2.complete(null);
+		asyncResult2.join();
+
+		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void closeAsyncRetryAfterFailedPublishSucceeds() {
+		final Context context = createReadyContext();
+
+		context.track("goal_a", mapOf("amount", 1));
+		assertEquals(1, context.getPendingCount());
+
+		final CompletableFuture<Void> publishFuture1 = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture1);
+
+		final CompletableFuture<Void> closeFuture1 = context.closeAsync();
+		assertFalse(context.isClosed());
+
+		final Exception failure = new Exception("publish failed");
+		publishFuture1.completeExceptionally(failure);
+
+		final CompletionException actual = assertThrows(CompletionException.class, closeFuture1::join);
+		assertSame(failure, actual.getCause());
+
+		assertFalse(context.isClosed());
+		assertTrue(context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> publishFuture2 = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture2);
+
+		final CompletableFuture<Void> closeFuture2 = context.closeAsync();
+		assertFalse(closeFuture2 == closeFuture1, "second closeAsync must return a new future");
+
+		publishFuture2.complete(null);
+		closeFuture2.join();
+
+		assertTrue(context.isClosed());
+		assertEquals(0, context.getPendingCount());
+
+		verify(eventHandler, Mockito.times(2)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCanCloseContextInline() throws Exception {
+		final Context context = createReadyContext();
+		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+			final CompletableFuture<Void> result = context.closeAsync();
+			closeResult.set(result);
+			return result;
+		});
+		context.track("goal", mapOf("amount", 1));
+
+		final CompletableFuture<Void> publishResult = context.publishAsync();
+		publishResult.get(2, TimeUnit.SECONDS);
+		closeResult.get().get(2, TimeUnit.SECONDS);
+
+		assertTrue(context.isClosed());
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCanCloseContextFromWorkerThread() throws Exception {
+		final Context context = createReadyContext();
+		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
+		when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+			final CompletableFuture<Void> transportResult = new CompletableFuture<>();
+			final Thread worker = new Thread(() -> {
+				try {
+					final CompletableFuture<Void> result = context.closeAsync();
+					closeResult.set(result);
+					result.get(2, TimeUnit.SECONDS);
+					transportResult.complete(null);
+				} catch (Exception exception) {
+					transportResult.completeExceptionally(exception);
+				}
+			});
+			worker.setDaemon(true);
+			worker.start();
+			return transportResult;
+		});
+		context.track("goal", mapOf("amount", 1));
+
+		final CompletableFuture<Void> publishResult = context.publishAsync();
+		publishResult.get(2, TimeUnit.SECONDS);
+		closeResult.get().get(2, TimeUnit.SECONDS);
+
+		assertTrue(context.isClosed());
+		assertEquals(0, context.getPendingCount());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publisherCanCloseContextFromExecutorCallback() throws Exception {
+		final Context context = createReadyContext();
+		final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
+			final Thread thread = new Thread(runnable);
+			thread.setDaemon(true);
+			return thread;
+		});
+		final AtomicReference<CompletableFuture<Void>> closeResult = new AtomicReference<>();
+		try {
+			when(eventHandler.publish(any(), any())).thenAnswer(invocation -> {
+				final CompletableFuture<Void> transportResult = new CompletableFuture<>();
+				executor.execute(() -> {
+					try {
+						final CompletableFuture<Void> result = context.closeAsync();
+						closeResult.set(result);
+						result.get(2, TimeUnit.SECONDS);
+						transportResult.complete(null);
+					} catch (Exception exception) {
+						transportResult.completeExceptionally(exception);
+					}
+				});
+				return transportResult;
+			});
+			context.track("goal", mapOf("amount", 1));
+
+			final CompletableFuture<Void> publishResult = context.publishAsync();
+			publishResult.get(2, TimeUnit.SECONDS);
+			closeResult.get().get(2, TimeUnit.SECONDS);
+
+			assertTrue(context.isClosed());
+			assertEquals(0, context.getPendingCount());
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void publishSucceedsWhenLoggerThrowsOnPublishEvent() {
+		final Context context = createReadyContext();
+
+		context.track("goal1", mapOf("amount", 125));
+		assertEquals(1, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		Mockito.doThrow(new RuntimeException("logger failure"))
+				.when(eventLogger).handleEvent(any(), eq(ContextEventLogger.EventType.Publish), any());
+
+		assertDoesNotThrow(context::publish);
+		assertEquals(0, context.getPendingCount());
+
+		// no new events were queued, so a retry must not re-deliver the same batch
+		context.publishAsync().join();
+		assertEquals(0, context.getPendingCount());
+
+		verify(eventHandler, Mockito.times(1)).publish(any(), any());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void synchronousPublisherFailureSettlesWhenErrorLoggerThrows() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final RuntimeException publisherFailure = new RuntimeException("publisher threw");
+		when(eventHandler.publish(any(), any())).thenThrow(publisherFailure);
+		Mockito.doThrow(new RuntimeException("logger threw"))
+				.when(eventLogger).handleEvent(any(), eq(ContextEventLogger.EventType.Error), any());
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		final CompletionException actual = assertThrows(CompletionException.class, publishResult::join);
+		assertSame(publisherFailure, actual.getCause());
+		assertTrue(context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> closeResult = assertDoesNotThrow(context::closeAsync);
+		assertTrue(closeResult.isDone());
+		assertThrows(CompletionException.class, closeResult::join);
+		assertFalse(context.isClosed());
+		assertTrue(context.getPendingCount() > 0);
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void synchronousPublisherFailureRestoresEventsAndDoesNotHangClose() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final RuntimeException failure = new RuntimeException("publisher threw");
+		when(eventHandler.publish(any(), any())).thenThrow(failure);
+
+		final CompletableFuture<Void> publishResult = assertDoesNotThrow(context::publishAsync);
+		final CompletionException actual = assertThrows(CompletionException.class, publishResult::join);
+		assertSame(failure, actual.getCause());
+		assertTrue(context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> closeResult = assertDoesNotThrow(context::closeAsync);
+		assertTrue(closeResult.isDone());
+		assertThrows(CompletionException.class, closeResult::join);
+		assertFalse(context.isClosed());
+		assertTrue(context.getPendingCount() > 0);
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void cancellingPublishResultDoesNotDisturbPublishAccounting() {
+		final Context context = createReadyContext();
+		context.track("goal", mapOf("amount", 1));
+
+		final CompletableFuture<Void> publisherFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publisherFuture)
+				.thenReturn(CompletableFuture.completedFuture(null));
+
+		final CompletableFuture<Void> publishResult = context.publishAsync();
+		assertTrue(publishResult.cancel(false));
+
+		final RuntimeException failure = new RuntimeException("publish failed");
+		publisherFuture.completeExceptionally(failure);
+
+		assertTrue(context.getPendingCount() > 0);
+
+		final CompletableFuture<Void> retryPublish = assertDoesNotThrow(context::publishAsync);
+		retryPublish.join();
+		assertEquals(0, context.getPendingCount());
 	}
 }

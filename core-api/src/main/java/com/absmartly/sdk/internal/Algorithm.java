@@ -4,6 +4,7 @@ import java.util.Set;
 import java8.util.function.Function;
 
 public class Algorithm {
+	@SuppressWarnings("unchecked")
 	public static <T, R> R[] mapSetToArray(Set<T> set, R[] array, Function<T, R> mapper) {
 		final int size = set.size();
 		if (array.length < size) {

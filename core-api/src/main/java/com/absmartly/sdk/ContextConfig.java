@@ -29,7 +29,7 @@ public class ContextConfig {
 	}
 
 	public String getUnit(@Nonnull final String unitType) {
-		return units_.get(unitType);
+		return units_ != null ? units_.get(unitType) : null;
 	}
 
 	public Map<String, String> getUnits() {
@@ -53,7 +53,7 @@ public class ContextConfig {
 	}
 
 	public Object getAttribute(@Nonnull final String name) {
-		return this.attributes_.get(name);
+		return this.attributes_ != null ? this.attributes_.get(name) : null;
 	}
 
 	public Map<String, Object> getAttributes() {
@@ -77,7 +77,7 @@ public class ContextConfig {
 	}
 
 	public Object getOverride(@Nonnull final String experimentName) {
-		return this.overrides_.get(experimentName);
+		return this.overrides_ != null ? this.overrides_.get(experimentName) : null;
 	}
 
 	public Map<String, Integer> getOverrides() {
@@ -85,27 +85,27 @@ public class ContextConfig {
 	}
 
 	public ContextConfig setCustomAssignment(@Nonnull final String experimentName, int variant) {
-		if (cassigmnents_ == null) {
-			cassigmnents_ = new HashMap<String, Integer>();
+		if (cassignments_ == null) {
+			cassignments_ = new HashMap<String, Integer>();
 		}
-		cassigmnents_.put(experimentName, variant);
+		cassignments_.put(experimentName, variant);
 		return this;
 	}
 
 	public ContextConfig setCustomAssignments(@Nonnull final Map<String, Integer> customAssignments) {
-		if (cassigmnents_ == null) {
-			cassigmnents_ = new HashMap<String, Integer>(customAssignments.size());
+		if (cassignments_ == null) {
+			cassignments_ = new HashMap<String, Integer>(customAssignments.size());
 		}
-		cassigmnents_.putAll(customAssignments);
+		cassignments_.putAll(customAssignments);
 		return this;
 	}
 
 	public Object getCustomAssignment(@Nonnull final String experimentName) {
-		return this.cassigmnents_.get(experimentName);
+		return this.cassignments_ != null ? this.cassignments_.get(experimentName) : null;
 	}
 
 	public Map<String, Integer> getCustomAssignments() {
-		return this.cassigmnents_;
+		return this.cassignments_;
 	}
 
 	public ContextEventLogger getEventLogger() {
@@ -138,7 +138,7 @@ public class ContextConfig {
 	private Map<String, String> units_;
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
-	private Map<String, Integer> cassigmnents_;
+	private Map<String, Integer> cassignments_;
 
 	private ContextEventLogger eventLogger_;
 

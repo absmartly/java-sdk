@@ -32,4 +32,17 @@ class HashingTest {
 
 		assertEquals("Rxnq-eM9eE1SEoMnkEMOIw", new String(Hashing.hashUnit(sb.toString()), StandardCharsets.US_ASCII));
 	}
+
+	@Test
+	void testHashUnitAstralAndMultibyte() {
+		// These vectors pin canonical UTF-8 encoding: surrogate pairs must produce 4-byte sequences.
+		assertEquals("KgLqw51xanDs83V5GFkntg",
+				new String(Hashing.hashUnit("😀"), StandardCharsets.US_ASCII));
+		assertEquals("ZJuDalvUWRJnVtkspj-2bQ",
+				new String(Hashing.hashUnit("😀😁"), StandardCharsets.US_ASCII));
+		assertEquals("v2CJG7YcjjWncKOSCzF2GA",
+				new String(Hashing.hashUnit("世界你好"), StandardCharsets.US_ASCII));
+		assertEquals("SCgk4OzXlFMvo1UMsP88fA",
+				new String(Hashing.hashUnit("user_世界_123"), StandardCharsets.US_ASCII));
+	}
 }

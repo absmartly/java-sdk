@@ -4,12 +4,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.net.SocketTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java8.util.concurrent.CompletableFuture;
 import java8.util.concurrent.CompletionException;
 
+import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
@@ -22,6 +25,7 @@ import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.util.TimeValue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -284,6 +288,132 @@ class DefaultHTTPClientTest extends TestUtils {
 			assertArrayEquals(new byte[]{123, 0}, response.getContent());
 
 			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).execute(any(), any());
+		}
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void testConnectionTimeout() {
+		try (final MockedStatic<HttpAsyncClientBuilder> builderStatic = Mockito
+				.mockStatic(HttpAsyncClientBuilder.class)) {
+			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
+
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(
+					DefaultHTTPClientConfig.create().setConnectTimeout(100));
+
+			final ConnectTimeoutException timeoutException = new ConnectTimeoutException("Connection timed out");
+			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
+				final FutureCallback<SimpleHttpResponse> callback = invocation.getArgument(1);
+				callback.failed(timeoutException);
+				return null;
+			});
+
+			final CompletableFuture<HTTPClient.Response> responseFuture = httpClient
+					.get("https://api.absmartly.com/v1/context", null, null);
+
+			final CompletionException thrown = assertThrows(CompletionException.class, responseFuture::join);
+			assertSame(timeoutException, thrown.getCause());
+			assertTrue(thrown.getCause() instanceof ConnectTimeoutException);
+		}
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void testReadTimeout() {
+		try (final MockedStatic<HttpAsyncClientBuilder> builderStatic = Mockito
+				.mockStatic(HttpAsyncClientBuilder.class)) {
+			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
+
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
+
+			final SocketTimeoutException readTimeoutException = new SocketTimeoutException("Read timed out");
+			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
+				final FutureCallback<SimpleHttpResponse> callback = invocation.getArgument(1);
+				callback.failed(readTimeoutException);
+				return null;
+			});
+
+			final CompletableFuture<HTTPClient.Response> responseFuture = httpClient
+					.get("https://api.absmartly.com/v1/context", null, null);
+
+			final CompletionException thrown = assertThrows(CompletionException.class, responseFuture::join);
+			assertSame(readTimeoutException, thrown.getCause());
+			assertTrue(thrown.getCause() instanceof SocketTimeoutException);
+		}
+	}
+
+	@Test
+	void testRateLimiting429Response() throws ExecutionException, InterruptedException {
+		try (final MockedStatic<HttpAsyncClientBuilder> builderStatic = Mockito
+				.mockStatic(HttpAsyncClientBuilder.class)) {
+			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
+
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
+
+			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
+				final FutureCallback<SimpleHttpResponse> callback = invocation.getArgument(1);
+				callback.completed(SimpleHttpResponse.create(429, "Too Many Requests".getBytes(),
+						ContentType.TEXT_PLAIN));
+				return null;
+			});
+
+			final CompletableFuture<HTTPClient.Response> responseFuture = httpClient
+					.get("https://api.absmartly.com/v1/context", null, null);
+			final HTTPClient.Response response = responseFuture.get();
+
+			assertEquals(429, response.getStatusCode());
+			assertEquals("text/plain", response.getContentType());
+		}
+	}
+
+	@Test
+	void testRetryOnTransientError503Response() throws ExecutionException, InterruptedException {
+		try (final MockedStatic<HttpAsyncClientBuilder> builderStatic = Mockito
+				.mockStatic(HttpAsyncClientBuilder.class)) {
+			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
+
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(
+					DefaultHTTPClientConfig.create().setMaxRetries(3).setRetryInterval(100));
+
+			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
+				final FutureCallback<SimpleHttpResponse> callback = invocation.getArgument(1);
+				callback.completed(SimpleHttpResponse.create(503, "Service Unavailable".getBytes(),
+						ContentType.TEXT_PLAIN));
+				return null;
+			});
+
+			final CompletableFuture<HTTPClient.Response> responseFuture = httpClient
+					.get("https://api.absmartly.com/v1/context", null, null);
+			final HTTPClient.Response response = responseFuture.get();
+
+			assertEquals(503, response.getStatusCode());
+
+			verify(asyncHTTPClient, Mockito.timeout(5000).times(1)).execute(any(), any());
+		}
+	}
+
+	@Test
+	void testSSLCertificateValidation() {
+		try (final MockedStatic<HttpAsyncClientBuilder> builderStatic = Mockito
+				.mockStatic(HttpAsyncClientBuilder.class)) {
+			builderStatic.when(HttpAsyncClientBuilder::create).thenReturn(asyncHTTPClientBuilder);
+
+			final DefaultHTTPClient httpClient = DefaultHTTPClient.create(DefaultHTTPClientConfig.create());
+
+			final javax.net.ssl.SSLHandshakeException sslException = new javax.net.ssl.SSLHandshakeException(
+					"Certificate validation failed");
+			when(asyncHTTPClient.execute(any(), any())).thenAnswer(invocation -> {
+				final FutureCallback<SimpleHttpResponse> callback = invocation.getArgument(1);
+				callback.failed(sslException);
+				return null;
+			});
+
+			final CompletableFuture<HTTPClient.Response> responseFuture = httpClient
+					.get("https://api.absmartly.com/v1/context", null, null);
+
+			final CompletionException thrown = assertThrows(CompletionException.class, responseFuture::join);
+			assertSame(sslException, thrown.getCause());
+			assertTrue(thrown.getCause() instanceof javax.net.ssl.SSLHandshakeException);
 		}
 	}
 }
