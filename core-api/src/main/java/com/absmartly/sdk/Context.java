@@ -1003,16 +1003,6 @@ public class Context implements Closeable {
 		return true;
 	}
 
-	// A custom assignment can only take effect on the normal, traffic-eligible assignment path.
-	// When the cached variant was forced by a higher-precedence rule — a full-on variant, traffic
-	// ineligibility, a strict audience mismatch, or holdout suppression (which clears `assigned`) —
-	// the custom value can never equal that variant, so comparing the two would spuriously
-	// invalidate the cache and re-expose on every getTreatment call. Treat those forced
-	// assignments as cache-valid regardless of the custom assignment.
-	private static boolean variantForcedRegardlessOfCustom(final Assignment assignment) {
-		return assignment.fullOn || !assignment.eligible || !assignment.assigned;
-	}
-
 	private boolean audienceMatches(final Experiment experiment, final Assignment assignment) {
 		if (experiment.audience != null && experiment.audience.length() > 0) {
 			if (attrsSeq_.get() > assignment.attrsSeq) {
@@ -1045,6 +1035,14 @@ public class Context implements Closeable {
 		boolean eligible;
 		boolean fullOn;
 		boolean custom;
+		// The cassignments_ entry read while this Assignment was resolved (null if none was set
+		// yet), regardless of whether the resolution path actually consulted it - a full-on or
+		// traffic-ineligible variant never does. Comparing the live entry against this pinned
+		// value, rather than against the resolved variant, is what tells the cache apart from a
+		// custom assignment that legitimately changes the outcome: the live value can equal the
+		// resolved variant by construction on the eligible path, but a forced variant can never
+		// equal a newly-set custom value, which would otherwise invalidate on every call.
+		Integer customAssignment;
 
 		boolean audienceMismatch;
 		// Held out by a union of applicable holdouts: no exposure for this experiment, control
@@ -1121,8 +1119,7 @@ public class Context implements Closeable {
 						// previously not-running experiment
 						return assignment;
 					}
-				} else if ((custom == null) || variantForcedRegardlessOfCustom(assignment)
-						|| custom == assignment.variant) {
+				} else if (Objects.equals(custom, assignment.customAssignment)) {
 					if (experimentMatches(experiment, assignment)
 							&& audienceMatches(experiment.data, assignment)) {
 						// assignment up-to-date
@@ -1146,6 +1143,7 @@ public class Context implements Closeable {
 			final Assignment assignment = new Assignment();
 			assignment.name = experimentName;
 			assignment.eligible = true;
+			assignment.customAssignment = custom;
 
 			if (override != null) {
 				if (experiment != null) {

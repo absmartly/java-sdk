@@ -846,6 +846,31 @@ class ContextTest extends TestUtils {
 		assertEquals(cassignments.size() * 3, context.getPendingCount());
 	}
 
+	// Regression test for the java-sdk#12 cache bug: a full-on variant can never equal the custom
+	// value on file, so the cache-validity check must not compare them directly (that would
+	// invalidate on every call once any custom assignment is set - see
+	// setCustomAssignmentDoesNotOverrideFullOnOrNotEligibleAssignments's sibling history) nor
+	// ignore the custom assignment outright (that would mask a legitimate change and never
+	// re-expose, which is the regression: exposure count must go 1 -> 2 -> 2, not 1 -> 1 -> 1).
+	@Test
+	void setCustomAssignmentAfterExposureReExposesFullOnAssignment() {
+		final Context context = createReadyContext();
+
+		assertEquals(2, context.getTreatment("exp_test_fullon"));
+		assertEquals(1, context.getPendingCount());
+
+		// the custom value can never win against a full-on variant, but setting one is still a
+		// change the cache must react to: it owes exactly one fresh exposure for it
+		context.setCustomAssignment("exp_test_fullon", 0);
+		assertEquals(2, context.getTreatment("exp_test_fullon"));
+		assertEquals(2, context.getPendingCount());
+
+		// repeating the same custom assignment must not re-invalidate the cache
+		context.setCustomAssignment("exp_test_fullon", 0);
+		assertEquals(2, context.getTreatment("exp_test_fullon"));
+		assertEquals(2, context.getPendingCount());
+	}
+
 	@Test
 	void setCustomAssignmentsBeforeReady() {
 		final Context context = createContext(dataFuture);
