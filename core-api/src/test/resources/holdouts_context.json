@@ -102,8 +102,7 @@
 					"config":null
 				}
 			],
-			"audience": null,
-			"holdoutType":"all_full_on"
+			"audience": null
 		}
 	]
 }

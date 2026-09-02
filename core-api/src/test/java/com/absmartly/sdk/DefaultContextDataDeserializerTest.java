@@ -187,7 +187,10 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		};
 		holdoutB.audienceStrict = false;
 		holdoutB.audience = null;
-		holdoutB.holdoutType = "all_full_on";
+		// holdoutType is no longer served (abs#4939): the collector omits it and arity comes
+		// from split.length. Left unset here so the equality assertion pins that a holdout
+		// without the field deserializes cleanly. holdoutA still carries it, pinning that a
+		// legacy payload from an older collector is still tolerated.
 
 		final ContextData expected = new ContextData(
 				new Experiment[]{experiment},
