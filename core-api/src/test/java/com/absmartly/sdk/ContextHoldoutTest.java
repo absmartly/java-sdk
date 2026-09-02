@@ -22,6 +22,7 @@ import java8.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import com.absmartly.sdk.internal.hashing.Hashing;
@@ -1519,6 +1520,67 @@ class ContextHoldoutTest extends TestUtils {
 
 		assertEquals(2, context.getTreatment("exp_multi_holdout_unit_types"));
 		assertEquals(4, context.getPendingCount()); // experiment + 3 holdout exposures
+	}
+
+	// One holdout id covering experiments with two different effective unit types must keep an
+	// independent Assignment (and exposure state) per unit type: alternating lookups between the
+	// two units must never evict each other's slot. Before the fix, getHoldoutAssignment cached
+	// solely by holdout id, so the sequence A1 -> B -> A2 (a first experiment resolving unit type
+	// A, then one resolving unit type B, then a second experiment resolving unit type A again)
+	// evicted A's slot when B was resolved, forcing A2 to recompute against a brand-new
+	// Assignment object with a fresh, unexposed exposureState - and republish the holdout's own
+	// exposure for unit type A a second time. This exactly reproduces the reported A1 -> B -> A2
+	// alternation: one holdout id/iteration, two unit types, three covered-experiment
+	// resolutions in that order.
+	@Test
+	void oneHoldoutCoveringTwoUnitTypesKeepsIndependentExposureStatePerUnitType() {
+		final String unitTypeA = "user_id";
+		final String unitTypeB = "session_id";
+		final Experiment expA1 = coveredBy(newExperiment(1, "exp_unit_a1", unitTypeA, 0), 11);
+		final Experiment expB = coveredBy(newExperiment(2, "exp_unit_b", unitTypeB, 0), 11);
+		final Experiment expA2 = coveredBy(newExperiment(3, "exp_unit_a2", unitTypeA, 0), 11);
+		// not held out for either unit under HOLDOUT_B seeds, isolating the alternation bug from
+		// suppression: every covered experiment assigns normally, only the holdout's own
+		// once-per-(id, unit type) exposure is under test.
+		final Experiment holdout = newHoldout(11, "holdout_shared", unitTypeA, HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO,
+				"full");
+
+		final ContextConfig config = ContextConfig.create().setUnit(unitTypeA, UID).setUnit(unitTypeB, UID);
+		final Context context = createReadyContext(config,
+				contextDataOf(new Experiment[]{holdout}, expA1, expB, expA2));
+
+		// A1: resolves and caches holdout_shared under (11, unitTypeA); fires its own exposure and
+		// the holdout's.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unit_a1"));
+		// B: resolves (11, unitTypeB). Pre-fix, this evicted the (11, unitTypeA) slot.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unit_b"));
+		// A2: a DIFFERENT experiment also covered by holdout 11 under unitTypeA. Pre-fix, the
+		// evicted slot forces a fresh, unexposed Assignment object here, so triggering exp_unit_a2
+		// re-fires holdout_shared's exposure a second time for the same unit type.
+		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unit_a2"));
+
+		// Pedro's reproduction: 3 covered-experiment exposures + 1 holdout exposure per unit type
+		// = 5 pending events, not 6.
+		assertEquals(5, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(Mockito.eq(context), captor.capture());
+
+		final Exposure[] exposures = captor.getValue().exposures;
+		assertEquals(5, exposures.length);
+
+		// holdout_shared's own exposure must be published exactly once per unit type (twice
+		// total), never once per alternation (which would be three times: A1, B, A2).
+		int holdoutExposureCount = 0;
+		for (final Exposure exposure : exposures) {
+			if (exposure.id == 11) {
+				++holdoutExposureCount;
+			}
+		}
+		assertEquals(2, holdoutExposureCount);
 	}
 
 	// setUnit must be a no-op with respect to the assignment cache when nothing has been cached

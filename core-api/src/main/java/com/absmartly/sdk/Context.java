@@ -1065,28 +1065,63 @@ public class Context implements Closeable {
 		final AtomicInteger exposureState = new AtomicInteger(ASSIGNMENT_UNEXPOSED);
 	}
 
-	// Pins the (iteration, unitType) a holdout's Assignment was computed against. This is the same
-	// granularity experimentMatches uses for ordinary experiments: seedHi/seedLo/split are
-	// deliberately excluded so a live seed or percentage edit - which does not change who is
-	// covered - never invalidates an already-exposed unit's arm. Only an iteration bump, a genuine
-	// re-randomization epoch, replaces the cached verdict (and its exposure state), exactly as it
-	// does for ordinary experiments. armCount is deliberately excluded here too: it is pinned on
-	// Assignment itself (see armCount below), bundled with the arm number it was computed
-	// against, so the cached arm is always interpreted under its own arity rather than being
-	// invalidated and re-exposed under a new one for a same-iteration arity change.
-	private static class HoldoutAssignment {
-		final Assignment assignment;
-		final int iteration;
+	// A holdout's own Assignment is cached per (id, effective unit type): one holdout id can cover
+	// experiments with different unit types (getHoldoutAssignment receives the covered
+	// experiment's unitType, not the holdout's own declared unitType - see the comment on
+	// getHoldoutAssignment), and each such unit type is a distinct suppression decision with its
+	// own once-per-context exposure state. Keying by id alone let two unit types evict each
+	// other's slot on every alternating lookup, discarding the loser's exposureState and
+	// re-publishing that holdout's membership on the next recomputation. The unit type is part of
+	// this key rather than a field compared inside matches(): duplicating it as both would leave
+	// two sources of truth for the same identity.
+	private static final class HoldoutCacheKey {
+		final int id;
 		final String unitType;
 
-		HoldoutAssignment(Assignment assignment, Experiment holdout, String unitType) {
-			this.assignment = assignment;
-			this.iteration = holdout.iteration;
+		HoldoutCacheKey(int id, String unitType) {
+			this.id = id;
 			this.unitType = unitType;
 		}
 
-		boolean matches(Experiment current, String currentUnitType) {
-			return (iteration == current.iteration) && unitType.equals(currentUnitType);
+		@Override
+		public boolean equals(Object o) {
+			if (this == o) {
+				return true;
+			}
+			if (!(o instanceof HoldoutCacheKey)) {
+				return false;
+			}
+			final HoldoutCacheKey other = (HoldoutCacheKey) o;
+			return (id == other.id) && unitType.equals(other.unitType);
+		}
+
+		@Override
+		public int hashCode() {
+			return (31 * id) + unitType.hashCode();
+		}
+	}
+
+	// Pins the iteration a holdout's Assignment was computed against, for the unit type already
+	// fixed by this entry's HoldoutCacheKey. This is the same granularity experimentMatches uses
+	// for ordinary experiments: seedHi/seedLo/split are deliberately excluded so a live seed or
+	// percentage edit - which does not change who is covered - never invalidates an already-
+	// exposed unit's arm. Only an iteration bump, a genuine re-randomization epoch, replaces the
+	// cached verdict (and its exposure state), exactly as it does for ordinary experiments.
+	// armCount is deliberately excluded here too: it is pinned on Assignment itself (see armCount
+	// below), bundled with the arm number it was computed against, so the cached arm is always
+	// interpreted under its own arity rather than being invalidated and re-exposed under a new
+	// one for a same-iteration arity change.
+	private static class HoldoutAssignment {
+		final Assignment assignment;
+		final int iteration;
+
+		HoldoutAssignment(Assignment assignment, Experiment holdout) {
+			this.assignment = assignment;
+			this.iteration = holdout.iteration;
+		}
+
+		boolean matches(Experiment current) {
+			return iteration == current.iteration;
 		}
 	}
 
@@ -1357,11 +1392,12 @@ public class Context implements Closeable {
 		}
 	}
 
-	// The holdout's own assignment is cached by holdout id rather than name, since holdout
-	// entries live outside the experiments index and are shared by reference across every
-	// covered experiment. Only an iteration change invalidates the cache entry (see
-	// HoldoutAssignment), matching experimentMatches's treatment of ordinary experiments and
-	// guaranteeing an already-exposed unit's arm survives any seed, split or cosmetic edit.
+	// The holdout's own assignment is cached by (id, effective unit type) rather than name, since
+	// holdout entries live outside the experiments index and are shared by reference across every
+	// covered experiment - see HoldoutCacheKey for why the unit type is part of the identity.
+	// Only an iteration change invalidates the cache entry (see HoldoutAssignment), matching
+	// experimentMatches's treatment of ordinary experiments and guaranteeing an already-exposed
+	// unit's arm survives any seed, split or cosmetic edit.
 	//
 	// The `holdout` parameter can be a stale Experiment reference: callers reach this method via
 	// a cached Assignment.holdouts array that may predate the most recent setData (e.g. the
@@ -1383,8 +1419,8 @@ public class Context implements Closeable {
 			}
 
 			final Experiment liveHoldout = resolveLiveHoldout(holdout);
-			final HoldoutAssignment cached = holdoutAssignmentCache_.get(holdout.id);
-			if ((cached != null) && cached.matches(liveHoldout, unitType)) {
+			final HoldoutAssignment cached = holdoutAssignmentCache_.get(new HoldoutCacheKey(holdout.id, unitType));
+			if ((cached != null) && cached.matches(liveHoldout)) {
 				return cached.assignment;
 			}
 		} finally {
@@ -1403,8 +1439,8 @@ public class Context implements Closeable {
 			}
 
 			final Experiment liveHoldout = resolveLiveHoldout(holdout);
-			final HoldoutAssignment cached = holdoutAssignmentCache_.get(holdout.id);
-			if ((cached != null) && cached.matches(liveHoldout, unitType)) {
+			final HoldoutAssignment cached = holdoutAssignmentCache_.get(new HoldoutCacheKey(holdout.id, unitType));
+			if ((cached != null) && cached.matches(liveHoldout)) {
 				return cached.assignment;
 			}
 
@@ -1421,7 +1457,8 @@ public class Context implements Closeable {
 			assignment.variant = assigner.assign(liveHoldout.split, liveHoldout.seedHi, liveHoldout.seedLo);
 			assignment.armCount = (liveHoldout.split != null) ? liveHoldout.split.length : 0;
 
-			holdoutAssignmentCache_.put(liveHoldout.id, new HoldoutAssignment(assignment, liveHoldout, unitType));
+			holdoutAssignmentCache_.put(new HoldoutCacheKey(liveHoldout.id, unitType),
+					new HoldoutAssignment(assignment, liveHoldout));
 
 			return assignment;
 		} finally {
@@ -1754,7 +1791,9 @@ public class Context implements Closeable {
 	// the very next refresh. Only an iteration bump is a genuine re-randomization epoch and
 	// legitimately replaces the entry (and thus resets exposure), matching how experimentMatches
 	// already treats iteration for ordinary experiments.
-	private final Map<Integer, HoldoutAssignment> holdoutAssignmentCache_ = new HashMap<Integer, HoldoutAssignment>();
+	//
+	// Keyed by (id, effective unit type) rather than id alone: see HoldoutCacheKey.
+	private final Map<HoldoutCacheKey, HoldoutAssignment> holdoutAssignmentCache_ = new HashMap<HoldoutCacheKey, HoldoutAssignment>();
 
 	private final ReentrantLock eventLock_ = new ReentrantLock();
 	private final ArrayList<Exposure> exposures_ = new ArrayList<Exposure>();
