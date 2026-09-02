@@ -80,29 +80,7 @@
 				0.05,
 				0.05,
 				0.9
-			],
-			"trafficSeedHi":0,
-			"trafficSeedLo":0,
-			"trafficSplit":[
-				0.0,
-				1.0
-			],
-			"fullOnVariant":0,
-			"variants":[
-				{
-					"name":"A",
-					"config":null
-				},
-				{
-					"name":"B",
-					"config":null
-				},
-				{
-					"name":"C",
-					"config":null
-				}
-			],
-			"audience": null
+			]
 		}
 	]
 }
