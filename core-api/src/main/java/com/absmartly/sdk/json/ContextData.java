@@ -11,12 +11,19 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextData {
 	public Experiment[] experiments = new Experiment[0];
+	public Experiment[] holdouts = new Experiment[0];
 
 	public ContextData() {}
 
 	@SuppressFBWarnings(value = "EI_EXPOSE_REP2")
 	public ContextData(Experiment[] experiments) {
 		this.experiments = experiments;
+	}
+
+	@SuppressFBWarnings(value = "EI_EXPOSE_REP2")
+	public ContextData(Experiment[] experiments, Experiment[] holdouts) {
+		this.experiments = experiments;
+		this.holdouts = holdouts;
 	}
 
 	@Override
@@ -26,18 +33,21 @@ public class ContextData {
 		if (o == null || getClass() != o.getClass())
 			return false;
 		ContextData that = (ContextData) o;
-		return Arrays.equals(experiments, that.experiments);
+		return Arrays.equals(experiments, that.experiments) && Arrays.equals(holdouts, that.holdouts);
 	}
 
 	@Override
 	public int hashCode() {
-		return Arrays.hashCode(experiments);
+		int result = Arrays.hashCode(experiments);
+		result = 31 * result + Arrays.hashCode(holdouts);
+		return result;
 	}
 
 	@Override
 	public String toString() {
 		return "ContextData{" +
 				"experiments=" + Arrays.toString(experiments) +
+				", holdouts=" + Arrays.toString(holdouts) +
 				'}';
 	}
 }

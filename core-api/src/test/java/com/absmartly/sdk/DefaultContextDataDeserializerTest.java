@@ -125,6 +125,78 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 	}
 
 	@Test
+	void deserializeHoldouts() {
+		final byte[] bytes = getResourceBytes("holdouts_context.json");
+
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+		final ContextData data = deser.deserialize(bytes, 0, bytes.length);
+
+		final Experiment experiment = new Experiment();
+		experiment.id = 1;
+		experiment.name = "exp_test_holdout";
+		experiment.unitType = "session_id";
+		experiment.iteration = 1;
+		experiment.seedHi = 3603515;
+		experiment.seedLo = 233373850;
+		experiment.split = new double[]{0.5, 0.5};
+		experiment.trafficSeedHi = 449867249;
+		experiment.trafficSeedLo = 455443629;
+		experiment.trafficSplit = new double[]{0.0, 1.0};
+		experiment.fullOnVariant = 0;
+		experiment.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
+		experiment.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", "{\"banner.border\":1,\"banner.size\":\"large\"}")
+		};
+		experiment.audienceStrict = false;
+		experiment.audience = null;
+		experiment.holdoutIds = new int[]{11};
+
+		final Experiment holdoutA = new Experiment();
+		holdoutA.id = 11;
+		holdoutA.name = "holdout_a";
+		holdoutA.unitType = "session_id";
+		holdoutA.iteration = 1;
+		holdoutA.seedHi = 13;
+		holdoutA.seedLo = 111;
+		holdoutA.split = new double[]{0.1, 0.9};
+		holdoutA.trafficSplit = new double[]{0.0, 1.0};
+		holdoutA.fullOnVariant = 0;
+		holdoutA.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", null)
+		};
+		holdoutA.audienceStrict = false;
+		holdoutA.audience = null;
+		holdoutA.holdoutType = "full";
+
+		final Experiment holdoutB = new Experiment();
+		holdoutB.id = 12;
+		holdoutB.name = "holdout_b";
+		holdoutB.unitType = "session_id";
+		holdoutB.iteration = 1;
+		holdoutB.seedHi = 1;
+		holdoutB.seedLo = 222;
+		holdoutB.split = new double[]{0.05, 0.05, 0.9};
+		holdoutB.trafficSplit = null;
+		holdoutB.fullOnVariant = 0;
+		holdoutB.variants = null;
+		holdoutB.audienceStrict = false;
+		holdoutB.audience = null;
+		// holdoutType is no longer served (abs#4939): the collector omits it and arity comes
+		// from split.length. Left unset here so the equality assertion pins that a holdout
+		// without the field deserializes cleanly. holdoutA still carries it, pinning that a
+		// legacy payload from an older collector is still tolerated.
+
+		final ContextData expected = new ContextData(
+				new Experiment[]{experiment},
+				new Experiment[]{holdoutA, holdoutB});
+
+		assertNotNull(data);
+		assertEquals(expected, data);
+	}
+
+	@Test
 	void testMalformedJsonResponse() {
 		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
 
