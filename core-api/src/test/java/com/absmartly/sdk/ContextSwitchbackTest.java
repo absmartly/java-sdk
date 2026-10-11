@@ -807,4 +807,59 @@ class ContextSwitchbackTest {
 					false), exposures[i]);
 		}
 	}
+
+	// Each identity transition is a new epoch: returning to an identical grid re-resolves instead of
+	// resurrecting the slot from before the transition.
+	@Test
+	void switchbackToUnitToIdenticalSwitchbackReresolves() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + 10;
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(1, context.getPendingCount());
+
+		final Experiment toUnit = switchback(2, HOUR);
+		toUnit.randomizationType = "unit";
+		refreshTo(context, toUnit);
+		context.getTreatment("exp_sb");
+		assertEquals(2, context.getPendingCount());
+
+		refreshTo(context, switchback(2, HOUR));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(3, context.getPendingCount());
+	}
+
+	@Test
+	void removedAndRestoredSwitchbackReresolves() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + 10;
+		context.getTreatment("exp_sb");
+
+		refreshTo(context);
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(2, context.getPendingCount());
+
+		refreshTo(context, switchback(2, HOUR));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(3, context.getPendingCount());
+	}
+
+	// The pre-anchor bare-name slot shares the lifecycle of the period slots.
+	@Test
+	void preAnchorSlotIsDroppedWhenTheGridChanges() {
+		final Experiment gridA = switchback(2, HOUR);
+		gridA.switchbackStartAt = ANCHOR + 10 * HOUR;
+		final Context context = createContext(dataOf(gridA));
+		clock.now = ANCHOR + 10;
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(1, context.getPendingCount());
+
+		refreshTo(context, switchback(2, HOUR));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(2, context.getPendingCount());
+
+		refreshTo(context, gridA);
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(3, context.getPendingCount());
+	}
 }

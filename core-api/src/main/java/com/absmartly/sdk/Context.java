@@ -1067,8 +1067,9 @@ public class Context implements Closeable {
 		return experimentName + SWITCHBACK_KEY_SEPARATOR + periodIndex;
 	}
 
-	// Period slots of one experiment under one switchback identity. Indices from different
-	// identities are never compared: a changed start or period length re-maps every index.
+	// Lifecycle of one switchback experiment's cache slots: the bare-name slot (pre-anchor or an
+	// unevaluable grid) and its period slots, all under one switchback identity. Indices from
+	// different identities are never compared: a changed start or period length re-maps them.
 	private static final class SwitchbackEpoch {
 		final int id;
 		final int iteration;
@@ -1088,7 +1089,8 @@ public class Context implements Closeable {
 		}
 
 		boolean matches(final Experiment experiment) {
-			return isSwitchback(experiment) && (id == experiment.id) && (iteration == experiment.iteration)
+			return (experiment != null) && isSwitchback(experiment) && (id == experiment.id)
+					&& (iteration == experiment.iteration)
 					&& Objects.equals(clusterUnitType, experiment.switchbackClusterUnitType)
 					&& Objects.equals(startAt, experiment.switchbackStartAt)
 					&& Objects.equals(periodMs, experiment.switchbackPeriodMs)
@@ -1096,25 +1098,35 @@ public class Context implements Closeable {
 		}
 	}
 
-	// Records periodIndex as resolved under the experiment's current identity, first dropping
-	// every period slot of a previous identity. At most SWITCHBACK_RETAINED_PERIODS indices are
-	// kept; the lowest index other than periodIndex is evicted, so the entry just installed always
-	// survives. Exposure dedup therefore holds only within the retained window: re-entering an
-	// evicted period (clock rewind, or a caller delayed across two boundaries) creates one new
-	// assignment for it, and that assignment then stays cached like any other.
+	// Drops every slot of the experiment's switchback epoch, bare-name slot included, when the
+	// installed definition no longer matches it: a type change, removal, restart or grid edit
+	// starts a new epoch, so returning to an identical definition re-resolves. Caller holds the
+	// contextLock_ write lock. Experiments never served as switchback have no epoch.
+	private void reconcileSwitchbackEpoch(final String experimentName, final Experiment experiment) {
+		final SwitchbackEpoch epoch = switchbackEpochs_.get(experimentName);
+		if ((epoch != null) && !epoch.matches(experiment)) {
+			for (final Long period : epoch.periods) {
+				assignmentCache_.remove(switchbackCacheKey(experimentName, period));
+			}
+			assignmentCache_.remove(experimentName);
+			switchbackEpochs_.remove(experimentName);
+		}
+	}
+
+	// Records a switchback resolution under the current epoch. At most SWITCHBACK_RETAINED_PERIODS
+	// period indices are kept; the lowest index other than periodIndex is evicted, so the entry
+	// just installed always survives. Exposure dedup therefore holds only within the retained
+	// window: re-entering an evicted period (clock rewind, or a caller delayed across two
+	// boundaries) creates one new assignment for it, which then stays cached like any other.
 	private void retainSwitchbackPeriod(final String experimentName, final Experiment experiment,
 			final long periodIndex) {
 		SwitchbackEpoch epoch = switchbackEpochs_.get(experimentName);
-		if ((epoch == null) || !epoch.matches(experiment)) {
-			if (epoch != null) {
-				for (final Long period : epoch.periods) {
-					if (period != periodIndex) {
-						assignmentCache_.remove(switchbackCacheKey(experimentName, period));
-					}
-				}
-			}
+		if (epoch == null) {
 			epoch = new SwitchbackEpoch(experiment);
 			switchbackEpochs_.put(experimentName, epoch);
+		}
+		if (periodIndex == NO_SWITCHBACK_PERIOD) {
+			return;
 		}
 		epoch.periods.add(periodIndex);
 		while (epoch.periods.size() > SWITCHBACK_RETAINED_PERIODS) {
@@ -1478,7 +1490,7 @@ public class Context implements Closeable {
 			}
 
 			assignmentCache_.put(cacheKey, assignment);
-			if (periodIndex != NO_SWITCHBACK_PERIOD) {
+			if ((experiment != null) && isSwitchback(experiment.data)) {
 				retainSwitchbackPeriod(experimentName, experiment.data, periodIndex);
 			}
 
@@ -1884,6 +1896,9 @@ public class Context implements Closeable {
 		}
 
 		try {
+			// contextLock_ is taken first (the order getAssignment uses) so installing the data
+			// and dropping superseded switchback epochs is one atomic step for resolvers.
+			contextLock_.writeLock().lock();
 			dataLock_.writeLock().lock();
 
 			index_ = index;
@@ -1891,9 +1906,15 @@ public class Context implements Closeable {
 			holdoutsById_ = holdoutsById;
 			data_ = data;
 
+			for (final String name : new ArrayList<String>(switchbackEpochs_.keySet())) {
+				final ContextExperiment experiment = index.get(name);
+				reconcileSwitchbackEpoch(name, (experiment != null) ? experiment.data : null);
+			}
+
 			setRefreshTimer();
 		} finally {
 			dataLock_.writeLock().unlock();
+			contextLock_.writeLock().unlock();
 		}
 	}
 
