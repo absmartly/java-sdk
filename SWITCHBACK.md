@@ -55,9 +55,10 @@ For a switchback experiment:
 
 ### Exposure deduplication
 
-Each period gets its own cached assignment and exposure state. The context keeps at most the
-**two most recently resolved period indices** per experiment. When a third is resolved, the lowest
-other index is evicted; the period just resolved is never evicted.
+Each period gets its own cached assignment and exposure state. The context retains **at most two
+period indices** per experiment. On installing a third, it evicts the lowest index other than the
+one just installed. Retention is by index, not recency: a cache hit does not protect a period from
+eviction.
 
 - In normal forward time, the SDK emits one exposure per experiment, cluster and period. After a
   boundary, the next `getTreatment`/`getVariableValue` returns the new period's variant and emits a
@@ -66,8 +67,11 @@ other index is evicted; the period just resolved is never evicted.
   exposure for that period. This happens when the clock moves back by two or more periods, or a
   caller reads the clock and is then delayed until two later periods have been resolved. The
   new assignment is cached again, so re-entry costs one extra exposure per period re-entered,
-  never one per call. The duplicate has the same variant and lies in the same period, so analysis
-  sees it as a repeat, not a mismatch.
+  never one per call. Provided seed, split and custom assignment are unchanged, the duplicate has
+  the same variant and lies in the same period, so analysis sees it as a repeat. If any of them
+  changed in between, the recreated assignment uses the current values and can carry a different
+  variant. Deduplication on re-entry is a bounded-cache best effort, not a guarantee against
+  mixed-variant records for a period.
 - Pre-anchor and unevaluable-grid resolutions share one slot per experiment, so they expose once.
 
 ### Refresh and epochs
@@ -77,12 +81,15 @@ An experiment's switchback identity is `randomizationType`, `switchbackClusterUn
 backend rejects changes to the grid fields after an experiment starts, so within a live experiment
 a change means a pre-start edit, a restart (new iteration), or a type change.
 
-When a refresh installs a definition whose identity differs from the one the cached switchback
-assignments were resolved under, every one of that experiment's switchback slots is dropped
-together. That includes the pre-anchor slot and override assignments. The change starts a new
-epoch, and the next call re-resolves and exposes again even if the period number is unchanged.
-This also applies when an experiment switches to unit randomization, or is removed, and later
-returns with an identical definition. Changes to burn, carryover and estimand values do not
+Each refresh compares every experiment's identity with the previously installed definition. Any
+difference, including the experiment being absent or a unit experiment on either side, gives the
+experiment a new generation. Cached switchback assignments record the generation they were resolved
+under, and the next resolution after a generation change drops every one of that experiment's
+switchback slots together. That includes the pre-anchor slot and override assignments. The change
+starts a new epoch, and the next call re-resolves and exposes again even if the period number is
+unchanged. This also applies when an experiment switches to unit randomization, or is removed, and
+later returns with an identical definition, whether or not the context was queried in between.
+Changes to burn, carryover and estimand values do not
 start a new epoch. Seed and split edits do not invalidate an already cached assignment; the
 next new period uses them.
 
