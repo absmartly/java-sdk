@@ -133,13 +133,16 @@ class ContextSwitchbackTest {
 	}
 
 	Context createContext(Map<String, String> units, ContextData data) {
+		return createContext(units, data, new AudienceMatcher(new DefaultAudienceDeserializer()));
+	}
+
+	Context createContext(Map<String, String> units, ContextData data, AudienceMatcher audienceMatcher) {
 		final ContextConfig config = ContextConfig.create();
 		if (units != null) {
 			config.setUnits(units);
 		}
 		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
-				eventHandler, null, new DefaultVariableParser(),
-				new AudienceMatcher(new DefaultAudienceDeserializer()));
+				eventHandler, null, new DefaultVariableParser(), audienceMatcher);
 	}
 
 	Context createContext(ContextData data) {
@@ -861,5 +864,149 @@ class ContextSwitchbackTest {
 		refreshTo(context, gridA);
 		assertEquals(0, context.getTreatment("exp_sb"));
 		assertEquals(3, context.getPendingCount());
+	}
+
+	// Epochs are reconciled lazily; an intermediate state that is never looked up must still end the
+	// epoch.
+	@Test
+	void transitionsWithoutAnInterveningLookupStillReresolve() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + 10;
+		context.getTreatment("exp_sb");
+		assertEquals(1, context.getPendingCount());
+
+		final Experiment toUnit = switchback(2, HOUR);
+		toUnit.randomizationType = "unit";
+		refreshTo(context, toUnit);
+		refreshTo(context, switchback(2, HOUR));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(2, context.getPendingCount());
+
+		refreshTo(context);
+		refreshTo(context, switchback(2, HOUR));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(3, context.getPendingCount());
+
+		final Experiment regridded = switchback(2, HOUR);
+		regridded.switchbackDesignType = "other";
+		refreshTo(context, regridded);
+		refreshTo(context, switchback(2, HOUR));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(4, context.getPendingCount());
+
+		// An unchanged identity keeps the epoch.
+		refreshTo(context, switchback(2, HOUR));
+		context.getTreatment("exp_sb");
+		assertEquals(4, context.getPendingCount());
+	}
+
+	// Audience evaluation runs under contextLock_; this matcher refreshes the context from inside it.
+	static final class RefreshingAudienceMatcher extends AudienceMatcher {
+		volatile Context context;
+		volatile boolean refreshOnNextEvaluation;
+
+		RefreshingAudienceMatcher() {
+			super(new DefaultAudienceDeserializer());
+		}
+
+		@Override
+		public Result evaluate(String audience, Map<String, Object> attributes) {
+			if (refreshOnNextEvaluation) {
+				refreshOnNextEvaluation = false;
+				context.refresh();
+			}
+			return new Result(true);
+		}
+	}
+
+	void stubRefreshData(boolean completeOnAnotherThread, ContextData data) {
+		if (!completeOnAnotherThread) {
+			when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(data));
+			return;
+		}
+		when(dataProvider.getContextData()).thenAnswer(invocation -> {
+			final CompletableFuture<ContextData> future = new CompletableFuture<ContextData>();
+			// Completes only once refreshAsync has attached its continuation, so setData runs on
+			// this thread rather than inline on the caller.
+			final Thread completer = new Thread(() -> {
+				while (future.getNumberOfDependents() == 0) {
+					Thread.yield();
+				}
+				future.complete(data);
+			});
+			completer.setDaemon(true);
+			completer.start();
+			return future;
+		});
+	}
+
+	// Runs getTreatment on a daemon worker and fails, rather than hanging the build, if it does not
+	// return within the bound.
+	int getTreatmentWithin(Context context, String name, long timeoutMs) throws InterruptedException {
+		final int[] result = new int[1];
+		final Throwable[] failure = new Throwable[1];
+		final Thread worker = new Thread(() -> {
+			try {
+				result[0] = context.getTreatment(name);
+			} catch (Throwable t) {
+				failure[0] = t;
+			}
+		});
+		worker.setDaemon(true);
+		worker.start();
+		worker.join(timeoutMs);
+		assertFalse(worker.isAlive(), "getTreatment did not return: refresh from audience evaluation deadlocked");
+		if (failure[0] != null) {
+			throw new AssertionError(failure[0]);
+		}
+		return result[0];
+	}
+
+	void refreshFromAudienceRevalidationCompletes(boolean completeOnAnotherThread) throws InterruptedException {
+		final Experiment unit = switchback(2, HOUR);
+		unit.randomizationType = "unit";
+		unit.audience = "{\"filter\":[{\"value\":true}]}";
+		final RefreshingAudienceMatcher matcher = new RefreshingAudienceMatcher();
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID), dataOf(unit), matcher);
+		matcher.context = context;
+		stubRefreshData(completeOnAnotherThread, dataOf(unit));
+
+		final int primed = context.getTreatment("exp_sb");
+		context.setAttribute("country", "PT");
+		matcher.refreshOnNextEvaluation = true;
+
+		assertEquals(primed, getTreatmentWithin(context, "exp_sb", 10_000));
+		verify(dataProvider, times(1)).getContextData();
+		assertEquals(1, context.getPendingCount());
+	}
+
+	@Test
+	void refreshFromAudienceRevalidationWithACompletedProviderFutureDoesNotDeadlock()
+			throws InterruptedException {
+		refreshFromAudienceRevalidationCompletes(false);
+	}
+
+	@Test
+	void refreshFromAudienceRevalidationWithAnAsyncProviderDoesNotDeadlock() throws InterruptedException {
+		refreshFromAudienceRevalidationCompletes(true);
+	}
+
+	// First resolution evaluates the audience under the contextLock_ write lock.
+	@Test
+	void refreshFromAudienceEvaluationOnFirstResolutionWithAnAsyncProviderDoesNotDeadlock()
+			throws InterruptedException {
+		final Experiment unit = switchback(2, HOUR);
+		unit.randomizationType = "unit";
+		unit.audience = "{\"filter\":[{\"value\":true}]}";
+		final RefreshingAudienceMatcher matcher = new RefreshingAudienceMatcher();
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID), dataOf(unit), matcher);
+		matcher.context = context;
+		stubRefreshData(true, dataOf(unit));
+		matcher.refreshOnNextEvaluation = true;
+
+		getTreatmentWithin(context, "exp_sb", 10_000);
+		verify(dataProvider, times(1)).getContextData();
+		assertEquals(1, context.getPendingCount());
 	}
 }

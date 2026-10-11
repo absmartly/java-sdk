@@ -1067,49 +1067,55 @@ public class Context implements Closeable {
 		return experimentName + SWITCHBACK_KEY_SEPARATOR + periodIndex;
 	}
 
+	// Switchback identity: id, iteration, cluster unit type, startAt, periodMs and design. Seed,
+	// split and analysis-only fields are excluded. Absent and unit experiments have no identity.
+	private static boolean sameSwitchbackIdentity(final ContextExperiment a, final ContextExperiment b) {
+		final boolean aSwitchback = (a != null) && isSwitchback(a.data);
+		final boolean bSwitchback = (b != null) && isSwitchback(b.data);
+		if (!aSwitchback || !bSwitchback) {
+			return aSwitchback == bSwitchback;
+		}
+		return (a.data.id == b.data.id) && (a.data.iteration == b.data.iteration)
+				&& Objects.equals(a.data.switchbackClusterUnitType, b.data.switchbackClusterUnitType)
+				&& Objects.equals(a.data.switchbackStartAt, b.data.switchbackStartAt)
+				&& Objects.equals(a.data.switchbackPeriodMs, b.data.switchbackPeriodMs)
+				&& Objects.equals(a.data.switchbackDesignType, b.data.switchbackDesignType);
+	}
+
 	// Lifecycle of one switchback experiment's cache slots: the bare-name slot (pre-anchor or an
-	// unevaluable grid) and its period slots, all under one switchback identity. Indices from
-	// different identities are never compared: a changed start or period length re-maps them.
+	// unevaluable grid) and its period slots, all created under one switchback generation (see
+	// ContextExperiment.switchbackGeneration). Indices from different generations are never
+	// compared: a changed start or period length re-maps them.
 	private static final class SwitchbackEpoch {
-		final int id;
-		final int iteration;
-		final String clusterUnitType;
-		final Long startAt;
-		final Long periodMs;
-		final String designType;
+		final long generation;
 		final TreeSet<Long> periods = new TreeSet<Long>();
 
-		SwitchbackEpoch(final Experiment experiment) {
-			id = experiment.id;
-			iteration = experiment.iteration;
-			clusterUnitType = experiment.switchbackClusterUnitType;
-			startAt = experiment.switchbackStartAt;
-			periodMs = experiment.switchbackPeriodMs;
-			designType = experiment.switchbackDesignType;
-		}
-
-		boolean matches(final Experiment experiment) {
-			return (experiment != null) && isSwitchback(experiment) && (id == experiment.id)
-					&& (iteration == experiment.iteration)
-					&& Objects.equals(clusterUnitType, experiment.switchbackClusterUnitType)
-					&& Objects.equals(startAt, experiment.switchbackStartAt)
-					&& Objects.equals(periodMs, experiment.switchbackPeriodMs)
-					&& Objects.equals(designType, experiment.switchbackDesignType);
+		SwitchbackEpoch(final long generation) {
+			this.generation = generation;
 		}
 	}
 
-	// Drops every slot of the experiment's switchback epoch, bare-name slot included, when the
-	// installed definition no longer matches it: a type change, removal, restart or grid edit
-	// starts a new epoch, so returning to an identical definition re-resolves. Caller holds the
-	// contextLock_ write lock. Experiments never served as switchback have no epoch.
-	private void reconcileSwitchbackEpoch(final String experimentName, final Experiment experiment) {
+	// An epoch is stale once the installed definition is absent, not switchback, or carries a
+	// different generation. Every identity transition, including an intermediate unit or removed
+	// state that was never looked up, assigns a fresh generation, so a stale epoch never matches a
+	// later identical definition. Caller holds contextLock_ (read or write).
+	private boolean isSwitchbackEpochStale(final String experimentName, final ContextExperiment experiment) {
+		if (switchbackEpochs_.isEmpty()) {
+			return false;
+		}
 		final SwitchbackEpoch epoch = switchbackEpochs_.get(experimentName);
-		if ((epoch != null) && !epoch.matches(experiment)) {
+		return (epoch != null) && ((experiment == null) || !isSwitchback(experiment.data)
+				|| (epoch.generation != experiment.switchbackGeneration));
+	}
+
+	// Drops every slot of the epoch, bare-name slot included. Caller holds the contextLock_ write lock.
+	private void dropSwitchbackEpoch(final String experimentName) {
+		final SwitchbackEpoch epoch = switchbackEpochs_.remove(experimentName);
+		if (epoch != null) {
 			for (final Long period : epoch.periods) {
 				assignmentCache_.remove(switchbackCacheKey(experimentName, period));
 			}
 			assignmentCache_.remove(experimentName);
-			switchbackEpochs_.remove(experimentName);
 		}
 	}
 
@@ -1118,11 +1124,11 @@ public class Context implements Closeable {
 	// just installed always survives. Exposure dedup therefore holds only within the retained
 	// window: re-entering an evicted period (clock rewind, or a caller delayed across two
 	// boundaries) creates one new assignment for it, which then stays cached like any other.
-	private void retainSwitchbackPeriod(final String experimentName, final Experiment experiment,
+	private void retainSwitchbackPeriod(final String experimentName, final ContextExperiment experiment,
 			final long periodIndex) {
 		SwitchbackEpoch epoch = switchbackEpochs_.get(experimentName);
 		if (epoch == null) {
-			epoch = new SwitchbackEpoch(experiment);
+			epoch = new SwitchbackEpoch(experiment.switchbackGeneration);
 			switchbackEpochs_.put(experimentName, epoch);
 		}
 		if (periodIndex == NO_SWITCHBACK_PERIOD) {
@@ -1325,8 +1331,10 @@ public class Context implements Closeable {
 			final Assignment assignment = assignmentCache_
 					.get(assignmentCacheKey(experimentName, experiment, now));
 
-			if ((assignment != null) && isAssignmentCurrent(assignment, cassignments_.get(experimentName),
-					overrides_.get(experimentName), experiment)) {
+			// A stale epoch's slots are dropped by the write path below.
+			if ((assignment != null) && !isSwitchbackEpochStale(experimentName, experiment)
+					&& isAssignmentCurrent(assignment, cassignments_.get(experimentName),
+							overrides_.get(experimentName), experiment)) {
 				return assignment;
 			}
 		} finally {
@@ -1342,6 +1350,10 @@ public class Context implements Closeable {
 			final Integer override = overrides_.get(experimentName);
 			final ContextExperiment experiment = Context.this.getExperiment(experimentName);
 			final String cacheKey = assignmentCacheKey(experimentName, experiment, now);
+
+			if (isSwitchbackEpochStale(experimentName, experiment)) {
+				dropSwitchbackEpoch(experimentName);
+			}
 
 			// Recheck: a concurrent caller may have installed this key (e.g. the first call in a
 			// new switchback period) between the two locks; replacing it would reset its exposure.
@@ -1491,7 +1503,7 @@ public class Context implements Closeable {
 
 			assignmentCache_.put(cacheKey, assignment);
 			if ((experiment != null) && isSwitchback(experiment.data)) {
-				retainSwitchbackPeriod(experimentName, experiment.data, periodIndex);
+				retainSwitchbackPeriod(experimentName, experiment, periodIndex);
 			}
 
 			return assignment;
@@ -1756,6 +1768,9 @@ public class Context implements Closeable {
 		Experiment[] holdouts;
 		List<Map<String, Object>> variables;
 		Map<String, ContextCustomFieldValue> customFieldValues;
+		// Assigned in setData under dataLock_ write: carried over from the previous index while the
+		// switchback identity is unchanged, otherwise a fresh value. Unused for unit experiments.
+		long switchbackGeneration;
 	}
 
 	private static class ContextCustomFieldValue {
@@ -1896,25 +1911,26 @@ public class Context implements Closeable {
 		}
 
 		try {
-			// contextLock_ is taken first (the order getAssignment uses) so installing the data
-			// and dropping superseded switchback epochs is one atomic step for resolvers.
-			contextLock_.writeLock().lock();
 			dataLock_.writeLock().lock();
+
+			for (final Map.Entry<String, ContextExperiment> entry : index.entrySet()) {
+				final ContextExperiment installed = entry.getValue();
+				if (isSwitchback(installed.data)) {
+					final ContextExperiment previous = (index_ != null) ? index_.get(entry.getKey()) : null;
+					installed.switchbackGeneration = sameSwitchbackIdentity(previous, installed)
+							? previous.switchbackGeneration
+							: ++switchbackGenerationCounter_;
+				}
+			}
 
 			index_ = index;
 			indexVariables_ = indexVariables;
 			holdoutsById_ = holdoutsById;
 			data_ = data;
 
-			for (final String name : new ArrayList<String>(switchbackEpochs_.keySet())) {
-				final ContextExperiment experiment = index.get(name);
-				reconcileSwitchbackEpoch(name, (experiment != null) ? experiment.data : null);
-			}
-
 			setRefreshTimer();
 		} finally {
 			dataLock_.writeLock().unlock();
-			contextLock_.writeLock().unlock();
 		}
 	}
 
@@ -1979,6 +1995,8 @@ public class Context implements Closeable {
 	// Id-keyed view of the holdouts installed by the most recent setData, used to resolve a
 	// holdout's live definition independent of any stale Experiment reference a caller holds.
 	private Map<Integer, Experiment> holdoutsById_;
+	// Source of ContextExperiment.switchbackGeneration; guarded by dataLock_ write.
+	private long switchbackGenerationCounter_;
 	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
 
 	private final Map<String, byte[]> hashedUnits_;
