@@ -81,14 +81,20 @@ An experiment's switchback identity is `randomizationType`, `switchbackClusterUn
 backend rejects changes to the grid fields after an experiment starts, so within a live experiment
 a change means a pre-start edit, a restart (new iteration), or a type change.
 
-Each refresh compares every experiment's identity with the previously installed definition. Any
-difference, including the experiment being absent or a unit experiment on either side, gives the
-experiment a new generation. Cached switchback assignments record the generation they were resolved
-under, and the next resolution after a generation change drops every one of that experiment's
-switchback slots together. That includes the pre-anchor slot and override assignments. The change
-starts a new epoch, and the next call re-resolves and exposes again even if the period number is
-unchanged. This also applies when an experiment switches to unit randomization, or is removed, and
-later returns with an identical definition, whether or not the context was queried in between.
+On each refresh, an installed switchback keeps its previous generation only when its previous
+definition was a switchback with the same identity; otherwise it receives a fresh generation. Unit
+experiments never receive one, so their caches are unaffected. Because removal or a unit definition
+breaks the chain, a switchback that returns later with an identical definition gets a new
+generation, whether or not the context was queried in between. Cached switchback assignments record
+the generation they were resolved under, and the next resolution after a generation change drops
+every one of that experiment's switchback slots together, including the pre-anchor slot and
+override assignments. The change starts a new epoch, and the next call re-resolves and exposes again
+even if the period number is unchanged.
+
+Invalidation is lazy: slots are dropped on the experiment's next resolution, not during refresh,
+which takes only the data lock. An experiment that is removed and never queried again keeps its
+retained slots (at most two periods plus one pre-anchor slot) for the life of the context, just as
+an exposed unit-experiment assignment does.
 Changes to burn, carryover and estimand values do not
 start a new epoch. Seed and split edits do not invalidate an already cached assignment; the
 next new period uses them.
