@@ -1287,9 +1287,12 @@ public class Context implements Closeable {
 			// write path below), so the fast path must revalidate the applicable-holdout
 			// set exactly like the ordinary branch does via experimentMatches - otherwise
 			// a holdout that becomes applicable after a refresh never fires for an
-			// already-overridden experiment, and stays that way forever.
+			// already-overridden experiment, and stays that way forever. The switchback identity is
+			// revalidated too, so a grid change re-resolves an overridden slot like any other.
 			return assignment.overridden && assignment.variant == override
-					&& holdoutSetMatches((experiment != null) ? experiment.holdouts : null, assignment.holdouts);
+					&& holdoutSetMatches((experiment != null) ? experiment.holdouts : null, assignment.holdouts)
+					&& ((experiment != null) ? switchbackConfigMatches(experiment.data, assignment)
+							: !assignment.switchback);
 		} else if (experiment == null) {
 			// previously not-running experiment
 			return !assignment.assigned;
@@ -1354,6 +1357,7 @@ public class Context implements Closeable {
 					// assignment. Override precedence itself is untouched: the returned variant
 					// stays the overridden one.
 					assignment.holdouts = experiment.holdouts;
+					pinSwitchbackConfig(assignment, experiment.data);
 				}
 
 				assignment.overridden = true;

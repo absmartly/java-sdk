@@ -759,4 +759,52 @@ class ContextSwitchbackTest {
 		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR, true, true), exposures[3]);
 		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR, true, true), exposures[4]);
 	}
+
+	// An overridden switchback slot is re-resolved on a grid change like a normal one; the
+	// override still wins and the holdout still fires exactly once.
+	@Test
+	void overrideIsReresolvedWhenTheGridChanges() {
+		final Experiment holdout = new Experiment();
+		holdout.id = 11;
+		holdout.name = "holdout_a";
+		holdout.unitType = UNIT_TYPE;
+		holdout.iteration = 1;
+		holdout.seedHi = 13;
+		holdout.seedLo = 111;
+		holdout.split = new double[]{0.0, 1.0};
+		holdout.trafficSplit = new double[]{0.0, 1.0};
+
+		final Experiment original = switchback(3, HOUR);
+		original.holdoutIds = new int[]{11};
+		final ContextData data = dataOf(original);
+		data.holdouts = new Experiment[]{holdout};
+		final Context context = createContext(data);
+		context.setOverride("exp_sb", 2);
+
+		clock.now = ANCHOR + 10;
+		assertEquals(2, context.getTreatment("exp_sb"));
+		assertEquals(2, context.getVariableValue("sb.arm", -1));
+		assertEquals(2, context.getPendingCount());
+
+		// Same index 0 under the new period length; variant 2 now carries a different value.
+		final Experiment regridded = switchback(3, 2 * HOUR);
+		regridded.holdoutIds = new int[]{11};
+		regridded.variants[2] = new ExperimentVariant("C", "{\"sb.arm\":22}");
+		final ContextData refreshed = dataOf(regridded);
+		refreshed.holdouts = new Experiment[]{holdout};
+		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(refreshed));
+		context.refresh();
+
+		assertEquals(2, context.getTreatment("exp_sb"));
+		assertEquals(22, context.getVariableValue("sb.arm", -1));
+		assertEquals(3, context.getPendingCount());
+
+		final Exposure[] exposures = publishExposures(context);
+		assertEquals(new Exposure(11, "holdout_a", UNIT_TYPE, 1, ANCHOR + 10, true, true, false, false, false,
+				false), exposures[1]);
+		for (final int i : new int[]{0, 2}) {
+			assertEquals(new Exposure(1, "exp_sb", UNIT_TYPE, 2, ANCHOR + 10, false, true, true, false, false,
+					false), exposures[i]);
+		}
+	}
 }
