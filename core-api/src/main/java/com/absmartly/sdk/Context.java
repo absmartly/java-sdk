@@ -1067,18 +1067,63 @@ public class Context implements Closeable {
 		return experimentName + SWITCHBACK_KEY_SEPARATOR + periodIndex;
 	}
 
-	// Bounds the per-period entries of one experiment to the two most recent periods. The previous
-	// period is kept so a caller that read the clock just before a boundary still finds its
-	// already-exposed assignment instead of re-creating it and exposing that period twice.
-	private void retainRecentSwitchbackPeriods(final String experimentName, final long periodIndex) {
-		TreeSet<Long> periods = switchbackPeriods_.get(experimentName);
-		if (periods == null) {
-			periods = new TreeSet<Long>();
-			switchbackPeriods_.put(experimentName, periods);
+	// Period slots of one experiment under one switchback identity. Indices from different
+	// identities are never compared: a changed start or period length re-maps every index.
+	private static final class SwitchbackEpoch {
+		final int id;
+		final int iteration;
+		final String clusterUnitType;
+		final Long startAt;
+		final Long periodMs;
+		final String designType;
+		final TreeSet<Long> periods = new TreeSet<Long>();
+
+		SwitchbackEpoch(final Experiment experiment) {
+			id = experiment.id;
+			iteration = experiment.iteration;
+			clusterUnitType = experiment.switchbackClusterUnitType;
+			startAt = experiment.switchbackStartAt;
+			periodMs = experiment.switchbackPeriodMs;
+			designType = experiment.switchbackDesignType;
 		}
-		periods.add(periodIndex);
-		while (periods.size() > SWITCHBACK_RETAINED_PERIODS) {
-			assignmentCache_.remove(switchbackCacheKey(experimentName, periods.pollFirst()));
+
+		boolean matches(final Experiment experiment) {
+			return isSwitchback(experiment) && (id == experiment.id) && (iteration == experiment.iteration)
+					&& Objects.equals(clusterUnitType, experiment.switchbackClusterUnitType)
+					&& Objects.equals(startAt, experiment.switchbackStartAt)
+					&& Objects.equals(periodMs, experiment.switchbackPeriodMs)
+					&& Objects.equals(designType, experiment.switchbackDesignType);
+		}
+	}
+
+	// Records periodIndex as resolved under the experiment's current identity, first dropping
+	// every period slot of a previous identity. At most SWITCHBACK_RETAINED_PERIODS indices are
+	// kept; the lowest index other than periodIndex is evicted, so the entry just installed always
+	// survives. Exposure dedup therefore holds only within the retained window: re-entering an
+	// evicted period (clock rewind, or a caller delayed across two boundaries) creates one new
+	// assignment for it, and that assignment then stays cached like any other.
+	private void retainSwitchbackPeriod(final String experimentName, final Experiment experiment,
+			final long periodIndex) {
+		SwitchbackEpoch epoch = switchbackEpochs_.get(experimentName);
+		if ((epoch == null) || !epoch.matches(experiment)) {
+			if (epoch != null) {
+				for (final Long period : epoch.periods) {
+					if (period != periodIndex) {
+						assignmentCache_.remove(switchbackCacheKey(experimentName, period));
+					}
+				}
+			}
+			epoch = new SwitchbackEpoch(experiment);
+			switchbackEpochs_.put(experimentName, epoch);
+		}
+		epoch.periods.add(periodIndex);
+		while (epoch.periods.size() > SWITCHBACK_RETAINED_PERIODS) {
+			Long evicted = epoch.periods.first();
+			if (evicted == periodIndex) {
+				evicted = epoch.periods.higher(periodIndex);
+			}
+			epoch.periods.remove(evicted);
+			assignmentCache_.remove(switchbackCacheKey(experimentName, evicted));
 		}
 	}
 
@@ -1430,7 +1475,7 @@ public class Context implements Closeable {
 
 			assignmentCache_.put(cacheKey, assignment);
 			if (periodIndex != NO_SWITCHBACK_PERIOD) {
-				retainRecentSwitchbackPeriods(experimentName, periodIndex);
+				retainSwitchbackPeriod(experimentName, experiment.data, periodIndex);
 			}
 
 			return assignment;
@@ -1916,7 +1961,7 @@ public class Context implements Closeable {
 	// Keyed by experiment name, or by name + U+001F + period index for a switchback experiment
 	// inside its grid (see assignmentCacheKey), so each period gets its own exposure state.
 	private final Map<String, Assignment> assignmentCache_ = new HashMap<String, Assignment>();
-	private final Map<String, TreeSet<Long>> switchbackPeriods_ = new HashMap<String, TreeSet<Long>>();
+	private final Map<String, SwitchbackEpoch> switchbackEpochs_ = new HashMap<String, SwitchbackEpoch>();
 	// A holdout's identity, for both this cache's keying and for detecting whether a covered
 	// experiment's own set of applicable holdouts is still current (holdoutSetMatches), is its
 	// (id, iteration) pair - never a full Experiment comparison. Rationale: the governing

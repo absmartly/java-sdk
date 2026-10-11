@@ -688,4 +688,75 @@ class ContextSwitchbackTest {
 		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR, true, true)},
 				publishExposures(context));
 	}
+
+	void refreshTo(Context context, Experiment... experiments) {
+		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(experiments)));
+		context.refresh();
+	}
+
+	// A grid change that lowers the current index below the retained ones must not evict the
+	// entry it just installed.
+	@Test
+	void gridRefreshToALowerIndexExposesOnce() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + 99 * HOUR;
+		context.getTreatment("exp_sb");
+		clock.now = ANCHOR + 100 * HOUR;
+		context.getTreatment("exp_sb");
+		assertEquals(2, context.getPendingCount());
+
+		final Experiment restarted = switchback(2, HOUR);
+		restarted.switchbackStartAt = ANCHOR + 100 * HOUR;
+		refreshTo(context, restarted);
+		for (int i = 0; i < 3; ++i) {
+			assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		}
+		assertEquals(3, context.getPendingCount());
+	}
+
+	@Test
+	void periodLengthRefreshToALowerIndexExposesOnce() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + 100 * HOUR;
+		context.getTreatment("exp_sb");
+		clock.now = ANCHOR + 101 * HOUR;
+		context.getTreatment("exp_sb");
+
+		refreshTo(context, switchback(2, 200 * HOUR));
+		context.getTreatment("exp_sb");
+		context.getTreatment("exp_sb");
+		assertEquals(3, context.getPendingCount());
+	}
+
+	// Rewinding the clock across retained periods re-exposes each re-entered evicted period at most
+	// once, never once per call.
+	@Test
+	void clockRewindReexposesAnEvictedPeriodAtMostOnce() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		for (int i = 0; i < 3; ++i) {
+			clock.now = ANCHOR + i * HOUR;
+			context.getTreatment("exp_sb");
+		}
+		assertEquals(3, context.getPendingCount());
+
+		clock.now = ANCHOR;
+		for (int i = 0; i < 3; ++i) {
+			assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		}
+		assertEquals(4, context.getPendingCount());
+
+		// Retained {0, 2}: period 2 is still deduplicated, period 1 was evicted.
+		clock.now = ANCHOR + 2 * HOUR;
+		context.getTreatment("exp_sb");
+		assertEquals(4, context.getPendingCount());
+		clock.now = ANCHOR + HOUR;
+		for (int i = 0; i < 3; ++i) {
+			assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"));
+		}
+		assertEquals(5, context.getPendingCount());
+
+		final Exposure[] exposures = publishExposures(context);
+		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR, true, true), exposures[3]);
+		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR, true, true), exposures[4]);
+	}
 }
