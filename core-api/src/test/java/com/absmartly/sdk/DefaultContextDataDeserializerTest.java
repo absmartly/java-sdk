@@ -197,6 +197,86 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 	}
 
 	@Test
+	void deserializeSwitchback() {
+		final byte[] bytes = getResourceBytes("switchback_context.json");
+
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+		final ContextData data = deser.deserialize(bytes, 0, bytes.length);
+
+		final Experiment switchback = new Experiment();
+		switchback.id = 1;
+		switchback.name = "exp_test_switchback";
+		switchback.unitType = "store_id";
+		switchback.iteration = 1;
+		switchback.seedHi = 3603515;
+		switchback.seedLo = 233373850;
+		switchback.split = new double[]{0.5, 0.5};
+		switchback.trafficSeedHi = 449867249;
+		switchback.trafficSeedLo = 455443629;
+		switchback.trafficSplit = new double[]{0.0, 1.0};
+		switchback.fullOnVariant = 0;
+		switchback.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
+		switchback.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", "{\"banner.border\":1}")
+		};
+		switchback.randomizationType = "switchback";
+		switchback.switchbackClusterUnitType = "store_id";
+		switchback.switchbackStartAt = 1767225600000L;
+		switchback.switchbackPeriodMs = 3600000L;
+		switchback.switchbackCarryoverDurationMs = 900000L;
+		switchback.switchbackBurnInDurationMs = 600000L;
+		switchback.switchbackBurnOutDurationMs = 0L;
+		switchback.switchbackDesignType = "balanced_block";
+		switchback.switchbackEstimand = "global_average_treatment_effect";
+
+		final Experiment unit = new Experiment();
+		unit.id = 2;
+		unit.name = "exp_test_unit";
+		unit.unitType = "session_id";
+		unit.iteration = 1;
+		unit.seedHi = 55006150;
+		unit.seedLo = 47189152;
+		unit.split = new double[]{0.5, 0.5};
+		unit.trafficSeedHi = 705671872;
+		unit.trafficSeedLo = 212903484;
+		unit.trafficSplit = new double[]{0.0, 1.0};
+		unit.fullOnVariant = 0;
+		unit.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
+		unit.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", null)
+		};
+		unit.randomizationType = "unit";
+
+		final ContextData expected = new ContextData();
+		expected.experiments = new Experiment[]{switchback, unit};
+
+		assertNotNull(data);
+		assertEquals(expected, data);
+		assertEquals(expected.hashCode(), data.hashCode());
+	}
+
+	@Test
+	void deserializeWithoutSwitchbackFieldsLeavesThemNull() {
+		final byte[] bytes = getResourceBytes("context.json");
+
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		for (final Experiment experiment : data.experiments) {
+			assertNull(experiment.randomizationType);
+			assertNull(experiment.switchbackClusterUnitType);
+			assertNull(experiment.switchbackStartAt);
+			assertNull(experiment.switchbackPeriodMs);
+			assertNull(experiment.switchbackCarryoverDurationMs);
+			assertNull(experiment.switchbackBurnInDurationMs);
+			assertNull(experiment.switchbackBurnOutDurationMs);
+			assertNull(experiment.switchbackDesignType);
+			assertNull(experiment.switchbackEstimand);
+		}
+	}
+
+	@Test
 	void testMalformedJsonResponse() {
 		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
 
