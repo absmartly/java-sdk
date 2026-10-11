@@ -16,7 +16,10 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java8.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -1008,5 +1011,73 @@ class ContextSwitchbackTest {
 		getTreatmentWithin(context, "exp_sb", 10_000);
 		verify(dataProvider, times(1)).getContextData();
 		assertEquals(1, context.getPendingCount());
+	}
+
+	// Holds both revalidating readers at a barrier, so both have rejected the cached slot under
+	// contextLock_ read before either can take the write lock.
+	static final class BarrierAudienceMatcher extends AudienceMatcher {
+		final AtomicInteger evaluations = new AtomicInteger();
+		final CyclicBarrier readers = new CyclicBarrier(2);
+
+		BarrierAudienceMatcher() {
+			super(new DefaultAudienceDeserializer());
+		}
+
+		@Override
+		public Result evaluate(String audience, Map<String, Object> attributes) {
+			final int call = evaluations.incrementAndGet();
+			if (call == 1) {
+				return new Result(true);
+			}
+			if (call <= 3) {
+				try {
+					readers.await(10, TimeUnit.SECONDS);
+				} catch (Exception e) {
+					throw new IllegalStateException(e);
+				}
+			}
+			return new Result(false);
+		}
+	}
+
+	@Test
+	void concurrentResolutionOfTheSamePeriodExposesOnce() throws InterruptedException {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.audience = "{\"filter\":[{\"value\":true}]}";
+		final BarrierAudienceMatcher matcher = new BarrierAudienceMatcher();
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID), dataOf(experiment), matcher);
+		clock.now = ANCHOR + HOUR + 10;
+
+		// Caches period 1 without exposing it; the attribute change forces both callers to revalidate.
+		assertEquals(EXPECTED_2_ARMS[1], context.peekTreatment("exp_sb"));
+		context.setAttribute("country", "PT");
+
+		final int[] variants = new int[2];
+		final Throwable[] failures = new Throwable[2];
+		final Thread[] workers = new Thread[2];
+		for (int i = 0; i < 2; ++i) {
+			final int slot = i;
+			workers[i] = new Thread(() -> {
+				try {
+					variants[slot] = context.getTreatment("exp_sb");
+				} catch (Throwable t) {
+					failures[slot] = t;
+				}
+			});
+			workers[i].setDaemon(true);
+			workers[i].start();
+		}
+		for (final Thread worker : workers) {
+			worker.join(10_000);
+			assertFalse(worker.isAlive());
+		}
+		assertEquals(null, failures[0]);
+		assertEquals(null, failures[1]);
+
+		assertEquals(EXPECTED_2_ARMS[1], variants[0]);
+		assertEquals(EXPECTED_2_ARMS[1], variants[1]);
+		assertEquals(1, context.getPendingCount());
+		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, EXPECTED_2_ARMS[1], ANCHOR + HOUR + 10,
+				true, true, false, false, false, true)}, publishExposures(context));
 	}
 }
