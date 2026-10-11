@@ -459,18 +459,16 @@ public class Context implements Closeable {
 			return 0;
 		}
 
-		return getExposedTreatmentVariant(getAssignment(experimentName));
+		final long now = clock_.millis();
+		return exposeTreatmentAssignment(experimentName, getAssignment(experimentName, now), now).variant;
 	}
 
-	private int getExposedTreatmentVariant(final Assignment assignment) {
-		return exposeTreatmentAssignment(assignment).variant;
-	}
-
-	private Assignment exposeTreatmentAssignment(final Assignment assignment) {
-		return settleExposure(assignment, new Function<Assignment, Assignment>() {
+	private Assignment exposeTreatmentAssignment(final String experimentName, final Assignment assignment,
+			final long resolvedAt) {
+		return settleExposure(assignment, resolvedAt, new Function<Long, Assignment>() {
 			@Override
-			public Assignment apply(final Assignment retired) {
-				return getAssignment(retired.name);
+			public Assignment apply(final Long now) {
+				return getAssignment(experimentName, now);
 			}
 		});
 	}
@@ -484,12 +482,16 @@ public class Context implements Closeable {
 	// time we get here, so a skipped holdout trigger would never be retried for this context's
 	// life. Failures are collected and re-thrown once every holdout has had a chance to fire,
 	// rather than swallowed or allowed to abort the loop early.
-	private int triggerExposure(final Assignment assignment) {
+	//
+	// A switchback exposure is stamped with resolvedAt, the clock reading that selected its period:
+	// analysis derives the period from exposedAt, so a later reading could attribute this variant
+	// to the next period. Unit experiments read the clock at enqueue time.
+	private int triggerExposure(final Assignment assignment, final long resolvedAt) {
 		if (assignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED, ASSIGNMENT_EXPOSED)) {
 			RuntimeException failure = null;
 			try {
 				if (!assignment.suppressed) {
-					enqueueExposure(assignment);
+					enqueueExposure(assignment, assignment.switchback ? resolvedAt : clock_.millis());
 				}
 			} catch (final RuntimeException e) {
 				failure = e;
@@ -547,7 +549,7 @@ public class Context implements Closeable {
 	private void triggerHoldoutExposure(final Assignment holdoutAssignment) {
 		if ((holdoutAssignment != null) && holdoutAssignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED,
 				ASSIGNMENT_EXPOSED)) {
-			enqueueExposure(holdoutAssignment);
+			enqueueExposure(holdoutAssignment, clock_.millis());
 		}
 	}
 
@@ -557,13 +559,13 @@ public class Context implements Closeable {
 	// without ever enqueueing its own (e.g. an already-exposed winner, or a losing variable-key
 	// candidate that only fires holdouts), and setTimeout() is idempotent, so centralizing the
 	// call is strictly safer than tracking every call site individually.
-	private void enqueueExposure(final Assignment assignment) {
+	private void enqueueExposure(final Assignment assignment, final long exposedAt) {
 		final Exposure exposure = new Exposure();
 		exposure.id = assignment.id;
 		exposure.name = assignment.name;
 		exposure.unit = assignment.unitType;
 		exposure.variant = assignment.variant;
-		exposure.exposedAt = clock_.millis();
+		exposure.exposedAt = exposedAt;
 		exposure.assigned = assignment.assigned;
 		exposure.eligible = assignment.eligible;
 		exposure.overridden = assignment.overridden;
@@ -594,7 +596,7 @@ public class Context implements Closeable {
 			return 0;
 		}
 
-		return getAssignment(experimentName).variant;
+		return getAssignment(experimentName, clock_.millis()).variant;
 	}
 
 	public Map<String, List<String>> getVariableKeys() {
@@ -627,7 +629,8 @@ public class Context implements Closeable {
 			return defaultValue;
 		}
 
-		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false));
+		final long now = clock_.millis();
+		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false, now), now);
 		if (assignment != null) {
 			if (assignment.variables != null) {
 				if (assignment.variables.containsKey(key)) {
@@ -638,26 +641,30 @@ public class Context implements Closeable {
 		return defaultValue;
 	}
 
-	private Assignment exposeVariableAssignment(final String key, final Assignment assignment) {
-		return settleExposure(assignment, new Function<Assignment, Assignment>() {
+	private Assignment exposeVariableAssignment(final String key, final Assignment assignment, final long resolvedAt) {
+		return settleExposure(assignment, resolvedAt, new Function<Long, Assignment>() {
 			@Override
-			public Assignment apply(final Assignment retired) {
-				return getVariableAssignment(key, false);
+			public Assignment apply(final Long now) {
+				return getVariableAssignment(key, false, now);
 			}
 		});
 	}
 
-	private Assignment settleExposure(final Assignment assignment, final Function<Assignment, Assignment> resolver) {
+	// Each retry after a concurrent retirement resolves at a fresh clock reading and exposes at it.
+	private Assignment settleExposure(final Assignment assignment, final long resolvedAt,
+			final Function<Long, Assignment> resolver) {
 		Assignment current = assignment;
+		long now = resolvedAt;
 		for (int attempt = 0; current != null; ++attempt) {
-			if (triggerExposure(current) != ASSIGNMENT_RETIRED) {
+			if (triggerExposure(current, now) != ASSIGNMENT_RETIRED) {
 				return current;
 			}
 			if (attempt + 1 >= MAX_EXPOSURE_ATTEMPTS) {
 				// Exhaustion returns the attempted assignment that lost to a concurrent retirement.
 				return current;
 			}
-			current = resolver.apply(current);
+			now = clock_.millis();
+			current = resolver.apply(now);
 		}
 		return current;
 	}
@@ -667,7 +674,7 @@ public class Context implements Closeable {
 			return defaultValue;
 		}
 
-		final Assignment assignment = getVariableAssignment(key, true);
+		final Assignment assignment = getVariableAssignment(key, true, clock_.millis());
 		if (assignment != null) {
 			if (assignment.variables != null) {
 				if (assignment.variables.containsKey(key)) {
@@ -1247,10 +1254,9 @@ public class Context implements Closeable {
 		return false;
 	}
 
-	private Assignment getAssignment(final String experimentName) {
-		// One clock read per resolution, so the cache key and the drawn period always agree.
-		final long now = clock_.millis();
-
+	// now is the caller's single clock reading for this resolution, so the cache key, the drawn
+	// period and a switchback exposure's exposedAt all agree.
+	private Assignment getAssignment(final String experimentName, final long now) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
@@ -1467,14 +1473,14 @@ public class Context implements Closeable {
 	// ends up the one returned, so on the non-peek path each candidate's applicable holdouts fire
 	// as it is visited - the ordinary experiment exposure is still emitted only for the winner,
 	// by the caller. peek must stay side-effect free, so it skips triggering entirely.
-	private Assignment getVariableAssignment(final String key, final boolean peek) {
+	private Assignment getVariableAssignment(final String key, final boolean peek, final long now) {
 		final List<ContextExperiment> keyExperimentVariables = getVariableExperiments(key);
 
 		if (keyExperimentVariables != null) {
 			Assignment suppressedFallback = null;
 			RuntimeException failure = null;
 			for (final ContextExperiment experimentVariables : keyExperimentVariables) {
-				final Assignment assignment = getAssignment(experimentVariables.data.name);
+				final Assignment assignment = getAssignment(experimentVariables.data.name, now);
 				if (!peek) {
 					final RuntimeException holdoutFailure = triggerApplicableHoldoutExposures(assignment);
 					if (failure == null) {

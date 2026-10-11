@@ -59,6 +59,8 @@ class ContextSwitchbackTest {
 
 	static final class MutableClock extends Clock {
 		long now;
+		// When set, the next read returns this value once, then reads fall back to `now`.
+		Long nextRead;
 
 		MutableClock(long now) {
 			this.now = now;
@@ -66,6 +68,11 @@ class ContextSwitchbackTest {
 
 		@Override
 		public long millis() {
+			if (nextRead != null) {
+				final long value = nextRead;
+				nextRead = null;
+				return value;
+			}
 			return now;
 		}
 	}
@@ -608,5 +615,77 @@ class ContextSwitchbackTest {
 		}
 		assertEquals(TestUtils.listOf(EXPECTED_2_ARMS[0], EXPECTED_2_ARMS[1]), variants);
 		verify(eventHandler, times(2)).publish(any(), any());
+	}
+
+	// The clock crosses into period 1 between resolution (first read) and any later read; the
+	// exposure must still carry the instant that selected period 0.
+	@Test
+	void treatmentExposureIsStampedWithTheResolutionInstant() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + HOUR;
+		clock.nextRead = ANCHOR + HOUR - 1;
+
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
+				publishExposures(context));
+	}
+
+	@Test
+	void variableExposureIsStampedWithTheResolutionInstantAcrossHoldoutTriggering() {
+		final Experiment holdout = new Experiment();
+		holdout.id = 11;
+		holdout.name = "holdout_a";
+		holdout.unitType = UNIT_TYPE;
+		holdout.iteration = 1;
+		holdout.seedHi = 13;
+		holdout.seedLo = 111;
+		// Two arms, all traffic in arm 1: never holds the covered experiment out.
+		holdout.split = new double[]{0.0, 1.0};
+		holdout.trafficSplit = new double[]{0.0, 1.0};
+
+		final Experiment covered = switchback(2, HOUR);
+		covered.holdoutIds = new int[]{11};
+		final ContextData data = dataOf(covered);
+		data.holdouts = new Experiment[]{holdout};
+
+		final Context context = createContext(data);
+		clock.now = ANCHOR + HOUR;
+		clock.nextRead = ANCHOR + HOUR - 1;
+
+		assertEquals(EXPECTED_2_ARMS[0], context.getVariableValue("sb.arm", -1));
+		final Exposure[] exposures = publishExposures(context);
+		assertEquals(2, exposures.length);
+		// Holdout membership is not period-scoped and keeps its own enqueue-time reading.
+		assertEquals(new Exposure(11, "holdout_a", UNIT_TYPE, 1, ANCHOR + HOUR, true, true, false, false, false,
+				false), exposures[0]);
+		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true), exposures[1]);
+	}
+
+	// A peek caches the period's assignment without exposing; the later getTreatment exposes at
+	// its own resolution instant, not the peek's.
+	@Test
+	void exposureAfterPeekUsesTheExposingCallsInstant() {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + 10;
+		assertEquals(EXPECTED_2_ARMS[0], context.peekTreatment("exp_sb"));
+		clock.now = ANCHOR + 20 * 60_000L;
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertArrayEquals(
+				new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + 20 * 60_000L, true, true)},
+				publishExposures(context));
+	}
+
+	// Unit experiments keep stamping at enqueue time.
+	@Test
+	void unitExposureTimingIsUnchanged() {
+		final Experiment unit = switchback(2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		clock.now = ANCHOR + HOUR;
+		clock.nextRead = ANCHOR + HOUR - 1;
+
+		final int variant = context.getTreatment("exp_sb");
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR, true, true)},
+				publishExposures(context));
 	}
 }
