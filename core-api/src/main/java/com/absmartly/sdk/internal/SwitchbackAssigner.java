@@ -9,7 +9,7 @@ import com.absmartly.sdk.internal.hashing.Murmur3_32;
 //   stepHash  = murmur3_32(le32(baseHash) ++ le32(i)),  i = armCount-1 .. 1
 //   j         = min(i, floor(u32(stepHash) / 0xffffffff * (i + 1)))
 //   variant   = permutation[floorMod(periodIndex, armCount)], cycle = floorDiv(periodIndex, armCount)
-// Any change here breaks parity with the Collector and the analysis-side expected schedule.
+// Any change here breaks parity with the platform golden vectors and the analysis-side schedule.
 public abstract class SwitchbackAssigner {
 	private SwitchbackAssigner() {}
 

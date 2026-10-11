@@ -313,7 +313,7 @@ context.close();
 
 ### Switchback Experiments
 
-Switchback experiments need no code changes: `getTreatment`, `peekTreatment` and the variable methods return the variant for the current time period, and the SDK emits one exposure per period. See [SWITCHBACK.md](SWITCHBACK.md) for the assignment rules, the minimum SDK version and how older SDKs behave.
+Switchback experiments need no code changes: `getTreatment`, `peekTreatment` and the variable methods return the variant for the current time period, and the SDK emits one exposure per period while time moves forward. See [SWITCHBACK.md](SWITCHBACK.md) for the assignment rules, the exposure deduplication bound, the minimum SDK version and how older SDKs behave.
 
 ### Custom Event Logger
 
