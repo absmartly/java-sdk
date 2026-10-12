@@ -311,6 +311,10 @@ The `close()` and `closeAsync()` methods will ensure all events have been publis
 context.close();
 ```
 
+### Switchback Experiments
+
+Switchback experiments need no code changes: `getTreatment`, `peekTreatment` and the variable methods return the variant for the current time period, and the SDK emits one exposure per period while time moves forward. See [SWITCHBACK.md](SWITCHBACK.md) for the assignment rules, the exposure deduplication bound, the minimum SDK version and how older SDKs behave.
+
 ### Custom Event Logger
 
 The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
