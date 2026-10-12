@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
@@ -179,6 +180,25 @@ class ContextSwitchbackTest {
 		return result;
 	}
 
+	void refreshTo(Context context, Experiment... experiments) {
+		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(experiments)));
+		context.refresh();
+	}
+
+	// Holdout 11 for UID under seed (13, 111); split decides whether UID is held out.
+	static Experiment holdout(double[] split) {
+		final Experiment holdout = new Experiment();
+		holdout.id = 11;
+		holdout.name = "holdout_a";
+		holdout.unitType = UNIT_TYPE;
+		holdout.iteration = 1;
+		holdout.seedHi = 13;
+		holdout.seedLo = 111;
+		holdout.split = split;
+		holdout.trafficSplit = new double[]{0.0, 1.0};
+		return holdout;
+	}
+
 	@Test
 	void clusterIdentityIsTheSdkUnitHash() {
 		assertEquals(UID_HASH, new String(Hashing.hashUnit(UID), StandardCharsets.US_ASCII));
@@ -187,7 +207,7 @@ class ContextSwitchbackTest {
 		final int[] served = peekSchedule(context, "exp_sb", HOUR, 12);
 
 		assertArrayEquals(EXPECTED_3_ARMS, served);
-		assertFalse(java.util.Arrays.equals(RAW_UID_3_ARMS, served));
+		assertFalse(Arrays.equals(RAW_UID_3_ARMS, served));
 		for (int i = 0; i < 12; ++i) {
 			assertEquals(SwitchbackAssigner.assign(UID_HASH, i, ((long) SEED_HI << 32) | (SEED_LO & 0xffffffffL), 3),
 					served[i]);
@@ -457,36 +477,30 @@ class ContextSwitchbackTest {
 		burnsChanged.switchbackBurnOutDurationMs = 300_000L;
 		burnsChanged.switchbackCarryoverDurationMs = 900_000L;
 		burnsChanged.switchbackEstimand = "other";
-		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(burnsChanged)));
-		context.refresh();
+		refreshTo(context, burnsChanged);
 		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
 		assertEquals(1, context.getPendingCount());
 
 		// Same period index 0 under both grids, so only the config comparison can invalidate.
 		final Experiment periodChanged = switchback(2, 2 * HOUR);
-		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(periodChanged)));
-		context.refresh();
+		refreshTo(context, periodChanged);
 		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
 		assertEquals(2, context.getPendingCount());
 
 		final Experiment designChanged = switchback(2, 2 * HOUR);
 		designChanged.switchbackDesignType = "other_design";
-		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(designChanged)));
-		context.refresh();
+		refreshTo(context, designChanged);
 		context.getTreatment("exp_sb");
 		assertEquals(3, context.getPendingCount());
 
 		final Experiment toUnit = switchback(2, 2 * HOUR);
 		toUnit.randomizationType = "unit";
-		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(toUnit)));
-		context.refresh();
+		refreshTo(context, toUnit);
 		context.getTreatment("exp_sb");
 		assertEquals(4, context.getPendingCount());
 
 		final Experiment backToSwitchback = switchback(2, 2 * HOUR);
-		when(dataProvider.getContextData())
-				.thenReturn(CompletableFuture.completedFuture(dataOf(backToSwitchback)));
-		context.refresh();
+		refreshTo(context, backToSwitchback);
 		context.getTreatment("exp_sb");
 		assertEquals(5, context.getPendingCount());
 	}
@@ -499,24 +513,15 @@ class ContextSwitchbackTest {
 		clock.now = ANCHOR + 10;
 		assertEquals(0, context.getTreatment("exp_sb"));
 
-		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(switchback(2, HOUR))));
-		context.refresh();
+		refreshTo(context, switchback(2, HOUR));
 		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
 		assertEquals(2, context.getPendingCount());
 	}
 
 	@Test
 	void holdoutSuppressionAndExposureSpanPeriods() {
-		final Experiment holdout = new Experiment();
-		holdout.id = 11;
-		holdout.name = "holdout_a";
-		holdout.unitType = UNIT_TYPE;
-		holdout.iteration = 1;
-		// split[0.1,0.9], seedHi=13, seedLo=111 -> variant 0 (held out) for UID.
-		holdout.seedHi = 13;
-		holdout.seedLo = 111;
-		holdout.split = new double[]{0.1, 0.9};
-		holdout.trafficSplit = new double[]{0.0, 1.0};
+		// split[0.1,0.9] -> variant 0 (held out) for UID.
+		final Experiment holdout = holdout(new double[]{0.1, 0.9});
 
 		final Experiment covered = switchback(2, HOUR);
 		covered.holdoutIds = new int[]{11};
@@ -638,16 +643,8 @@ class ContextSwitchbackTest {
 
 	@Test
 	void variableExposureIsStampedWithTheResolutionInstantAcrossHoldoutTriggering() {
-		final Experiment holdout = new Experiment();
-		holdout.id = 11;
-		holdout.name = "holdout_a";
-		holdout.unitType = UNIT_TYPE;
-		holdout.iteration = 1;
-		holdout.seedHi = 13;
-		holdout.seedLo = 111;
 		// Two arms, all traffic in arm 1: never holds the covered experiment out.
-		holdout.split = new double[]{0.0, 1.0};
-		holdout.trafficSplit = new double[]{0.0, 1.0};
+		final Experiment holdout = holdout(new double[]{0.0, 1.0});
 
 		final Experiment covered = switchback(2, HOUR);
 		covered.holdoutIds = new int[]{11};
@@ -693,11 +690,6 @@ class ContextSwitchbackTest {
 		final int variant = context.getTreatment("exp_sb");
 		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR, true, true)},
 				publishExposures(context));
-	}
-
-	void refreshTo(Context context, Experiment... experiments) {
-		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(dataOf(experiments)));
-		context.refresh();
 	}
 
 	// A grid change that lowers the current index below the retained ones must not evict the
@@ -770,15 +762,7 @@ class ContextSwitchbackTest {
 	// override still wins and the holdout still fires exactly once.
 	@Test
 	void overrideIsReresolvedWhenTheGridChanges() {
-		final Experiment holdout = new Experiment();
-		holdout.id = 11;
-		holdout.name = "holdout_a";
-		holdout.unitType = UNIT_TYPE;
-		holdout.iteration = 1;
-		holdout.seedHi = 13;
-		holdout.seedLo = 111;
-		holdout.split = new double[]{0.0, 1.0};
-		holdout.trafficSplit = new double[]{0.0, 1.0};
+		final Experiment holdout = holdout(new double[]{0.0, 1.0});
 
 		final Experiment original = switchback(3, HOUR);
 		original.holdoutIds = new int[]{11};

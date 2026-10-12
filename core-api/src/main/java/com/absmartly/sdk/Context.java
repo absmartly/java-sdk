@@ -1051,16 +1051,20 @@ public class Context implements Closeable {
 		return SwitchbackAssigner.floorDiv(nowMs - anchor, periodMs);
 	}
 
-	// Unit experiments, and switchback experiments with no current period, keep the bare name.
-	private static String assignmentCacheKey(final String experimentName, final ContextExperiment experiment,
-			final long nowMs) {
-		if ((experiment != null) && isSwitchback(experiment.data)) {
-			final long periodIndex = switchbackPeriodIndex(experiment.data, nowMs);
-			if (periodIndex != NO_SWITCHBACK_PERIOD) {
-				return switchbackCacheKey(experimentName, periodIndex);
-			}
+	// Also NO_SWITCHBACK_PERIOD for absent and unit experiments.
+	private static long currentSwitchbackPeriod(final ContextExperiment experiment, final long nowMs) {
+		if ((experiment == null) || !isSwitchback(experiment.data)) {
+			return NO_SWITCHBACK_PERIOD;
 		}
-		return experimentName;
+		return switchbackPeriodIndex(experiment.data, nowMs);
+	}
+
+	// Unit experiments, and switchback experiments with no current period, keep the bare name.
+	private static String assignmentCacheKey(final String experimentName, final long periodIndex) {
+		if (periodIndex == NO_SWITCHBACK_PERIOD) {
+			return experimentName;
+		}
+		return switchbackCacheKey(experimentName, periodIndex);
 	}
 
 	private static String switchbackCacheKey(final String experimentName, final long periodIndex) {
@@ -1302,7 +1306,7 @@ public class Context implements Closeable {
 			final ContextExperiment experiment) {
 		if (override != null) {
 			// An override still evaluates the experiment for holdout purposes (see the
-			// write path below), so the fast path must revalidate the applicable-holdout
+			// write path in getAssignment), so the fast path must revalidate the applicable-holdout
 			// set exactly like the ordinary branch does via experimentMatches - otherwise
 			// a holdout that becomes applicable after a refresh never fires for an
 			// already-overridden experiment, and stays that way forever. The switchback identity is
@@ -1329,7 +1333,7 @@ public class Context implements Closeable {
 
 			final ContextExperiment experiment = Context.this.getExperiment(experimentName);
 			final Assignment assignment = assignmentCache_
-					.get(assignmentCacheKey(experimentName, experiment, now));
+					.get(assignmentCacheKey(experimentName, currentSwitchbackPeriod(experiment, now)));
 
 			// A stale epoch's slots are dropped by the write path below.
 			if ((assignment != null) && !isSwitchbackEpochStale(experimentName, experiment)
@@ -1349,7 +1353,8 @@ public class Context implements Closeable {
 			final Integer custom = cassignments_.get(experimentName);
 			final Integer override = overrides_.get(experimentName);
 			final ContextExperiment experiment = Context.this.getExperiment(experimentName);
-			final String cacheKey = assignmentCacheKey(experimentName, experiment, now);
+			final long periodIndex = currentSwitchbackPeriod(experiment, now);
+			final String cacheKey = assignmentCacheKey(experimentName, periodIndex);
 
 			if (isSwitchbackEpochStale(experimentName, experiment)) {
 				dropSwitchbackEpoch(experimentName);
@@ -1361,10 +1366,6 @@ public class Context implements Closeable {
 			if ((cached != null) && isAssignmentCurrent(cached, custom, override, experiment)) {
 				return cached;
 			}
-
-			final long periodIndex = ((experiment != null) && isSwitchback(experiment.data))
-					? switchbackPeriodIndex(experiment.data, now)
-					: NO_SWITCHBACK_PERIOD;
 
 			final Assignment assignment = new Assignment();
 			assignment.name = experimentName;
