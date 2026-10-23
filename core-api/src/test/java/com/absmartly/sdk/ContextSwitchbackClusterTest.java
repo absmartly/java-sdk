@@ -325,6 +325,32 @@ class ContextSwitchbackClusterTest {
 				exposure(expected("Lisboa", 100, 0), ANCHOR + 20, true, true)}, publishExposures(context));
 	}
 
+	// A slot first resolved without a key carries that missing key into its replacement.
+	@Test
+	void audienceRevalidationAfterAnIneligibleResolutionKeepsTheMissingKey() {
+		final Experiment experiment = attributeSwitchback("city", 100);
+		experiment.audience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
+		final Context context = createContext(dataOf(experiment));
+		clock.now = ANCHOR + 10;
+		context.setAttribute("tier", "gold");
+		assertEquals(0, context.getTreatment("exp_sb"));
+
+		clock.now = ANCHOR + 20;
+		context.setAttribute("city", "Porto");
+		context.setAttribute("tier", "silver");
+		assertEquals(1, expected("Porto", 100, 0));
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false),
+				exposure(0, ANCHOR + 20, false, true)}, publishExposures(context));
+
+		clock.now = ANCHOR + HOUR;
+		assertEquals(expected("Porto", 100, 1), context.peekTreatment("exp_sb"));
+		// Period 1 of Porto is variant 0; period 2 is not, so the key is visibly read again.
+		clock.now = ANCHOR + 2 * HOUR;
+		assertEquals(2, expected("Porto", 100, 2));
+		assertEquals(expected("Porto", 100, 2), context.peekTreatment("exp_sb"));
+	}
+
 	@Test
 	void clusterCountOrAttributeChangesInvalidateThePeriod() {
 		final Context context = createContext(dataOf(attributeSwitchback("city", 100)));
