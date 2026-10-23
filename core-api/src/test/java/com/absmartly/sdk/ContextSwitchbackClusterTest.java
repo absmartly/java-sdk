@@ -58,8 +58,12 @@ class ContextSwitchbackClusterTest {
 	}
 
 	Context createContext(ContextData data) {
+		return createContext(TestUtils.mapOf(UNIT_TYPE, UID), data);
+	}
+
+	Context createContext(Map<String, String> units, ContextData data) {
 		final ContextConfig config = ContextConfig.create();
-		config.setUnits(TestUtils.mapOf(UNIT_TYPE, UID));
+		config.setUnits(units);
 		return Context.create(clock, config, mock(ScheduledExecutorService.class),
 				CompletableFuture.completedFuture(data), dataProvider, eventHandler, null,
 				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()));
@@ -136,12 +140,8 @@ class ContextSwitchbackClusterTest {
 		lisboa.setAttribute("city", "Lisboa");
 		final Context porto = createContext(dataOf(attributeSwitchback("city", 100)));
 		porto.setAttribute("city", "Porto");
-		final ContextConfig other = ContextConfig.create();
-		other.setUnits(TestUtils.mapOf(UNIT_TYPE, "another-store"));
-		final Context otherLisboa = Context.create(clock, other, mock(ScheduledExecutorService.class),
-				CompletableFuture.completedFuture(dataOf(attributeSwitchback("city", 100))), dataProvider,
-				eventHandler, null, new DefaultVariableParser(),
-				new AudienceMatcher(new DefaultAudienceDeserializer()));
+		final Context otherLisboa = createContext(TestUtils.mapOf(UNIT_TYPE, "another-store"),
+				dataOf(attributeSwitchback("city", 100)));
 		otherLisboa.setAttribute("city", "Lisboa");
 
 		assertArrayEquals(expectedSchedule("Lisboa", 100), peekSchedule(lisboa));
@@ -422,13 +422,9 @@ class ContextSwitchbackClusterTest {
 	void unitTypeChangeWithoutClusterUnitTypeRekeysThePeriod() {
 		final String userUid = "user-0002";
 		final String userHash = new String(Hashing.hashUnit(userUid), StandardCharsets.US_ASCII);
-		final ContextConfig config = ContextConfig.create();
-		config.setUnits(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", userUid));
 		final Experiment byStore = switchback(ARMS, HOUR);
 		byStore.switchbackClusterUnitType = null;
-		final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
-				CompletableFuture.completedFuture(dataOf(byStore)), dataProvider, eventHandler, null,
-				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()));
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", userUid), dataOf(byStore));
 		assertNotEquals(expected(UID_HASH, 100, 0), expected(userHash, 100, 0));
 
 		clock.now = ANCHOR + 1;

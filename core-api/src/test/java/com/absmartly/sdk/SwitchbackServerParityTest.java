@@ -222,12 +222,10 @@ class SwitchbackServerParityTest {
 		for (final JsonNode c : bucketVectors.get("attributeKeys")) {
 			final Object value = MAPPER.convertValue(c.get("value"), Object.class);
 			final String key = c.get("key").isNull() ? null : c.get("key").textValue();
-			final Map<String, Object> flat = new HashMap<String, Object>();
-			flat.put("cluster", value);
-			final Map<String, Object> nested = new HashMap<String, Object>();
-			nested.put("geo", singleton("city", value));
-			final Map<String, Object> array = new HashMap<String, Object>();
-			array.put("items", TestUtils.listOf(singleton("city", "other"), singleton("city", value)));
+			final Map<String, Object> flat = TestUtils.mapOf("cluster", value);
+			final Map<String, Object> nested = TestUtils.mapOf("geo", TestUtils.mapOf("city", value));
+			final Map<String, Object> array = TestUtils.mapOf("items",
+					TestUtils.listOf(TestUtils.mapOf("city", "other"), TestUtils.mapOf("city", value)));
 
 			final String[] paths = {"cluster", "geo/city", "items/1/city"};
 			final List<Map<String, Object>> attributes = TestUtils.listOf(flat, nested, array);
@@ -302,8 +300,7 @@ class SwitchbackServerParityTest {
 		final JsonNode keys = bucketVectors.get("attributeKeys");
 		final String first = keys.get(0).get("key").textValue();
 		final String second = keys.get(1).get("key").textValue();
-		final Map<String, Object> attributes = new HashMap<String, Object>();
-		attributes.put(" cluster ", first);
+		final Map<String, Object> attributes = TestUtils.mapOf(" cluster ", first);
 		assertServed(serve(experiment(0L, 3, 50, "cluster"), "u1", attributes), first, 0L, 50, 3, "trimmed name");
 
 		final FixedClock clock = new FixedClock();
@@ -323,11 +320,5 @@ class SwitchbackServerParityTest {
 		context.getTreatment("exp_sb");
 		assertEquals(collectorVariant(second, 0L, 50, 0, 3), capture.exposures.get(0).variant);
 		assertTrue(capture.exposures.get(0).eligible);
-	}
-
-	static Map<String, Object> singleton(String key, Object value) {
-		final Map<String, Object> map = new HashMap<String, Object>();
-		map.put(key, value);
-		return map;
 	}
 }

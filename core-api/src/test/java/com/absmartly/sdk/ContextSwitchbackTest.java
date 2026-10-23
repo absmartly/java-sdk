@@ -62,7 +62,7 @@ class ContextSwitchbackTest {
 	static final int[] EXPECTED_2_ARMS = {0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0};
 	static final int[] EXPECTED_3_ARMS = {0, 2, 1, 2, 0, 1, 0, 1, 2, 2, 1, 0};
 	static final int[] EXPECTED_10_ARMS = {5, 3, 8, 9, 0, 7, 4, 6, 1, 2, 2, 4};
-	// Same reference fed UID_HASH itself rather than its bucket: the removed per-value clustering.
+	// Same reference fed UID_HASH itself rather than its bucket: what per-value clustering serves.
 	static final int[] PER_VALUE_3_ARMS = {1, 2, 0, 2, 1, 0, 2, 0, 1, 1, 2, 0};
 
 	static final class MutableClock extends Clock {
