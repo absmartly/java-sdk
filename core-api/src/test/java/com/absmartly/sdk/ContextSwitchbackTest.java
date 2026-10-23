@@ -1034,17 +1034,37 @@ class ContextSwitchbackTest {
 	void concurrentResolutionOfTheSamePeriodExposesOnce() throws InterruptedException {
 		final Experiment experiment = switchback(2, HOUR);
 		experiment.audience = "{\"filter\":[{\"value\":true}]}";
+		resolvePeriodOneConcurrently(experiment, null, EXPECTED_2_ARMS[1]);
+	}
+
+	// Attribute-sourced: the cluster attribute changes before both readers re-resolve the slot, and
+	// a third worker keeps writing it meanwhile. The slot keeps the key read at first resolution
+	// (Lisboa, variant 1 in period 1); Porto is variant 0 there, so a re-read key is visible.
+	@Test
+	void concurrentResolutionWithConcurrentSetAttributeExposesOnce() throws InterruptedException {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.audience = "{\"filter\":[{\"value\":true}]}";
+		experiment.switchbackClusterAttribute = "city";
+		resolvePeriodOneConcurrently(experiment, "Porto", 1);
+	}
+
+	void resolvePeriodOneConcurrently(Experiment experiment, String concurrentCity, int expectedVariant)
+			throws InterruptedException {
 		final BarrierAudienceMatcher matcher = new BarrierAudienceMatcher();
 		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID), dataOf(experiment), matcher);
 		clock.now = ANCHOR + HOUR + 10;
+		context.setAttribute("city", "Lisboa");
 
 		// Caches period 1 without exposing it; the attribute change forces both callers to revalidate.
-		assertEquals(EXPECTED_2_ARMS[1], context.peekTreatment("exp_sb"));
+		assertEquals(expectedVariant, context.peekTreatment("exp_sb"));
 		context.setAttribute("country", "PT");
+		if (concurrentCity != null) {
+			context.setAttribute("city", concurrentCity);
+		}
 
 		final int[] variants = new int[2];
-		final Throwable[] failures = new Throwable[2];
-		final Thread[] workers = new Thread[2];
+		final Throwable[] failures = new Throwable[3];
+		final Thread[] workers = new Thread[(concurrentCity != null) ? 3 : 2];
 		for (int i = 0; i < 2; ++i) {
 			final int slot = i;
 			workers[i] = new Thread(() -> {
@@ -1054,20 +1074,40 @@ class ContextSwitchbackTest {
 					failures[slot] = t;
 				}
 			});
-			workers[i].setDaemon(true);
-			workers[i].start();
+		}
+		if (concurrentCity != null) {
+			final AtomicInteger writes = new AtomicInteger();
+			workers[2] = new Thread(() -> {
+				try {
+					// Starts once both readers are in the audience barrier, so no reader blocks
+					// on a queued writer before the barrier trips.
+					while ((matcher.evaluations.get() < 3) && (workers[0].isAlive() || workers[1].isAlive())) {
+						Thread.yield();
+					}
+					while ((workers[0].isAlive() || workers[1].isAlive() || writes.get() < 1000)
+							&& writes.get() < 100_000) {
+						context.setAttribute("city", concurrentCity);
+						writes.incrementAndGet();
+					}
+				} catch (Throwable t) {
+					failures[2] = t;
+				}
+			});
+		}
+		for (final Thread worker : workers) {
+			worker.setDaemon(true);
+			worker.start();
 		}
 		for (final Thread worker : workers) {
 			worker.join(10_000);
 			assertFalse(worker.isAlive());
 		}
-		assertEquals(null, failures[0]);
-		assertEquals(null, failures[1]);
+		assertArrayEquals(new Throwable[3], failures);
 
-		assertEquals(EXPECTED_2_ARMS[1], variants[0]);
-		assertEquals(EXPECTED_2_ARMS[1], variants[1]);
+		assertEquals(expectedVariant, variants[0]);
+		assertEquals(expectedVariant, variants[1]);
 		assertEquals(1, context.getPendingCount());
-		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, EXPECTED_2_ARMS[1], ANCHOR + HOUR + 10,
+		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, expectedVariant, ANCHOR + HOUR + 10,
 				true, true, false, false, false, true)}, publishExposures(context));
 	}
 }
