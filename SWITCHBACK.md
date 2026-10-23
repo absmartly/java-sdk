@@ -1,8 +1,8 @@
 # Switchback experiments
 
-A switchback experiment randomizes a *cluster* (in Phase 1, always the experiment's own unit type)
-into a variant that changes over time on a fixed UTC grid. Every unit of that cluster sees the same
-variant within a period.
+A switchback experiment hashes each unit, or one of its context attributes, into one of 10, 50 or
+100 *buckets*. The bucket is the cluster: it is randomized into a variant that changes over time on
+a fixed UTC grid, and every unit in the bucket sees the same variant within a period.
 
 ## Minimum SDK version
 
@@ -24,6 +24,8 @@ every experiment a unit experiment for this SDK.
 | `switchbackPeriodMs` | Period length in milliseconds (whole hours). |
 | `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs` | Analysis-only windows. The SDK carries them but does not use them. |
 | `switchbackDesignType`, `switchbackEstimand` | Design metadata. |
+| `switchbackClusterCount` | Number of buckets: 10, 50 or 100. |
+| `switchbackClusterAttribute` | Attribute path hashed into buckets. Null hashes the unit. |
 
 For a switchback experiment:
 
@@ -31,20 +33,35 @@ For a switchback experiment:
   `periodIndex = floorDiv(now - anchor, switchbackPeriodMs)`, where `now` is one reading of the
   context's `Clock` taken by the `getTreatment`, `peekTreatment`, `getVariableValue` or
   `peekVariableValue` call.
+- The cluster key is `hashUnit(uid)`, the MD5/base64url string the SDK publishes as the hashed
+  unit, when `switchbackClusterAttribute` is null. Otherwise it is the context attribute at that
+  path (see below): a non-empty string as-is, or an integer in base 10.
+- `bucket = u32be(MD5(utf8("sbcluster" + U+001F + seedHi + ":" + seedLo + U+001F + key))[0..3]) mod
+  switchbackClusterCount`, pinned by `core-api/src/test/resources/switchback/bucket-golden-vectors.json`.
 - The variant is the balanced-block draw
-  `assignSwitchback(hashUnit(uid), periodIndex, seed, split.length)`, with
-  `seed = (seedHi << 32) | (seedLo & 0xffffffff)`. `hashUnit(uid)` is the same MD5/base64url string
-  the SDK publishes as the hashed unit. The algorithm is pinned by the platform's golden vectors
-  (`core-api/src/test/resources/switchback/golden-vectors.json`). A Collector that serves switchback
-  must hash the cluster unit the same way.
+  `assignSwitchback(String.valueOf(bucket), periodIndex, seed, split.length)`, with
+  `seed = (seedHi << 32) | (seedLo & 0xffffffff)`, pinned by
+  `core-api/src/test/resources/switchback/golden-vectors.json`. Both functions are the Collector's.
 - Precedence is the same as for unit experiments: override, holdouts, audience, full-on, traffic
   eligibility, then custom assignment or the switchback draw. Custom assignments therefore apply only
   to traffic-eligible units. Traffic eligibility uses the per-unit traffic hash, so it is sticky per
   cluster across periods.
 - The experiment is ineligible (variant 0) before the anchor, when `switchbackStartAt` or
-  `switchbackPeriodMs` is null, or when the cluster unit type differs from the unit type. If the
-  cluster unit is not set on the context, the experiment is unassigned. The SDK never falls back to
-  unit assignment.
+  `switchbackPeriodMs` is null, when the cluster unit type differs from the unit type, when
+  `switchbackClusterCount` is not 10, 50 or 100, when `switchbackClusterAttribute` is not a
+  supported path, or when the unit has no cluster key: the attribute is absent, empty, a boolean,
+  a floating-point number, an object or an array. Custom assignments need a cluster key too. If the
+  experiment unit is not set on the context, the experiment is unassigned. The SDK never falls back
+  to unit assignment.
+- Attribute paths follow the Collector: `/` separates segments, a segment quoted with `'` or `"` is
+  a literal key, and an unquoted integer segment (`items/0/city`) indexes a list. An index must be
+  non-negative and sit between two key segments. The first segment names an attribute set with
+  `setAttribute`; deeper segments read its value as the Collector reads its JSON encoding. Among
+  attributes with that name set at or before the call's clock reading, the one with the latest
+  `setAt` wins, and on a tie the one set last.
+- The cluster key is read once per period slot. A `setAttribute` later in the same period does not
+  move the unit to another bucket, even when an audience change re-resolves the slot; the next
+  period reads the attribute again.
 - The exposure and publish payloads are unchanged. Analysis derives the period from `exposedAt`, so
   a switchback exposure is stamped with the clock reading that selected its period, not a later
   one. A call that resolves just before a boundary and exposes just after it still publishes a
@@ -77,7 +94,8 @@ eviction.
 ### Refresh and epochs
 
 An experiment's switchback identity is `randomizationType`, `switchbackClusterUnitType`,
-`switchbackStartAt`, `switchbackPeriodMs`, `switchbackDesignType`, its id and its iteration. The
+`switchbackStartAt`, `switchbackPeriodMs`, `switchbackDesignType`, `switchbackClusterCount`,
+`switchbackClusterAttribute`, its id and its iteration. The
 backend rejects changes to the grid fields after an experiment starts, so within a live experiment
 a change means a pre-start edit, a restart (new iteration), or a type change.
 

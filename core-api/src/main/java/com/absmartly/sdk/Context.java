@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory;
 import com.absmartly.sdk.internal.Algorithm;
 import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
+import com.absmartly.sdk.internal.SwitchbackAttributePath;
+import com.absmartly.sdk.internal.SwitchbackBuckets;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
@@ -994,8 +996,8 @@ public class Context implements Closeable {
 				switchbackConfigMatches(experiment.data, assignment);
 	}
 
-	// Grid identity: a change to any of these re-maps periods to variants. Carryover and burn
-	// windows are analysis-only and deliberately excluded, as are seed and split, which do not
+	// Grid identity: a change to any of these re-maps periods or clusters to variants. Carryover and
+	// burn windows are analysis-only and deliberately excluded, as are seed and split, which do not
 	// invalidate unit assignments either.
 	private static boolean switchbackConfigMatches(final Experiment experiment, final Assignment assignment) {
 		if (isSwitchback(experiment) != assignment.switchback) {
@@ -1005,7 +1007,10 @@ public class Context implements Closeable {
 				|| (Objects.equals(experiment.switchbackClusterUnitType, assignment.switchbackClusterUnitType)
 						&& Objects.equals(experiment.switchbackStartAt, assignment.switchbackStartAt)
 						&& Objects.equals(experiment.switchbackPeriodMs, assignment.switchbackPeriodMs)
-						&& Objects.equals(experiment.switchbackDesignType, assignment.switchbackDesignType));
+						&& Objects.equals(experiment.switchbackDesignType, assignment.switchbackDesignType)
+						&& Objects.equals(experiment.switchbackClusterCount, assignment.switchbackClusterCount)
+						&& Objects.equals(experiment.switchbackClusterAttribute,
+								assignment.switchbackClusterAttribute));
 	}
 
 	private static void pinSwitchbackConfig(final Assignment assignment, final Experiment experiment) {
@@ -1015,6 +1020,8 @@ public class Context implements Closeable {
 			assignment.switchbackStartAt = experiment.switchbackStartAt;
 			assignment.switchbackPeriodMs = experiment.switchbackPeriodMs;
 			assignment.switchbackDesignType = experiment.switchbackDesignType;
+			assignment.switchbackClusterCount = experiment.switchbackClusterCount;
+			assignment.switchbackClusterAttribute = experiment.switchbackClusterAttribute;
 		}
 	}
 
@@ -1029,8 +1036,11 @@ public class Context implements Closeable {
 	// The grid anchor is switchbackStartAt rounded up to the UTC hour; the server already stores
 	// it aligned, and rounding an aligned value is a no-op. Returns NO_SWITCHBACK_PERIOD before
 	// the anchor and for any grid the SDK cannot evaluate: missing start or period, a cluster unit
-	// type other than the experiment's unit type (Phase 1 invariant), or fewer than two arms.
-	private static long switchbackPeriodIndex(final Experiment experiment, final long nowMs) {
+	// type other than the experiment's unit type (Phase 1 invariant), fewer than two arms, a
+	// cluster count outside {10, 50, 100}, or an unsupported cluster attribute path. The last two
+	// are the Collector's unservable rules.
+	private static long switchbackPeriodIndex(final ContextExperiment contextExperiment, final long nowMs) {
+		final Experiment experiment = contextExperiment.data;
 		final Long startAt = experiment.switchbackStartAt;
 		final Long periodMs = experiment.switchbackPeriodMs;
 		if ((startAt == null) || (periodMs == null) || (periodMs <= 0)) {
@@ -1041,6 +1051,12 @@ public class Context implements Closeable {
 			return NO_SWITCHBACK_PERIOD;
 		}
 		if ((experiment.split == null) || (experiment.split.length < 2)) {
+			return NO_SWITCHBACK_PERIOD;
+		}
+		if (!SwitchbackBuckets.isAllowedCount(experiment.switchbackClusterCount)) {
+			return NO_SWITCHBACK_PERIOD;
+		}
+		if ((experiment.switchbackClusterAttribute != null) && (contextExperiment.switchbackClusterPath == null)) {
 			return NO_SWITCHBACK_PERIOD;
 		}
 
@@ -1056,7 +1072,35 @@ public class Context implements Closeable {
 		if ((experiment == null) || !isSwitchback(experiment.data)) {
 			return NO_SWITCHBACK_PERIOD;
 		}
-		return switchbackPeriodIndex(experiment.data, nowMs);
+		return switchbackPeriodIndex(experiment, nowMs);
+	}
+
+	// The string hashed into the cluster bucket, or null when this unit has none (Collector
+	// ContextAPI.switchbackVariant): the unit source uses the published unit hash; the attribute
+	// source uses the attribute at the cluster path, normalised by SwitchbackBuckets. Caller holds
+	// the contextLock_ write lock.
+	private String switchbackClusterKey(final ContextExperiment experiment, final byte[] unitHash, final long now) {
+		if (experiment.data.switchbackClusterAttribute == null) {
+			return new String(unitHash, StandardCharsets.US_ASCII);
+		}
+		final SwitchbackAttributePath path = experiment.switchbackClusterPath;
+		final Attribute attribute = latestAttribute(path.rootKey(), now);
+		return (attribute != null) ? SwitchbackBuckets.normalizeAttribute(path.resolveAttribute(attribute.value))
+				: null;
+	}
+
+	// The attribute the Collector records with an exposure at `now` (ContextAPI.extractAttributes):
+	// among attributes set at or before now whose trimmed name matches, the greatest setAt wins and
+	// a tie goes to the one set last. Caller holds contextLock_.
+	private Attribute latestAttribute(final String name, final long now) {
+		Attribute selected = null;
+		for (final Attribute attribute : attributes_) {
+			if ((attribute.setAt <= now) && (attribute.name != null) && name.equals(attribute.name.trim())
+					&& ((selected == null) || (attribute.setAt >= selected.setAt))) {
+				selected = attribute;
+			}
+		}
+		return selected;
 	}
 
 	// Unit experiments, and switchback experiments with no current period, keep the bare name.
@@ -1071,8 +1115,9 @@ public class Context implements Closeable {
 		return experimentName + SWITCHBACK_KEY_SEPARATOR + periodIndex;
 	}
 
-	// Switchback identity: id, iteration, cluster unit type, startAt, periodMs and design. Seed,
-	// split and analysis-only fields are excluded. Absent and unit experiments have no identity.
+	// Switchback identity: id, iteration, cluster unit type, startAt, periodMs, design, cluster count
+	// and cluster attribute. Seed, split and analysis-only fields are excluded. Absent and unit
+	// experiments have no identity.
 	private static boolean sameSwitchbackIdentity(final ContextExperiment a, final ContextExperiment b) {
 		final boolean aSwitchback = (a != null) && isSwitchback(a.data);
 		final boolean bSwitchback = (b != null) && isSwitchback(b.data);
@@ -1083,7 +1128,9 @@ public class Context implements Closeable {
 				&& Objects.equals(a.data.switchbackClusterUnitType, b.data.switchbackClusterUnitType)
 				&& Objects.equals(a.data.switchbackStartAt, b.data.switchbackStartAt)
 				&& Objects.equals(a.data.switchbackPeriodMs, b.data.switchbackPeriodMs)
-				&& Objects.equals(a.data.switchbackDesignType, b.data.switchbackDesignType);
+				&& Objects.equals(a.data.switchbackDesignType, b.data.switchbackDesignType)
+				&& Objects.equals(a.data.switchbackClusterCount, b.data.switchbackClusterCount)
+				&& Objects.equals(a.data.switchbackClusterAttribute, b.data.switchbackClusterAttribute);
 	}
 
 	// Lifecycle of one switchback experiment's cache slots: the bare-name slot (pre-anchor or an
@@ -1238,6 +1285,12 @@ public class Context implements Closeable {
 		Long switchbackStartAt;
 		Long switchbackPeriodMs;
 		String switchbackDesignType;
+		Integer switchbackClusterCount;
+		String switchbackClusterAttribute;
+		// Set once the cluster key was read for this slot; switchbackClusterKey is then the key, or
+		// null for a unit without one.
+		boolean switchbackClusterKeyResolved;
+		String switchbackClusterKey;
 
 		final AtomicInteger exposureState = new AtomicInteger(ASSIGNMENT_UNEXPOSED);
 	}
@@ -1371,6 +1424,12 @@ public class Context implements Closeable {
 			assignment.name = experimentName;
 			assignment.eligible = true;
 			assignment.customAssignment = custom;
+			// Within one period slot the cluster key is read once (spec R32-3): a slot replaced in
+			// the same epoch, e.g. after setAttribute changed the audience, keeps its bucket.
+			if ((cached != null) && cached.switchbackClusterKeyResolved) {
+				assignment.switchbackClusterKeyResolved = true;
+				assignment.switchbackClusterKey = cached.switchbackClusterKey;
+			}
 
 			if (override != null) {
 				if (experiment != null) {
@@ -1458,17 +1517,31 @@ public class Context implements Closeable {
 								} else {
 									final VariantAssigner assigner = Context.this.getVariantAssigner(unitType,
 											unitHash);
-									final boolean eligible = assigner.assign(experiment.data.trafficSplit,
+									boolean eligible = assigner.assign(experiment.data.trafficSplit,
 											experiment.data.trafficSeedHi,
 											experiment.data.trafficSeedLo) == 1;
+									String clusterKey = null;
+									if (eligible && assignment.switchback) {
+										if (!assignment.switchbackClusterKeyResolved) {
+											assignment.switchbackClusterKeyResolved = true;
+											assignment.switchbackClusterKey = switchbackClusterKey(experiment,
+													unitHash, now);
+										}
+										clusterKey = assignment.switchbackClusterKey;
+										// No key: ineligible, as the Collector serves it.
+										eligible = clusterKey != null;
+									}
 									if (eligible) {
 										if (custom != null) {
 											assignment.variant = custom;
 											assignment.custom = true;
 										} else if (assignment.switchback) {
-											assignment.variant = SwitchbackAssigner.assign(
-													new String(unitHash, StandardCharsets.US_ASCII), periodIndex,
-													switchbackSeed(experiment.data), experiment.data.split.length);
+											final int bucket = SwitchbackBuckets.bucketOf(experiment.data.seedHi,
+													experiment.data.seedLo, clusterKey,
+													experiment.data.switchbackClusterCount);
+											assignment.variant = SwitchbackAssigner.assign(Integer.toString(bucket),
+													periodIndex, switchbackSeed(experiment.data),
+													experiment.data.split.length);
 										} else {
 											assignment.variant = assigner.assign(experiment.data.split,
 													experiment.data.seedHi,
@@ -1772,6 +1845,8 @@ public class Context implements Closeable {
 		// Assigned in setData under dataLock_ write: carried over from the previous index while the
 		// switchback identity is unchanged, otherwise a fresh value. Unused for unit experiments.
 		long switchbackGeneration;
+		// Parsed switchbackClusterAttribute; null for the unit source or an unsupported path.
+		SwitchbackAttributePath switchbackClusterPath;
 	}
 
 	private static class ContextCustomFieldValue {
@@ -1830,6 +1905,10 @@ public class Context implements Closeable {
 			final ContextExperiment contextExperiment = new ContextExperiment();
 			contextExperiment.data = experiment;
 			contextExperiment.holdouts = resolveApplicableHoldouts(experiment, holdoutsById);
+			if (isSwitchback(experiment)) {
+				contextExperiment.switchbackClusterPath = SwitchbackAttributePath
+						.parseSupported(experiment.switchbackClusterAttribute);
+			}
 			contextExperiment.variables = new ArrayList<Map<String, Object>>(
 					experiment.variants != null ? experiment.variants.length : 0);
 

@@ -29,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import com.absmartly.sdk.internal.SwitchbackAssigner;
+import com.absmartly.sdk.internal.SwitchbackBuckets;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.java.time.Clock;
@@ -53,13 +54,16 @@ class ContextSwitchbackTest {
 	static final int SEED_HI = -5;
 	static final int SEED_LO = -7;
 
-	// Periods 0..11 for UID_HASH under seed (SEED_HI, SEED_LO), computed with the platform's
-	// independent Python reference (abs tests/scripts/switchback_ref.py, assign_switchback).
-	static final int[] EXPECTED_2_ARMS = {1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0};
-	static final int[] EXPECTED_3_ARMS = {1, 2, 0, 2, 1, 0, 2, 0, 1, 1, 2, 0};
-	static final int[] EXPECTED_10_ARMS = {1, 2, 5, 3, 7, 4, 8, 0, 6, 9, 4, 6};
-	// Same reference fed the raw UID instead of its hash: what a wrong identity would serve.
-	static final int[] RAW_UID_3_ARMS = {2, 0, 1, 0, 1, 2, 1, 2, 0, 0, 1, 2};
+	// UID_HASH falls in bucket 35 of 100 under seed (SEED_HI, SEED_LO). Periods 0..11 of bucket
+	// "35", computed with an independent Python reference (hashlib MD5 and murmur3 over the
+	// platform formulas) that reproduces every bucket and schedule golden vector.
+	static final int CLUSTER_COUNT = 100;
+	static final int UID_BUCKET = 35;
+	static final int[] EXPECTED_2_ARMS = {0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0};
+	static final int[] EXPECTED_3_ARMS = {0, 2, 1, 2, 0, 1, 0, 1, 2, 2, 1, 0};
+	static final int[] EXPECTED_10_ARMS = {5, 3, 8, 9, 0, 7, 4, 6, 1, 2, 2, 4};
+	// Same reference fed UID_HASH itself rather than its bucket: the removed per-value clustering.
+	static final int[] PER_VALUE_3_ARMS = {1, 2, 0, 2, 1, 0, 2, 0, 1, 1, 2, 0};
 
 	static final class MutableClock extends Clock {
 		long now;
@@ -123,6 +127,7 @@ class ContextSwitchbackTest {
 		experiment.switchbackBurnOutDurationMs = 0L;
 		experiment.switchbackDesignType = "balanced_block";
 		experiment.switchbackEstimand = "global_average_treatment_effect";
+		experiment.switchbackClusterCount = CLUSTER_COUNT;
 		return experiment;
 	}
 
@@ -207,10 +212,11 @@ class ContextSwitchbackTest {
 		final int[] served = peekSchedule(context, "exp_sb", HOUR, 12);
 
 		assertArrayEquals(EXPECTED_3_ARMS, served);
-		assertFalse(Arrays.equals(RAW_UID_3_ARMS, served));
+		assertFalse(Arrays.equals(PER_VALUE_3_ARMS, served));
+		assertEquals(UID_BUCKET, SwitchbackBuckets.bucketOf(SEED_HI, SEED_LO, UID_HASH, CLUSTER_COUNT));
 		for (int i = 0; i < 12; ++i) {
-			assertEquals(SwitchbackAssigner.assign(UID_HASH, i, ((long) SEED_HI << 32) | (SEED_LO & 0xffffffffL), 3),
-					served[i]);
+			assertEquals(SwitchbackAssigner.assign(String.valueOf(UID_BUCKET), i,
+					((long) SEED_HI << 32) | (SEED_LO & 0xffffffffL), 3), served[i]);
 		}
 	}
 

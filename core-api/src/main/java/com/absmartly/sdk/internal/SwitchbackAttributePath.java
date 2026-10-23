@@ -5,11 +5,15 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 // A switchback cluster attribute path, resolved exactly like the Collector's
 // SwitchbackAttributePath: "/" separates segments, a segment wrapped in ' or " is a literal key,
 // and an unquoted segment that Guava Ints.tryParse accepts (ASCII digits, optional leading '-')
 // indexes a List and nothing else. Every other segment reads a Map key.
 public final class SwitchbackAttributePath {
+	private static final ObjectMapper JSON = new ObjectMapper();
+
 	private final List<String> keys;
 	// Parallel to keys; null where the segment is a map key.
 	private final List<Integer> indices;
@@ -39,9 +43,43 @@ public final class SwitchbackAttributePath {
 		return parsed;
 	}
 
+	// The attribute name the path starts at; a supported path always starts at a key segment.
+	public String rootKey() {
+		return keys.get(0);
+	}
+
 	public Object resolve(final Map<String, Object> attributes) {
-		Object current = attributes;
-		for (int i = 0; i < keys.size(); ++i) {
+		return resolveFrom(attributes, 0);
+	}
+
+	// Resolves the path below rootKey() in an SDK attribute value, read as the Collector reads it:
+	// the value's JSON encoding decoded by Jackson into Map, List, String, Boolean, Integer, Long,
+	// BigInteger or Double. Returns null when the value has no JSON encoding.
+	public Object resolveAttribute(final Object rootValue) {
+		if (rootValue == null) {
+			return null;
+		}
+		final Object decoded;
+		if ((rootValue instanceof String) || (rootValue instanceof Boolean) || (rootValue instanceof Integer)
+				|| (rootValue instanceof Long)) {
+			// Each of these decodes back to an equal value of the same type.
+			decoded = rootValue;
+		} else {
+			try {
+				decoded = JSON.readValue(JSON.writeValueAsBytes(rootValue), Object.class);
+			} catch (Exception e) {
+				return null;
+			} catch (StackOverflowError e) {
+				// A self-referencing Map or List.
+				return null;
+			}
+		}
+		return resolveFrom(decoded, 1);
+	}
+
+	private Object resolveFrom(final Object root, final int first) {
+		Object current = root;
+		for (int i = first; i < keys.size(); ++i) {
 			current = step(current, keys.get(i), indices.get(i));
 			if (current == null) {
 				return null;
