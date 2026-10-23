@@ -45,7 +45,7 @@ For a switchback experiment:
 - Precedence is the same as for unit experiments: override, holdouts, audience, full-on, traffic
   eligibility, then custom assignment or the switchback draw. Custom assignments therefore apply only
   to traffic-eligible units. Traffic eligibility uses the per-unit traffic hash, so it is sticky per
-  cluster across periods.
+  unit across periods; units in the same bucket can differ in traffic eligibility.
 - The experiment is ineligible (variant 0) before the anchor, when `switchbackStartAt` or
   `switchbackPeriodMs` is null, when the cluster unit type differs from the unit type, when
   `switchbackClusterCount` is not 10, 50 or 100, when `switchbackClusterAttribute` is not a
