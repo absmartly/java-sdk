@@ -76,7 +76,7 @@ class SwitchbackAttributePathTest {
 	@Test
 	void indexSegmentsReadOnlyListsAndKeySegmentsReadOnlyMaps() {
 		final Map<String, Object> attributes = TestUtils.mapOf("items",
-				TestUtils.listOf(TestUtils.mapOf("city", "Lisbon")), "geo", TestUtils.mapOf("0", "zero"),
+				TestUtils.listOf(TestUtils.mapOf("city", "Lisbon")), "geo", TestUtils.mapOf("0", TestUtils.mapOf("city", "zero")),
 				"name", "scalar");
 		assertNull(SwitchbackAttributePath.parseSupported("geo/0/city").resolve(attributes));
 		assertNull(SwitchbackAttributePath.parseSupported("items/1/city").resolve(attributes));
