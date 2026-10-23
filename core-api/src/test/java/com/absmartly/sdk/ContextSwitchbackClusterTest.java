@@ -17,6 +17,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
@@ -167,6 +168,24 @@ class ContextSwitchbackClusterTest {
 		final Context integer = createContext(dataOf(attributeSwitchback("region", 10)));
 		integer.setAttribute("region", 42L);
 		assertArrayEquals(expectedSchedule("42", 10), peekSchedule(integer));
+
+		// Values are read through their JSON encoding, as the Collector decodes them: an integral
+		// BigDecimal becomes an integer, a Character a string, and a Float a non-integral double.
+		clock.now = ANCHOR;
+		final Context decimal = createContext(dataOf(attributeSwitchback("geo/city", 50)));
+		decimal.setAttribute("geo", TestUtils.mapOf("city", new BigDecimal("42")));
+		assertArrayEquals(expectedSchedule("42", 50), peekSchedule(decimal));
+
+		clock.now = ANCHOR;
+		final Context character = createContext(dataOf(attributeSwitchback("city", 100)));
+		character.setAttribute("city", 'c');
+		assertArrayEquals(expectedSchedule("c", 100), peekSchedule(character));
+
+		clock.now = ANCHOR + 10;
+		final Context floating = createContext(dataOf(attributeSwitchback("city", 100)));
+		floating.setAttribute("city", 2.0f);
+		assertEquals(0, floating.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false)}, publishExposures(floating));
 	}
 
 	// Attribute values the Collector cannot bucket serve variant 0, not eligible, and never throw.
