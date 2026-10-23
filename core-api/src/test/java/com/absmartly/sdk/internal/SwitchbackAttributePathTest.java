@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -84,6 +87,35 @@ class SwitchbackAttributePathTest {
 		assertNull(SwitchbackAttributePath.parseSupported("name/x").resolve(attributes));
 		assertNull(SwitchbackAttributePath.parseSupported("missing/x").resolve(attributes));
 		assertEquals("Lisbon", SwitchbackAttributePath.parseSupported("items/-0/city").resolve(attributes));
+	}
+
+	@Test
+	void cyclicOrTooDeepValuesHaveNoKey() {
+		final SwitchbackAttributePath path = SwitchbackAttributePath.parseSupported("geo/city");
+
+		final Map<String, Object> self = new HashMap<String, Object>();
+		self.put("city", "Porto");
+		self.put("self", self);
+		assertNull(path.resolveAttribute(self));
+
+		final Map<String, Object> outer = new HashMap<String, Object>();
+		final List<Object> list = new ArrayList<Object>();
+		list.add(new Object[]{outer});
+		outer.put("city", "Porto");
+		outer.put("items", list);
+		assertNull(path.resolveAttribute(outer));
+
+		// 65 nested maps: one past the depth bound.
+		Map<String, Object> deep = TestUtils.mapOf("leaf", "x");
+		for (int i = 0; i < 64; ++i) {
+			deep = TestUtils.mapOf("city", "Porto", "next", deep);
+		}
+		assertNull(path.resolveAttribute(deep));
+		assertEquals("Porto", path.resolveAttribute(deep.get("next")));
+
+		// A value reached twice through siblings is not a cycle.
+		final Map<String, Object> shared = TestUtils.mapOf("a", "b");
+		assertEquals("Porto", path.resolveAttribute(TestUtils.mapOf("city", "Porto", "x", shared, "y", shared)));
 	}
 
 	@Test

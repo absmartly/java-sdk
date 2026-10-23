@@ -1,9 +1,15 @@
 package com.absmartly.sdk.internal;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -12,7 +18,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 // and an unquoted segment that Guava Ints.tryParse accepts (ASCII digits, optional leading '-')
 // indexes a List and nothing else. Every other segment reads a Map key.
 public final class SwitchbackAttributePath {
+	private static final Logger log = LoggerFactory.getLogger(SwitchbackAttributePath.class);
 	private static final ObjectMapper JSON = new ObjectMapper();
+	private static final int MAX_DEPTH = 64;
 
 	private final List<String> keys;
 	// Parallel to keys; null where the segment is a map key.
@@ -54,7 +62,8 @@ public final class SwitchbackAttributePath {
 
 	// Resolves the path below rootKey() in an SDK attribute value, read as the Collector reads it:
 	// the value's JSON encoding decoded by Jackson into Map, List, String, Boolean, Integer, Long,
-	// BigInteger or Double. Returns null when the value has no JSON encoding.
+	// BigInteger or Double. Returns null when the value has no JSON encoding, contains a Map,
+	// Collection or array cycle, or nests those deeper than MAX_DEPTH.
 	public Object resolveAttribute(final Object rootValue) {
 		if (rootValue == null) {
 			return null;
@@ -66,15 +75,47 @@ public final class SwitchbackAttributePath {
 			decoded = rootValue;
 		} else {
 			try {
+				// Jackson recurses into Maps, Collections and arrays without a cycle check, so a
+				// cycle through them would end in a StackOverflowError.
+				if (!isAcyclicWithinDepth(rootValue, new IdentityHashMap<Object, Boolean>(), 0)) {
+					log.warn("Switchback cluster attribute '{}' is cyclic or nested deeper than {}", rootKey(),
+							MAX_DEPTH);
+					return null;
+				}
 				decoded = JSON.readValue(JSON.writeValueAsBytes(rootValue), Object.class);
 			} catch (Exception e) {
-				return null;
-			} catch (StackOverflowError e) {
-				// A self-referencing Map or List.
+				log.warn("Switchback cluster attribute '{}' cannot be encoded as JSON: {}", rootKey(),
+						e.getClass().getName());
 				return null;
 			}
 		}
 		return resolveFrom(decoded, 1);
+	}
+
+	// `path` holds the containers on the current branch only, so a value shared by two siblings is
+	// not a cycle.
+	private static boolean isAcyclicWithinDepth(final Object value, final IdentityHashMap<Object, Boolean> path,
+			final int depth) {
+		final Iterable<?> children;
+		if (value instanceof Map) {
+			children = ((Map<?, ?>) value).values();
+		} else if (value instanceof Collection) {
+			children = (Collection<?>) value;
+		} else if (value instanceof Object[]) {
+			children = Arrays.asList((Object[]) value);
+		} else {
+			return true;
+		}
+		if ((depth >= MAX_DEPTH) || (path.put(value, Boolean.TRUE) != null)) {
+			return false;
+		}
+		for (final Object child : children) {
+			if (!isAcyclicWithinDepth(child, path, depth + 1)) {
+				return false;
+			}
+		}
+		path.remove(value);
+		return true;
 	}
 
 	private Object resolveFrom(final Object root, final int first) {
