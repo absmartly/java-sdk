@@ -21,6 +21,8 @@ class ExperimentSwitchbackFieldsTest {
 		experiment.switchbackBurnOutDurationMs = 0L;
 		experiment.switchbackDesignType = "balanced_block";
 		experiment.switchbackEstimand = "global_average_treatment_effect";
+		experiment.switchbackClusterCount = 50;
+		experiment.switchbackClusterAttribute = "geo/city";
 		return experiment;
 	}
 
@@ -79,6 +81,26 @@ class ExperimentSwitchbackFieldsTest {
 						e.switchbackEstimand = "other";
 					}
 				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusterCount = 100;
+					}
+				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusterCount = null;
+					}
+				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusterAttribute = null;
+					}
+				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusterAttribute = "geo/country";
+					}
+				},
 		};
 
 		for (final Mutation mutation : mutations) {
@@ -102,5 +124,7 @@ class ExperimentSwitchbackFieldsTest {
 		assertTrue(s.contains("switchbackBurnOutDurationMs=0"));
 		assertTrue(s.contains("switchbackDesignType='balanced_block'"));
 		assertTrue(s.contains("switchbackEstimand='global_average_treatment_effect'"));
+		assertTrue(s.contains("switchbackClusterCount=50"));
+		assertTrue(s.contains("switchbackClusterAttribute='geo/city'"));
 	}
 }

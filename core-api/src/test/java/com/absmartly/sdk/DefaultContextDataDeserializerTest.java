@@ -229,6 +229,8 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		switchback.switchbackBurnOutDurationMs = 0L;
 		switchback.switchbackDesignType = "balanced_block";
 		switchback.switchbackEstimand = "global_average_treatment_effect";
+		switchback.switchbackClusterCount = 50;
+		switchback.switchbackClusterAttribute = "geo/city";
 
 		final Experiment unit = new Experiment();
 		unit.id = 2;
@@ -273,6 +275,8 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 			assertNull(experiment.switchbackBurnOutDurationMs);
 			assertNull(experiment.switchbackDesignType);
 			assertNull(experiment.switchbackEstimand);
+			assertNull(experiment.switchbackClusterCount);
+			assertNull(experiment.switchbackClusterAttribute);
 		}
 	}
 

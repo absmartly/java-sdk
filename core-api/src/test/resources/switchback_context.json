@@ -43,6 +43,8 @@
 			"switchbackBurnOutDurationMs":0,
 			"switchbackDesignType":"balanced_block",
 			"switchbackEstimand":"global_average_treatment_effect",
+			"switchbackClusterCount":50,
+			"switchbackClusterAttribute":"geo/city",
 			"switchbackFutureField":{"nested":[1,2,3]}
 		},
 		{

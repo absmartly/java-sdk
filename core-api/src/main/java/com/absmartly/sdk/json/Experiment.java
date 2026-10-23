@@ -47,6 +47,9 @@ public class Experiment {
 	public Long switchbackBurnOutDurationMs;
 	public String switchbackDesignType;
 	public String switchbackEstimand;
+	// Hashed cluster buckets: count is 10, 50 or 100; a null attribute hashes the experiment unit.
+	public Integer switchbackClusterCount;
+	public String switchbackClusterAttribute;
 
 	public Experiment() {}
 
@@ -111,7 +114,11 @@ public class Experiment {
 			return false;
 		if (!Objects.equals(switchbackDesignType, that.switchbackDesignType))
 			return false;
-		return Objects.equals(switchbackEstimand, that.switchbackEstimand);
+		if (!Objects.equals(switchbackEstimand, that.switchbackEstimand))
+			return false;
+		if (!Objects.equals(switchbackClusterCount, that.switchbackClusterCount))
+			return false;
+		return Objects.equals(switchbackClusterAttribute, that.switchbackClusterAttribute);
 	}
 
 	private static int hash(Object o) {
@@ -147,6 +154,8 @@ public class Experiment {
 		result = 31 * result + hash(switchbackBurnOutDurationMs);
 		result = 31 * result + hash(switchbackDesignType);
 		result = 31 * result + hash(switchbackEstimand);
+		result = 31 * result + hash(switchbackClusterCount);
+		result = 31 * result + hash(switchbackClusterAttribute);
 		return result;
 	}
 
@@ -180,6 +189,8 @@ public class Experiment {
 				", switchbackBurnOutDurationMs=" + switchbackBurnOutDurationMs +
 				", switchbackDesignType='" + switchbackDesignType + '\'' +
 				", switchbackEstimand='" + switchbackEstimand + '\'' +
+				", switchbackClusterCount=" + switchbackClusterCount +
+				", switchbackClusterAttribute='" + switchbackClusterAttribute + '\'' +
 				'}';
 	}
 }
