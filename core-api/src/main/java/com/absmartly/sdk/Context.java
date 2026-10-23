@@ -1004,7 +1004,8 @@ public class Context implements Closeable {
 			return false;
 		}
 		return !assignment.switchback
-				|| (Objects.equals(experiment.switchbackClusterUnitType, assignment.switchbackClusterUnitType)
+				|| (Objects.equals(experiment.unitType, assignment.unitType)
+						&& Objects.equals(experiment.switchbackClusterUnitType, assignment.switchbackClusterUnitType)
 						&& Objects.equals(experiment.switchbackStartAt, assignment.switchbackStartAt)
 						&& Objects.equals(experiment.switchbackPeriodMs, assignment.switchbackPeriodMs)
 						&& Objects.equals(experiment.switchbackDesignType, assignment.switchbackDesignType)
@@ -1115,9 +1116,10 @@ public class Context implements Closeable {
 		return experimentName + SWITCHBACK_KEY_SEPARATOR + periodIndex;
 	}
 
-	// Switchback identity: id, iteration, cluster unit type, startAt, periodMs, design, cluster count
-	// and cluster attribute. Seed, split and analysis-only fields are excluded. Absent and unit
-	// experiments have no identity.
+	// Switchback identity: id, iteration, unit type, cluster unit type, startAt, periodMs, design,
+	// cluster count and cluster attribute, i.e. every input to the period grid and the cluster key.
+	// Seed, split and analysis-only fields are excluded. Absent and unit experiments have no
+	// identity.
 	private static boolean sameSwitchbackIdentity(final ContextExperiment a, final ContextExperiment b) {
 		final boolean aSwitchback = (a != null) && isSwitchback(a.data);
 		final boolean bSwitchback = (b != null) && isSwitchback(b.data);
@@ -1125,6 +1127,7 @@ public class Context implements Closeable {
 			return aSwitchback == bSwitchback;
 		}
 		return (a.data.id == b.data.id) && (a.data.iteration == b.data.iteration)
+				&& Objects.equals(a.data.unitType, b.data.unitType)
 				&& Objects.equals(a.data.switchbackClusterUnitType, b.data.switchbackClusterUnitType)
 				&& Objects.equals(a.data.switchbackStartAt, b.data.switchbackStartAt)
 				&& Objects.equals(a.data.switchbackPeriodMs, b.data.switchbackPeriodMs)

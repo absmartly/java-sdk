@@ -30,6 +30,8 @@ import org.mockito.Mockito;
 import com.absmartly.sdk.ContextSwitchbackTest.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.SwitchbackBuckets;
+import com.absmartly.sdk.internal.hashing.Hashing;
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.Exposure;
@@ -349,6 +351,31 @@ class ContextSwitchbackClusterTest {
 		refreshTo(context, unitSource);
 		assertEquals(expected(UID_HASH, 10, 0), context.getTreatment("exp_sb"));
 		assertEquals(4, context.getPendingCount());
+	}
+
+	// With no cluster unit type, the experiment's unitType alone decides the hashed unit, so a
+	// unitType change re-keys the period.
+	@Test
+	void unitTypeChangeWithoutClusterUnitTypeRekeysThePeriod() {
+		final String userUid = "user-0002";
+		final String userHash = new String(Hashing.hashUnit(userUid), StandardCharsets.US_ASCII);
+		final ContextConfig config = ContextConfig.create();
+		config.setUnits(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", userUid));
+		final Experiment byStore = switchback(ARMS, HOUR);
+		byStore.switchbackClusterUnitType = null;
+		final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
+				CompletableFuture.completedFuture(dataOf(byStore)), dataProvider, eventHandler, null,
+				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()));
+		assertNotEquals(expected(UID_HASH, 100, 0), expected(userHash, 100, 0));
+
+		clock.now = ANCHOR + 1;
+		assertEquals(expected(UID_HASH, 100, 0), context.getTreatment("exp_sb"));
+
+		final Experiment byUser = switchback(ARMS, HOUR);
+		byUser.switchbackClusterUnitType = null;
+		byUser.unitType = "user_id";
+		refreshTo(context, byUser);
+		assertEquals(expected(userHash, 100, 0), context.getTreatment("exp_sb"));
 	}
 
 	@Test
