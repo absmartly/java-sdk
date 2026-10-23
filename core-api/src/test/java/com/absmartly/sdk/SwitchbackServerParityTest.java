@@ -249,9 +249,13 @@ class SwitchbackServerParityTest {
 	}
 
 	// Each path case is served over the fixture's attributes. An unsupported path is unservable and
-	// a path resolving to null is ineligible; any other serves exactly what a top-level attribute
-	// holding the case's value serves. The case values are not bucket-fixture keys, so the
-	// top-level attribute bucket is the one the previous test pins.
+	// a path resolving to null is ineligible. Any other path serves the schedule of its value's
+	// bucket. The case values are not bucket-fixture keys, so their buckets for counts 10, 50 and
+	// 100 under the seeds used below were computed with Python hashlib MD5 over the platform
+	// formula, which reproduces all 702 bucket-fixture vectors.
+	static final Map<String, int[]> PATH_CASE_BUCKETS = TestUtils.mapOf("items/0/city", new int[]{8, 10, 58},
+			"geo/+1", new int[]{7, 12, 77}, "geo/city", new int[]{2, 5, 82});
+
 	@Test
 	void attributePathCasesMatchTheCollector() {
 		final Map<String, Object> attributes = MAPPER.convertValue(pathCases.get("attributes"),
@@ -260,18 +264,20 @@ class SwitchbackServerParityTest {
 		for (final JsonNode c : pathCases.get("cases")) {
 			final String path = c.get("path").textValue();
 			final Object value = MAPPER.convertValue(c.get("value"), Object.class);
-			for (final int count : COUNTS) {
+			for (int n = 0; n < COUNTS.length; ++n) {
+				final int count = COUNTS[n];
 				final long seed = SEEDS.get(count % SEEDS.size());
 				final Served served = serve(experiment(seed, 3, count, path), "u1", attributes);
 				if (!c.get("supported").booleanValue() || (value == null)) {
 					assertServed(served, null, seed, count, 3, c.toString());
 					continue;
 				}
-				final Served reference = serve(experiment(seed, 3, count, "v"), "u1", singleton("v", value));
+				final int bucket = PATH_CASE_BUCKETS.get(path)[n];
 				assertEquals(PERIODS, served.exposures.size(), c.toString());
 				for (int p = 0; p < PERIODS; ++p) {
 					assertEquals(true, served.exposures.get(p).eligible, c.toString());
-					assertEquals(reference.variants.get(p), served.variants.get(p), c.toString());
+					assertEquals(SwitchbackAssigner.assign(String.valueOf(bucket), p, seed, 3),
+							served.variants.get(p).intValue(), c + " count " + count + " period " + p);
 				}
 				++eligibleCases;
 			}
