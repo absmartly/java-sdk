@@ -19,6 +19,16 @@ The `android.permission.INTERNET` permission is required. To add this permission
 If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
 
 
+## Migrating to 2.0.0 (BREAKING)
+
+Read methods now throw `IllegalStateException` instead of returning defaults when the context is not ready, or after it is finalized (matching the JavaScript SDK):
+
+- `getTreatment`, `peekTreatment`, `getVariableValue`, `peekVariableValue`, `getVariableKeys`, `getCustomFieldKeys`, `getCustomFieldValue`, `getCustomFieldValueType` throw `"ABsmartly Context is not yet ready."` before ready, `"ABsmartly Context is finalizing."` while closing and `"ABsmartly Context is finalized."` after close.
+- `getExperiments` throws `"ABsmartly Context is not yet ready."` before ready; like JS `experiments()`, it still works after finalize.
+- All error messages now use the `ABsmartly` casing (was `ABSmartly`), and the closing message is now `"ABsmartly Context is finalizing."` (was `"ABSmartly Context is closing."`).
+
+Wait for the context before reading, e.g. `context.waitUntilReady()`, and check `context.isReady()` / `context.isFailed()` if you need a fallback.
+
 ## Installation
 
 #### Gradle

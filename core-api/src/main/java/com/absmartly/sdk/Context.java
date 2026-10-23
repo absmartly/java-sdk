@@ -185,9 +185,7 @@ public class Context implements Closeable {
 	}
 
 	public String[] getExperiments() {
-		if (!isReady() || isClosed() || isClosing()) {
-			return new String[0];
-		}
+		checkReady(false);
 
 		try {
 			dataLock_.readLock().lock();
@@ -205,9 +203,7 @@ public class Context implements Closeable {
 	}
 
 	public String[] getCustomFieldKeys() {
-		if (!isReady() || isClosed() || isClosing()) {
-			return new String[0];
-		}
+		checkReady(true);
 
 		final Set<String> keys = new HashSet<String>();
 
@@ -228,9 +224,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValue(@Nonnull final String experimentName, @Nonnull final String key) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return null;
-		}
+		checkReady(true);
 
 		try {
 			dataLock_.readLock().lock();
@@ -248,9 +242,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValueType(@Nonnull final String experimentName, @Nonnull final String key) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return null;
-		}
+		checkReady(true);
 
 		try {
 			dataLock_.readLock().lock();
@@ -445,13 +437,7 @@ public class Context implements Closeable {
 	}
 
 	public int getTreatment(@Nonnull final String experimentName) {
-		if (!isReady()) {
-			return 0;
-		}
-
-		if (isClosed() || isClosing()) {
-			return 0;
-		}
+		checkReady(true);
 
 		return getExposedTreatmentVariant(getAssignment(experimentName));
 	}
@@ -584,17 +570,13 @@ public class Context implements Closeable {
 	}
 
 	public int peekTreatment(@Nonnull final String experimentName) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return 0;
-		}
+		checkReady(true);
 
 		return getAssignment(experimentName).variant;
 	}
 
 	public Map<String, List<String>> getVariableKeys() {
-		if (!isReady() || isClosed() || isClosing()) {
-			return new HashMap<String, List<String>>();
-		}
+		checkReady(true);
 
 		final Map<String, List<String>> variableKeys = new HashMap<String, List<String>>(indexVariables_.size());
 
@@ -617,9 +599,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return defaultValue;
-		}
+		checkReady(true);
 
 		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false));
 		if (assignment != null) {
@@ -657,9 +637,7 @@ public class Context implements Closeable {
 	}
 
 	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return defaultValue;
-		}
+		checkReady(true);
 
 		final Assignment assignment = getVariableAssignment(key, true);
 		if (assignment != null) {
@@ -957,15 +935,15 @@ public class Context implements Closeable {
 
 	private void checkNotClosed() {
 		if (closed_.get()) {
-			throw new IllegalStateException("ABSmartly Context is finalized.");
+			throw new IllegalStateException("ABsmartly Context is finalized.");
 		} else if (closing_.get()) {
-			throw new IllegalStateException("ABSmartly Context is closing.");
+			throw new IllegalStateException("ABsmartly Context is finalizing.");
 		}
 	}
 
 	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
-			throw new IllegalStateException("ABSmartly Context is not yet ready.");
+			throw new IllegalStateException("ABsmartly Context is not yet ready.");
 		} else if (expectNotClosed) {
 			checkNotClosed();
 		}
