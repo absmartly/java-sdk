@@ -324,6 +324,24 @@ class ContextSwitchbackClusterTest {
 		assertEquals(expected("Porto", 100, 1), context.getTreatment("exp_sb"));
 	}
 
+	// A traffic miss never reads the key, so traffic restored later in the period reads it then.
+	@Test
+	void trafficRestoredWithinThePeriodReadsTheKey() {
+		final Experiment noTraffic = attributeSwitchback("city", 100);
+		noTraffic.trafficSplit = new double[]{1.0, 0.0};
+		final Context context = createContext(dataOf(noTraffic));
+		clock.now = ANCHOR + 10;
+		context.setAttribute("city", "Porto");
+		assertEquals(0, context.getTreatment("exp_sb"));
+
+		clock.now = ANCHOR + 20;
+		refreshTo(context, attributeSwitchback("city", 100));
+		assertEquals(1, expected("Porto", 100, 0));
+		assertEquals(expected("Porto", 100, 0), context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false),
+				exposure(expected("Porto", 100, 0), ANCHOR + 20, true, false)}, publishExposures(context));
+	}
+
 	// An audience change re-resolves the period slot (new exposure state) but keeps its bucket.
 	@Test
 	void audienceRevalidationAfterSetAttributeKeepsThePeriodsBucket() {
