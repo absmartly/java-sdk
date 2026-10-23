@@ -3,6 +3,7 @@ package com.absmartly.sdk.internal;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 
@@ -30,13 +31,24 @@ public abstract class SwitchbackBuckets {
 		}
 	};
 
+	private static final int[] ALLOWED_COUNTS = {10, 50, 100};
+
 	public static boolean isAllowedCount(final Integer count) {
-		return (count != null) && ((count == 10) || (count == 50) || (count == 100));
+		if (count == null) {
+			return false;
+		}
+		for (final int allowed : ALLOWED_COUNTS) {
+			if (count == allowed) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public static int bucketOf(final int seedHi, final int seedLo, final String key, final int count) {
 		if (!isAllowedCount(count)) {
-			throw new IllegalArgumentException("Switchback cluster count must be one of [10, 50, 100], got " + count);
+			throw new IllegalArgumentException(
+					"Switchback cluster count must be one of " + Arrays.toString(ALLOWED_COUNTS) + ", got " + count);
 		}
 		final String input = new StringBuilder(key.length() + 34).append("sbcluster").append(SEPARATOR)
 				.append(seedHi).append(':').append(seedLo).append(SEPARATOR).append(key).toString();

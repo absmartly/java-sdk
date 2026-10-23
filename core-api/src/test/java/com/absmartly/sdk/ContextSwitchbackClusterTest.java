@@ -256,7 +256,7 @@ class ContextSwitchbackClusterTest {
 		assertEquals(expected("Lisboa", 100, 4), context.peekTreatment("exp_sb"));
 	}
 
-	// Spec R32-3: within a period the bucket is fixed at first resolution; the next period reads
+	// Within a period the bucket is fixed at first resolution; the next period reads
 	// the attribute again.
 	@Test
 	void setAttributeMidPeriodDoesNotReassignWithinThePeriod() {

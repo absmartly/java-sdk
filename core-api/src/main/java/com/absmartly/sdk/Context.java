@@ -1427,7 +1427,7 @@ public class Context implements Closeable {
 			assignment.name = experimentName;
 			assignment.eligible = true;
 			assignment.customAssignment = custom;
-			// Within one period slot the cluster key is read once (spec R32-3): a slot replaced in
+			// Within one period slot the cluster key is read once: a slot replaced in
 			// the same epoch, e.g. after setAttribute changed the audience, keeps its bucket.
 			if ((cached != null) && cached.switchbackClusterKeyResolved) {
 				assignment.switchbackClusterKeyResolved = true;
