@@ -14,6 +14,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
@@ -116,6 +118,45 @@ class SwitchbackBucketsTest {
 		assertNull(SwitchbackBuckets.normalizeAttribute(Collections.emptyMap()));
 		assertNull(SwitchbackBuckets.normalizeAttribute(Collections.emptyList()));
 		assertNull(SwitchbackBuckets.normalizeAttribute('c'));
+	}
+
+	// Interleaves the three hashlib vectors across threads; a digest shared between threads mixes
+	// their inputs and yields wrong buckets.
+	@Test
+	void bucketOfIsThreadSafe() throws InterruptedException {
+		final String[] keys = {"1tdwU5K8evYzMovqjExpBA", "\u6771\u4eac", "a\u001fb"};
+		final long[] seeds = {0L, -123456789012345L, Long.MIN_VALUE};
+		final int[] counts = {10, 50, 100};
+		final int[] buckets = {6, 19, 43};
+		final int threads = 8;
+		final int iterations = 200000;
+		final CountDownLatch start = new CountDownLatch(1);
+		final AtomicInteger wrong = new AtomicInteger();
+		final Thread[] workers = new Thread[threads];
+		for (int t = 0; t < threads; ++t) {
+			final int offset = t;
+			workers[t] = new Thread(() -> {
+				try {
+					start.await();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return;
+				}
+				for (int i = 0; i < iterations; ++i) {
+					final int k = (i + offset) % keys.length;
+					if (bucketOf(keys[k], seeds[k], counts[k]) != buckets[k]) {
+						wrong.incrementAndGet();
+					}
+				}
+			});
+			workers[t].start();
+		}
+		start.countDown();
+		for (final Thread worker : workers) {
+			worker.join(60000);
+			assertFalse(worker.isAlive());
+		}
+		assertEquals(0, wrong.get());
 	}
 
 	@Test
