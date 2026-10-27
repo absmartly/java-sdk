@@ -1,6 +1,7 @@
 package com.absmartly.sdk.internal.hashing;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 
 import com.absmartly.sdk.internal.Buffers;
@@ -37,13 +38,27 @@ public abstract class Hashing {
 		final double magnitude = Math.abs(value);
 		final String sign = value < 0 ? "-" : "";
 		if (magnitude >= 1e21) {
-			final BigDecimal shortest = new BigDecimal(Double.toString(magnitude)).stripTrailingZeros();
+			final BigDecimal shortest = shortestRoundTrip(magnitude).stripTrailingZeros();
 			final String digits = shortest.unscaledValue().toString();
 			final int exponent = digits.length() - 1 - shortest.scale();
 			final String mantissa = digits.length() == 1 ? digits : digits.charAt(0) + "." + digits.substring(1);
 			return sign + mantissa + "e+" + exponent;
 		}
 		return sign + new BigDecimal(magnitude).setScale(0, RoundingMode.HALF_UP).toPlainString();
+	}
+
+	// The fewest significant digits that read back as the same double, nearest to the exact value, as
+	// JavaScript's Number-to-String conversion picks them. Double.toString is not shortest on every JDK
+	// (JDK 11 gives 9.999999999999999E22 for 1e23).
+	private static BigDecimal shortestRoundTrip(final double value) {
+		final BigDecimal exact = new BigDecimal(value);
+		for (int precision = 1; precision < 17; ++precision) {
+			final BigDecimal candidate = exact.round(new MathContext(precision, RoundingMode.HALF_EVEN));
+			if (candidate.doubleValue() == value) {
+				return candidate;
+			}
+		}
+		return exact.round(new MathContext(17, RoundingMode.HALF_EVEN));
 	}
 
 	public static byte[] hashUnit(CharSequence unit) {

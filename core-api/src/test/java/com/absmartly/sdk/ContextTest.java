@@ -3178,6 +3178,8 @@ class ContextTest extends TestUtils {
 		assertEquals("123456789", Hashing.unitToString(123456789L));
 		assertEquals("9007199254740992", Hashing.unitToString(9007199254740993L));
 		assertEquals("1e+21", Hashing.unitToString(1e21));
+		assertEquals("1e+23", Hashing.unitToString(1e23));
+		assertEquals("1.7976931348623157e+308", Hashing.unitToString(Double.MAX_VALUE));
 		assertEquals("1.2345e+22", Hashing.unitToString(1.2345e22));
 		assertEquals("-1e+21", Hashing.unitToString(-1e21));
 		assertEquals("999999999999999868928", Hashing.unitToString(999999999999999900000.0));
@@ -3250,5 +3252,24 @@ class ContextTest extends TestUtils {
 		assertThrows(IllegalArgumentException.class, () -> createContext(
 				ContextConfig.create().setUnit("account_id", new java.util.concurrent.atomic.AtomicLong(1)),
 				dataFutureReady));
+	}
+
+	@Test
+	void lateReadinessWaitersDoNotSettleBeforeReadyEventIsLogged() {
+		final AtomicReference<Boolean> lateWaiterDone = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Ready) {
+				lateWaiterDone.set(contextRef.get().waitUntilReadyAsync().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createContext(dataFuture);
+		contextRef.set(context);
+		dataFuture.complete(data);
+
+		assertEquals(Boolean.FALSE, lateWaiterDone.get());
+		assertTrue(context.waitUntilReadyAsync().isDone());
 	}
 }

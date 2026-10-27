@@ -163,29 +163,25 @@ public class Context implements Closeable {
 		return isClosing();
 	}
 
+	// Waits go through readyFuture_ rather than data_: data_ is set before the Ready event is logged,
+	// and the future only completes after it, so a caller never returns before the event.
 	public CompletableFuture<Context> waitUntilReadyAsync() {
-		if (data_ != null) {
-			return CompletableFuture.completedFuture(this);
-		} else {
-			final CompletableFuture<Void> rf = readyFuture_.get();
-			if (rf != null) {
-				return rf.thenApply(new Function<Void, Context>() {
-					@Override
-					public Context apply(Void k) {
-						return Context.this;
-					}
-				});
-			}
-			return CompletableFuture.completedFuture(this);
+		final CompletableFuture<Void> rf = readyFuture_.get();
+		if (rf != null) {
+			return rf.thenApply(new Function<Void, Context>() {
+				@Override
+				public Context apply(Void k) {
+					return Context.this;
+				}
+			});
 		}
+		return CompletableFuture.completedFuture(this);
 	}
 
 	public Context waitUntilReady() {
-		if (data_ == null) {
-			final CompletableFuture<Void> future = readyFuture_.get(); // cache here to avoid locking
-			if (future != null && !future.isDone()) {
-				future.join();
-			}
+		final CompletableFuture<Void> future = readyFuture_.get(); // cache here to avoid locking
+		if (future != null && !future.isDone()) {
+			future.join();
 		}
 		return this;
 	}
