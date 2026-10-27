@@ -3179,6 +3179,11 @@ class ContextTest extends TestUtils {
 		assertEquals("9007199254740992", Hashing.unitToString(9007199254740993L));
 		assertEquals("1e+21", Hashing.unitToString(1e21));
 		assertEquals("1e+23", Hashing.unitToString(1e23));
+		assertEquals("6.189700196426902e+26", Hashing.unitToString(Math.scalb(1.0, 89)));
+		// Expected strings from Node's toFixed(0).
+		assertEquals("1.1805916207174113e+21", Hashing.unitToString(Math.scalb(1.0, 70)));
+		assertEquals("3.6267774588438875e+24", Hashing.unitToString(3 * Math.scalb(1.0, 80)));
+		assertEquals("1.2345678901234569e+23", Hashing.unitToString(123456789012345680000000.0));
 		assertEquals("1.7976931348623157e+308", Hashing.unitToString(Double.MAX_VALUE));
 		assertEquals("1.2345e+22", Hashing.unitToString(1.2345e22));
 		assertEquals("-1e+21", Hashing.unitToString(-1e21));

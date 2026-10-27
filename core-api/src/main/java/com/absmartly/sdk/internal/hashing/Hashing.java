@@ -47,18 +47,29 @@ public abstract class Hashing {
 		return sign + new BigDecimal(magnitude).setScale(0, RoundingMode.HALF_UP).toPlainString();
 	}
 
-	// The fewest significant digits that read back as the same double, nearest to the exact value, as
-	// JavaScript's Number-to-String conversion picks them. Double.toString is not shortest on every JDK
-	// (JDK 11 gives 9.999999999999999E22 for 1e23).
+	// The fewest significant digits that read back as the same double, closest to the exact value when
+	// two qualify, as in JavaScript's Number-to-String conversion (ECMA-262 Number::toString). Both
+	// neighbours are tried at each precision: the shortest round-trip decimal is not always the nearest
+	// one (2^89). Double.toString is not shortest on every JDK (JDK 11 gives 9.999999999999999E22).
 	private static BigDecimal shortestRoundTrip(final double value) {
 		final BigDecimal exact = new BigDecimal(value);
-		for (int precision = 1; precision < 17; ++precision) {
-			final BigDecimal candidate = exact.round(new MathContext(precision, RoundingMode.HALF_EVEN));
-			if (candidate.doubleValue() == value) {
-				return candidate;
+		for (int precision = 1; precision <= 17; ++precision) {
+			final BigDecimal down = exact.round(new MathContext(precision, RoundingMode.FLOOR));
+			final BigDecimal up = exact.round(new MathContext(precision, RoundingMode.CEILING));
+			final boolean downOk = down.doubleValue() == value;
+			final boolean upOk = up.doubleValue() == value;
+			if (downOk && upOk) {
+				final int cmp = exact.subtract(down).compareTo(up.subtract(exact));
+				return cmp <= 0 ? down : up;
+			}
+			if (downOk) {
+				return down;
+			}
+			if (upOk) {
+				return up;
 			}
 		}
-		return exact.round(new MathContext(17, RoundingMode.HALF_EVEN));
+		return exact;
 	}
 
 	public static byte[] hashUnit(CharSequence unit) {
