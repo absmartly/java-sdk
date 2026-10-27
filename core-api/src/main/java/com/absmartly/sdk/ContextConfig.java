@@ -13,27 +13,35 @@ public class ContextConfig {
 	private ContextConfig() {}
 
 	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
+		return putUnit(unitType, uid);
+	}
+
+	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final Number uid) {
+		return putUnit(unitType, uid);
+	}
+
+	public ContextConfig setUnits(@Nonnull final Map<String, ?> units) {
+		for (final Map.Entry<String, ?> entry : units.entrySet()) {
+			putUnit(entry.getKey(), entry.getValue());
+		}
+		return this;
+	}
+
+	public Object getUnit(@Nonnull final String unitType) {
+		return units_ != null ? units_.get(unitType) : null;
+	}
+
+	public Map<String, Object> getUnits() {
+		return units_;
+	}
+
+	private ContextConfig putUnit(final String unitType, final Object uid) {
 		if (units_ == null) {
-			units_ = new HashMap<String, String>();
+			units_ = new HashMap<String, Object>();
 		}
 
 		units_.put(unitType, uid);
 		return this;
-	}
-
-	public ContextConfig setUnits(@Nonnull final Map<String, String> units) {
-		for (final Map.Entry<String, String> entry : units.entrySet()) {
-			setUnit(entry.getKey(), entry.getValue());
-		}
-		return this;
-	}
-
-	public String getUnit(@Nonnull final String unitType) {
-		return units_ != null ? units_.get(unitType) : null;
-	}
-
-	public Map<String, String> getUnits() {
-		return units_;
 	}
 
 	public ContextConfig setAttribute(@Nonnull final String name, @Nonnull final Object value) {
@@ -135,7 +143,7 @@ public class ContextConfig {
 		return this.refreshInterval_;
 	}
 
-	private Map<String, String> units_;
+	private Map<String, Object> units_;
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
 	private Map<String, Integer> cassignments_;

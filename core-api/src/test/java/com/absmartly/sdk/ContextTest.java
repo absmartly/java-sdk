@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
+import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.Attribute;
 import com.absmartly.sdk.json.ContextData;
@@ -2526,19 +2527,6 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
-	void refreshDoesNotCallPublishWhenFailed() {
-		final Context context = createContext(dataFutureFailed);
-		assertTrue(context.isReady());
-		assertTrue(context.isFailed());
-
-		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
-
-		context.refresh();
-
-		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
-	}
-
-	@Test
 	void publishIncludesExposureData() {
 		final Context context = createReadyContext();
 
@@ -3074,5 +3062,163 @@ class ContextTest extends TestUtils {
 		final CompletableFuture<Void> retryPublish = assertDoesNotThrow(context::publishAsync);
 		retryPublish.join();
 		assertEquals(0, context.getPendingCount());
+	}
+
+	private void recordFutureStateOnEvent(final ContextEventLogger.EventType type,
+			final AtomicReference<CompletableFuture<?>> future, final AtomicReference<Boolean> doneWhenLogged) {
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == type && future.get() != null) {
+				doneWhenLogged.set(future.get().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+	}
+
+	@Test
+	void readyEventIsLoggedBeforeReadyFutureSettles() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Ready, future, doneWhenLogged);
+
+		final Context context = createContext(dataFuture);
+		future.set(context.waitUntilReadyAsync());
+		dataFuture.complete(data);
+
+		assertEquals(Boolean.FALSE, doneWhenLogged.get());
+		assertTrue(future.get().isDone());
+	}
+
+	@Test
+	void errorEventIsLoggedBeforeReadyFutureSettlesOnFailedLoad() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Error, future, doneWhenLogged);
+
+		final Context context = createContext(dataFuture);
+		future.set(context.waitUntilReadyAsync());
+		dataFuture.completeExceptionally(new Exception("FAILED"));
+
+		assertEquals(Boolean.FALSE, doneWhenLogged.get());
+		assertTrue(context.isFailed());
+	}
+
+	@Test
+	void refreshEventIsLoggedBeforeRefreshFutureSettles() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Refresh, future, doneWhenLogged);
+
+		final Context context = createReadyContext();
+		when(dataProvider.getContextData()).thenReturn(refreshDataFuture);
+		future.set(context.refreshAsync());
+		refreshDataFuture.complete(refreshData);
+
+		assertEquals(Boolean.FALSE, doneWhenLogged.get());
+		assertTrue(future.get().isDone());
+	}
+
+	@Test
+	void errorEventIsLoggedBeforeRefreshFutureSettlesOnFailure() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Error, future, doneWhenLogged);
+
+		final Context context = createReadyContext();
+		when(dataProvider.getContextData()).thenReturn(refreshDataFuture);
+		future.set(context.refreshAsync());
+		refreshDataFuture.completeExceptionally(new Exception("FAILED"));
+
+		assertEquals(Boolean.FALSE, doneWhenLogged.get());
+		assertTrue(future.get().isCompletedExceptionally());
+	}
+
+	@Test
+	void closeEventIsLoggedBeforeCloseFutureSettles() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Close, future, doneWhenLogged);
+
+		final Context context = createReadyContext();
+		context.track("goal1", null);
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		future.set(context.closeAsync());
+		publishFuture.complete(null);
+		future.get().join();
+
+		assertEquals(Boolean.FALSE, doneWhenLogged.get());
+		assertTrue(context.isClosed());
+	}
+
+	@Test
+	void numericUnitsKeepTheirType() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnit("session_id", "abc")
+				.setUnit("user_id", 125)
+				.setUnit("float_id", 125.75);
+		final Context context = createContext(config, dataFutureReady);
+		context.setUnit("org_id", 99L);
+
+		assertEquals(125, context.getUnit("user_id"));
+		assertEquals(125.75, context.getUnit("float_id"));
+		assertEquals(99L, context.getUnit("org_id"));
+		assertEquals("abc", context.getUnit("session_id"));
+		assertEquals(mapOf("session_id", "abc", "user_id", 125, "float_id", 125.75, "org_id", 99L),
+				context.getUnits());
+	}
+
+	@Test
+	void numericUnitHashesLikeIntegerString() {
+		assertEquals("126", Hashing.unitToString(125.75));
+		assertEquals("125", Hashing.unitToString(125));
+		assertEquals("-3", Hashing.unitToString(-2.5));
+		assertEquals("123456789", Hashing.unitToString(123456789L));
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		final Context numeric = createContext(ContextConfig.create().setUnit("user_id", 125.75), dataFutureReady);
+		final Context text = createContext(ContextConfig.create().setUnit("user_id", "126"), dataFutureReady);
+		numeric.track("goal", null);
+		text.track("goal", null);
+		final List<PublishEvent> events = new ArrayList<>();
+		Mockito.doAnswer(invocation -> {
+			events.add(invocation.getArgument(1));
+			return CompletableFuture.completedFuture(null);
+		}).when(eventHandler).publish(any(), any());
+		numeric.publish();
+		text.publish();
+
+		assertEquals(2, events.size());
+		assertEquals(events.get(1).units[0].uid, events.get(0).units[0].uid);
+	}
+
+	@Test
+	void setUnitRejectsSameNumericValueOnlyWhenDifferent() {
+		final Context context = createContext(ContextConfig.create().setUnit("user_id", 12345), dataFutureReady);
+		assertDoesNotThrow(() -> context.setUnit("user_id", 12345));
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("user_id", 54321));
+		assertEquals("Unit 'user_id' UID already set.", error.getMessage());
+	}
+
+	@Test
+	void setUnitChecksBlankBeforeAlreadySet() {
+		final Context context = createReadyContext();
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("user_id", "  "));
+		assertEquals("Unit 'user_id' UID must not be blank.", error.getMessage());
+	}
+
+	@Test
+	void refreshOnFailedContextIsANoOp() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isFailed());
+		Mockito.clearInvocations(eventLogger);
+
+		context.refresh();
+
+		verify(dataProvider, Mockito.never()).getContextData();
+		Mockito.verifyNoInteractions(eventLogger);
+		assertTrue(context.isFailed());
 	}
 }

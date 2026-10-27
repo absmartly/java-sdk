@@ -61,9 +61,9 @@ public class Context implements Closeable {
 		audienceMatcher_ = audienceMatcher;
 		scheduler_ = scheduler;
 
-		units_ = new HashMap<String, String>();
+		units_ = new HashMap<String, Object>();
 
-		final Map<String, String> units = config.getUnits();
+		final Map<String, Object> units = config.getUnits();
 		if (units != null) {
 			setUnits(units);
 		}
@@ -105,12 +105,14 @@ public class Context implements Closeable {
 				@Override
 				public void accept(ContextData data) {
 					Context.this.setData(data);
-					final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
-					if (rf != null) {
-						rf.complete(null);
+					try {
+						Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
+					} finally {
+						final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
+						if (rf != null) {
+							rf.complete(null);
+						}
 					}
-
-					Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
 
 					if (Context.this.getPendingCount() > 0) {
 						Context.this.setTimeout();
@@ -120,12 +122,14 @@ public class Context implements Closeable {
 				@Override
 				public Void apply(Throwable exception) {
 					Context.this.setDataFailed(exception);
-					final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
-					if (rf != null) {
-						rf.complete(null);
+					try {
+						Context.this.logError(exception);
+					} finally {
+						final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
+						if (rf != null) {
+							rf.complete(null);
+						}
 					}
-
-					Context.this.logError(exception);
 
 					return null;
 				}
@@ -304,7 +308,7 @@ public class Context implements Closeable {
 		}
 	}
 
-	public String getUnit(@Nonnull final String unitType) {
+	public Object getUnit(@Nonnull final String unitType) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
@@ -315,28 +319,47 @@ public class Context implements Closeable {
 	}
 
 	public void setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
+		putUnit(unitType, uid);
+	}
+
+	public void setUnit(@Nonnull final String unitType, @Nonnull final Number uid) {
+		putUnit(unitType, uid);
+	}
+
+	private void putUnit(final String unitType, Object uid) {
 		checkNotClosed();
+
+		if (uid instanceof String) {
+			uid = ((String) uid).trim();
+			if (((String) uid).isEmpty()) {
+				throw new IllegalArgumentException(String.format("Unit '%s' UID must not be blank.", unitType));
+			}
+		} else if (!(uid instanceof Number)) {
+			throw new IllegalArgumentException(String.format("Unit '%s' must be a string or a number.", unitType));
+		}
 
 		final ReentrantReadWriteLock.WriteLock writeLock = contextLock_.writeLock();
 		try {
 			writeLock.lock();
 
-			final String previous = units_.get(unitType);
-			if ((previous != null) && !previous.equals(uid)) {
+			final Object previous = units_.get(unitType);
+			if ((previous != null) && !sameUid(previous, uid)) {
 				throw new IllegalArgumentException(String.format("Unit '%s' UID already set.", unitType));
 			}
 
-			final String trimmed = uid.trim();
-			if (trimmed.isEmpty()) {
-				throw new IllegalArgumentException(String.format("Unit '%s' UID must not be blank.", unitType));
-			}
-
-			units_.put(unitType, trimmed);
+			units_.put(unitType, uid);
 
 			invalidateAssignmentsPinnedWithMissingUnit(unitType);
 		} finally {
 			writeLock.unlock();
 		}
+	}
+
+	private static boolean sameUid(final Object a, final Object b) {
+		if ((a instanceof Number) && (b instanceof Number)) {
+			return ((Number) a).doubleValue() == ((Number) b).doubleValue();
+		}
+		return a.equals(b);
 	}
 
 	// holdoutAssignments pins the holdout decisions used to compute suppression. A null entry means
@@ -372,21 +395,19 @@ public class Context implements Closeable {
 		}
 	}
 
-	public Map<String, String> getUnits() {
+	public Map<String, Object> getUnits() {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
-			return new HashMap<String, String>(units_);
+			return new HashMap<String, Object>(units_);
 		} finally {
 			readLock.unlock();
 		}
 	}
 
-	public void setUnits(@Nonnull final Map<String, String> units) {
-		for (Map.Entry<String, String> entry : units.entrySet()) {
-			String key = entry.getKey();
-			String value = entry.getValue();
-			setUnit(key, value);
+	public void setUnits(@Nonnull final Map<String, ?> units) {
+		for (Map.Entry<String, ?> entry : units.entrySet()) {
+			putUnit(entry.getKey(), entry.getValue());
 		}
 	}
 
@@ -688,6 +709,10 @@ public class Context implements Closeable {
 	public CompletableFuture<Void> refreshAsync() {
 		checkNotClosed();
 
+		if (failed_) {
+			return CompletableFuture.completedFuture(null);
+		}
+
 		if (refreshing_.compareAndSet(false, true)) {
 			final CompletableFuture<Void> newRefreshFuture = new CompletableFuture<Void>();
 			refreshFuture_.set(newRefreshFuture);
@@ -697,17 +722,21 @@ public class Context implements Closeable {
 				public void accept(ContextData data) {
 					Context.this.setData(data);
 					refreshing_.set(false);
-					newRefreshFuture.complete(null);
-
-					Context.this.logEvent(ContextEventLogger.EventType.Refresh, data);
+					try {
+						Context.this.logEvent(ContextEventLogger.EventType.Refresh, data);
+					} finally {
+						newRefreshFuture.complete(null);
+					}
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
 				@Override
 				public Void apply(Throwable exception) {
 					refreshing_.set(false);
-					newRefreshFuture.completeExceptionally(exception);
-
-					Context.this.logError(exception);
+					try {
+						Context.this.logError(exception);
+					} finally {
+						newRefreshFuture.completeExceptionally(exception);
+					}
 					return null;
 				}
 			});
@@ -739,9 +768,11 @@ public class Context implements Closeable {
 						public void accept(Void x) {
 							closed_.set(true);
 							closing_.set(false);
-							newClosingFuture.complete(null);
-
-							Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+							try {
+								Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+							} finally {
+								newClosingFuture.complete(null);
+							}
 						}
 					}).exceptionally(new Function<Throwable, Void>() {
 						@Override
@@ -842,9 +873,9 @@ public class Context implements Closeable {
 					try {
 						contextLock_.writeLock().lock();
 						event.units = Algorithm.mapSetToArray(units_.entrySet(), new Unit[0],
-								new Function<Map.Entry<String, String>, Unit>() {
+								new Function<Map.Entry<String, Object>, Unit>() {
 									@Override
-									public Unit apply(Map.Entry<String, String> entry) {
+									public Unit apply(Map.Entry<String, Object> entry) {
 										return new Unit(entry.getKey(),
 												new String(getUnitHash(entry.getKey(), entry.getValue()),
 														StandardCharsets.US_ASCII));
@@ -1230,7 +1261,7 @@ public class Context implements Closeable {
 						if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 							assignment.variant = 0;
 						} else if (experiment.data.fullOnVariant == 0) {
-							final String uid = units_.get(unitType);
+							final Object uid = units_.get(unitType);
 							if (uid != null) {
 								final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
 
@@ -1392,7 +1423,7 @@ public class Context implements Closeable {
 		try {
 			readLock.lock();
 
-			final String uid = units_.get(unitType);
+			final Object uid = units_.get(unitType);
 			if (uid == null) {
 				return null;
 			}
@@ -1412,7 +1443,7 @@ public class Context implements Closeable {
 		try {
 			writeLock.lock();
 
-			final String uid = units_.get(unitType);
+			final Object uid = units_.get(unitType);
 			if (uid == null) {
 				return null;
 			}
@@ -1457,7 +1488,7 @@ public class Context implements Closeable {
 		return Concurrency.getRW(dataLock_, indexVariables_, key);
 	}
 
-	private byte[] getUnitHash(final String unitType, final String unitUID) {
+	private byte[] getUnitHash(final String unitType, final Object unitUID) {
 		return Concurrency.computeIfAbsentRW(contextLock_, hashedUnits_, unitType, new Function<String, byte[]>() {
 			@Override
 			public byte[] apply(String key) {
@@ -1742,7 +1773,7 @@ public class Context implements Closeable {
 	private final VariableParser variableParser_;
 	private final AudienceMatcher audienceMatcher_;
 	private final ScheduledExecutorService scheduler_;
-	private final Map<String, String> units_;
+	private final Map<String, Object> units_;
 	private volatile boolean failed_;
 	private volatile Throwable readyError_;
 
