@@ -780,76 +780,63 @@ public class Context implements Closeable {
 	}
 
 	public CompletableFuture<Void> closeAsync() {
-		if (!closed_.get()) {
-			if (closing_.compareAndSet(false, true)) {
-				clearRefreshTimer();
+		final CompletableFuture<Void> attempt;
+		// The decision to start a close and the publication of its future happen under one lock, so
+		// every other caller gets that attempt's future, which completes only after the Close event.
+		synchronized (closeLock_) {
+			if (closed_.get() || closing_.get()) {
+				final CompletableFuture<Void> current = closingFuture_.get();
+				if ((current == null) || (closed_.get() && current.isCompletedExceptionally())) {
+					return CompletableFuture.completedFuture(null);
+				}
+				return current;
+			}
 
-				if (pendingCount_.get() > 0) {
-					final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
-					closingFuture_.set(newClosingFuture);
+			closing_.set(true);
+			attempt = new CompletableFuture<Void>();
+			closingFuture_.set(attempt);
+		}
 
-					flush().thenAccept(new Consumer<Void>() {
-						@Override
-						public void accept(Void x) {
-							final CompletableFuture<Void> closeLogged = new CompletableFuture<Void>();
-							closeLoggedFuture_.set(closeLogged);
-							closed_.set(true);
-							closing_.set(false);
-							try {
-								Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-							} finally {
-								closeLogged.complete(null);
-								newClosingFuture.complete(null);
-							}
-						}
-					}).exceptionally(new Function<Throwable, Void>() {
-						@Override
-						public Void apply(Throwable exception) {
-							// If events were restored by flush's failure handler, leave the context
-							// open so a retry of closeAsync() can attempt to publish them.
-							if (pendingCount_.get() == 0) {
-								closed_.set(true);
-							}
-							closing_.set(false);
-							newClosingFuture.completeExceptionally(exception);
+		clearRefreshTimer();
 
-							return null;
-						}
-					});
-
-					return newClosingFuture;
-				} else {
-					final CompletableFuture<Void> closeLogged = new CompletableFuture<Void>();
-					closeLoggedFuture_.set(closeLogged);
+		if (pendingCount_.get() > 0) {
+			flush().thenAccept(new Consumer<Void>() {
+				@Override
+				public void accept(Void x) {
 					closed_.set(true);
 					closing_.set(false);
-
 					try {
 						Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 					} finally {
-						closeLogged.complete(null);
+						attempt.complete(null);
 					}
-
-					// Nothing was pending here, so no closingFuture_ was published for this
-					// attempt; return directly to avoid picking up a stale future left behind
-					// by an earlier failed close attempt.
-					return CompletableFuture.completedFuture(null);
 				}
-			}
+			}).exceptionally(new Function<Throwable, Void>() {
+				@Override
+				public Void apply(Throwable exception) {
+					// If events were restored by flush's failure handler, leave the context
+					// open so a retry of closeAsync() can attempt to publish them.
+					if (pendingCount_.get() == 0) {
+						closed_.set(true);
+					}
+					closing_.set(false);
+					attempt.completeExceptionally(exception);
 
-			final CompletableFuture<Void> future = closingFuture_.get();
-			if (future != null) {
-				return future;
+					return null;
+				}
+			});
+		} else {
+			closed_.set(true);
+			closing_.set(false);
+
+			try {
+				Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+			} finally {
+				attempt.complete(null);
 			}
 		}
 
-		// A caller arriving after closed_ is set waits until the Close event has been logged.
-		final CompletableFuture<Void> closeLogged = closeLoggedFuture_.get();
-		if (closed_.get() && (closeLogged != null)) {
-			return closeLogged;
-		}
-
-		return CompletableFuture.completedFuture(null);
+		return attempt;
 	}
 
 	@Override
@@ -1861,7 +1848,7 @@ public class Context implements Closeable {
 
 	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
-	private final AtomicReference<CompletableFuture<Void>> closeLoggedFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	private final Object closeLock_ = new Object();
 	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
 

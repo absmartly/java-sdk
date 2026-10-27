@@ -3321,4 +3321,40 @@ class ContextTest extends TestUtils {
 		assertEquals(Boolean.FALSE, lateCloseDone.get());
 		assertTrue(context.closeAsync().isDone());
 	}
+
+	@Test
+	@Timeout(60)
+	void concurrentClosesLogOneCloseEventAndAllWaitForIt() throws Exception {
+		final ExecutorService pool = Executors.newFixedThreadPool(3);
+		try {
+			for (int i = 0; i < 3000; ++i) {
+				final java.util.concurrent.atomic.AtomicInteger closeEvents = new java.util.concurrent.atomic.AtomicInteger();
+				final java.util.concurrent.atomic.AtomicBoolean callbackDone = new java.util.concurrent.atomic.AtomicBoolean();
+				final ContextEventLogger logger = (ctx, type, data) -> {
+					if (type == ContextEventLogger.EventType.Close) {
+						closeEvents.incrementAndGet();
+						Thread.yield();
+						callbackDone.set(true);
+					}
+				};
+				final Context context = Context.create(clock, ContextConfig.create().setUnits(units), scheduler,
+						dataFutureReady, dataProvider, eventHandler, logger, variableParser, audienceMatcher);
+				final java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(3);
+				final List<java.util.concurrent.Future<Boolean>> results = new ArrayList<>();
+				for (int t = 0; t < 3; ++t) {
+					results.add(pool.submit(() -> {
+						start.await();
+						context.closeAsync().join();
+						return callbackDone.get();
+					}));
+				}
+				for (final java.util.concurrent.Future<Boolean> result : results) {
+					assertTrue(result.get(), "closeAsync returned before the Close event was logged");
+				}
+				assertEquals(1, closeEvents.get(), "Close event logged more than once");
+			}
+		} finally {
+			pool.shutdownNow();
+		}
+	}
 }
