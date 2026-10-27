@@ -791,11 +791,14 @@ public class Context implements Closeable {
 					flush().thenAccept(new Consumer<Void>() {
 						@Override
 						public void accept(Void x) {
+							final CompletableFuture<Void> closeLogged = new CompletableFuture<Void>();
+							closeLoggedFuture_.set(closeLogged);
 							closed_.set(true);
 							closing_.set(false);
 							try {
 								Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 							} finally {
+								closeLogged.complete(null);
 								newClosingFuture.complete(null);
 							}
 						}
@@ -816,10 +819,16 @@ public class Context implements Closeable {
 
 					return newClosingFuture;
 				} else {
+					final CompletableFuture<Void> closeLogged = new CompletableFuture<Void>();
+					closeLoggedFuture_.set(closeLogged);
 					closed_.set(true);
 					closing_.set(false);
 
-					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+					try {
+						Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+					} finally {
+						closeLogged.complete(null);
+					}
 
 					// Nothing was pending here, so no closingFuture_ was published for this
 					// attempt; return directly to avoid picking up a stale future left behind
@@ -832,6 +841,12 @@ public class Context implements Closeable {
 			if (future != null) {
 				return future;
 			}
+		}
+
+		// A caller arriving after closed_ is set waits until the Close event has been logged.
+		final CompletableFuture<Void> closeLogged = closeLoggedFuture_.get();
+		if (closed_.get() && (closeLogged != null)) {
+			return closeLogged;
 		}
 
 		return CompletableFuture.completedFuture(null);
@@ -1846,6 +1861,7 @@ public class Context implements Closeable {
 
 	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	private final AtomicReference<CompletableFuture<Void>> closeLoggedFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
 

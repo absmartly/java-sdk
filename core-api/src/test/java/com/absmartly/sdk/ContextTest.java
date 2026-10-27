@@ -3277,4 +3277,48 @@ class ContextTest extends TestUtils {
 		assertEquals(Boolean.FALSE, lateWaiterDone.get());
 		assertTrue(context.waitUntilReadyAsync().isDone());
 	}
+
+	@Test
+	void lateCloseCallersDoNotSettleBeforeCloseEventIsLogged() {
+		final AtomicReference<Boolean> lateCloseDone = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Close) {
+				lateCloseDone.set(contextRef.get().closeAsync().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createReadyContext();
+		contextRef.set(context);
+		context.track("goal1", null);
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> closing = context.closeAsync();
+		publishFuture.complete(null);
+		closing.join();
+
+		assertEquals(Boolean.FALSE, lateCloseDone.get());
+		assertTrue(context.closeAsync().isDone());
+	}
+
+	@Test
+	void lateCloseCallersWaitForCloseEventWithNothingPending() {
+		final AtomicReference<Boolean> lateCloseDone = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Close) {
+				lateCloseDone.set(contextRef.get().closeAsync().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createReadyContext();
+		contextRef.set(context);
+		context.close();
+
+		assertEquals(Boolean.FALSE, lateCloseDone.get());
+		assertTrue(context.closeAsync().isDone());
+	}
 }
