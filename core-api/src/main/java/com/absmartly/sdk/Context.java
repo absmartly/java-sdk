@@ -780,7 +780,7 @@ public class Context implements Closeable {
 	}
 
 	public CompletableFuture<Void> closeAsync() {
-		final CompletableFuture<Void> attempt;
+		final CloseAttempt attempt;
 		// The decision to start a close and the publication of its future happen under one lock, so
 		// every other caller gets that attempt's future, which completes only after the Close event.
 		synchronized (closeLock_) {
@@ -793,7 +793,7 @@ public class Context implements Closeable {
 			}
 
 			closing_.set(true);
-			attempt = new CompletableFuture<Void>();
+			attempt = new CloseAttempt();
 			closingFuture_.set(attempt);
 		}
 
@@ -808,7 +808,7 @@ public class Context implements Closeable {
 					try {
 						Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 					} finally {
-						attempt.complete(null);
+						attempt.succeed();
 					}
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
@@ -820,7 +820,7 @@ public class Context implements Closeable {
 						closed_.set(true);
 					}
 					closing_.set(false);
-					attempt.completeExceptionally(exception);
+					attempt.fail(exception);
 
 					return null;
 				}
@@ -832,11 +832,44 @@ public class Context implements Closeable {
 			try {
 				Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 			} finally {
-				attempt.complete(null);
+				attempt.succeed();
 			}
 		}
 
 		return attempt;
+	}
+
+	// The close attempt is shared by every closeAsync() caller. Callers cannot cancel or complete it:
+	// that would release the others before the Close event is logged. Only the context settles it.
+	private static final class CloseAttempt extends CompletableFuture<Void> {
+		void succeed() {
+			super.complete(null);
+		}
+
+		void fail(final Throwable error) {
+			super.completeExceptionally(error);
+		}
+
+		@Override
+		public boolean cancel(final boolean mayInterruptIfRunning) {
+			return false;
+		}
+
+		@Override
+		public boolean complete(final Void value) {
+			return false;
+		}
+
+		@Override
+		public boolean completeExceptionally(final Throwable error) {
+			return false;
+		}
+
+		@Override
+		public void obtrudeValue(final Void value) {}
+
+		@Override
+		public void obtrudeException(final Throwable error) {}
 	}
 
 	@Override

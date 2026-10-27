@@ -3357,4 +3357,34 @@ class ContextTest extends TestUtils {
 			pool.shutdownNow();
 		}
 	}
+
+	@Test
+	void cancellingOneCloseFutureDoesNotReleaseOtherCallersEarly() {
+		final AtomicReference<Boolean> lateDone = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		final AtomicReference<CompletableFuture<Void>> first = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Close) {
+				first.get().cancel(false);
+				lateDone.set(contextRef.get().closeAsync().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createReadyContext();
+		contextRef.set(context);
+		context.track("goal1", null);
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		first.set(context.closeAsync());
+		publishFuture.complete(null);
+		first.get().join();
+
+		assertEquals(Boolean.FALSE, lateDone.get());
+		assertTrue(context.isClosed());
+		final CompletableFuture<Void> after = context.closeAsync();
+		assertTrue(after.isDone());
+		assertFalse(after.isCompletedExceptionally());
+	}
 }
