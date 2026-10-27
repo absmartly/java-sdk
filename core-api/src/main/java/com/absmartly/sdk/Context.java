@@ -780,7 +780,7 @@ public class Context implements Closeable {
 	}
 
 	public CompletableFuture<Void> closeAsync() {
-		final CloseAttempt attempt;
+		final CompletableFuture<Void> attempt;
 		// The decision to start a close and the publication of its future happen under one lock, so
 		// every other caller gets that attempt's future, which completes only after the Close event.
 		synchronized (closeLock_) {
@@ -789,11 +789,11 @@ public class Context implements Closeable {
 				if ((current == null) || (closed_.get() && current.isCompletedExceptionally())) {
 					return CompletableFuture.completedFuture(null);
 				}
-				return current;
+				return closeCallerFuture(current);
 			}
 
 			closing_.set(true);
-			attempt = new CloseAttempt();
+			attempt = new CompletableFuture<Void>();
 			closingFuture_.set(attempt);
 		}
 
@@ -808,7 +808,7 @@ public class Context implements Closeable {
 					try {
 						Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 					} finally {
-						attempt.succeed();
+						attempt.complete(null);
 					}
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
@@ -820,7 +820,7 @@ public class Context implements Closeable {
 						closed_.set(true);
 					}
 					closing_.set(false);
-					attempt.fail(exception);
+					attempt.completeExceptionally(exception);
 
 					return null;
 				}
@@ -832,44 +832,22 @@ public class Context implements Closeable {
 			try {
 				Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 			} finally {
-				attempt.succeed();
+				attempt.complete(null);
 			}
 		}
 
-		return attempt;
+		return closeCallerFuture(attempt);
 	}
 
-	// The close attempt is shared by every closeAsync() caller. Callers cannot cancel or complete it:
-	// that would release the others before the Close event is logged. Only the context settles it.
-	private static final class CloseAttempt extends CompletableFuture<Void> {
-		void succeed() {
-			super.complete(null);
-		}
-
-		void fail(final Throwable error) {
-			super.completeExceptionally(error);
-		}
-
-		@Override
-		public boolean cancel(final boolean mayInterruptIfRunning) {
-			return false;
-		}
-
-		@Override
-		public boolean complete(final Void value) {
-			return false;
-		}
-
-		@Override
-		public boolean completeExceptionally(final Throwable error) {
-			return false;
-		}
-
-		@Override
-		public void obtrudeValue(final Void value) {}
-
-		@Override
-		public void obtrudeException(final Throwable error) {}
+	// Do not expose the internal completion gate: completing or cancelling a caller's dependent future
+	// must not release any other close caller before the Close event is logged.
+	private static CompletableFuture<Void> closeCallerFuture(final CompletableFuture<Void> attempt) {
+		return attempt.thenApply(new Function<Void, Void>() {
+			@Override
+			public Void apply(Void value) {
+				return null;
+			}
+		});
 	}
 
 	@Override

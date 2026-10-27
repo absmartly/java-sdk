@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -1791,7 +1792,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> closingFuture = context.closeAsync();
 		final CompletableFuture<Void> closingFutureNext = context.closeAsync();
-		assertSame(closingFuture, closingFutureNext);
+		assertNotSame(closingFuture, closingFutureNext);
 
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
@@ -2672,7 +2673,7 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
-	void closeAsyncReturnsSameFutureWhenCalledTwice() {
+	void closeAsyncReturnsIndependentFuturesForTheSameAttempt() {
 		final Context context = createReadyContext();
 
 		context.track("goal1", mapOf("amount", 125));
@@ -2683,7 +2684,7 @@ class ContextTest extends TestUtils {
 		final CompletableFuture<Void> closeFuture1 = context.closeAsync();
 		final CompletableFuture<Void> closeFuture2 = context.closeAsync();
 
-		assertSame(closeFuture1, closeFuture2);
+		assertNotSame(closeFuture1, closeFuture2);
 
 		publishFuture.complete(null);
 		closeFuture1.join();
@@ -3379,12 +3380,28 @@ class ContextTest extends TestUtils {
 
 		first.set(context.closeAsync());
 		publishFuture.complete(null);
-		first.get().join();
+		context.closeAsync().join();
 
 		assertEquals(Boolean.FALSE, lateDone.get());
 		assertTrue(context.isClosed());
 		final CompletableFuture<Void> after = context.closeAsync();
 		assertTrue(after.isDone());
 		assertFalse(after.isCompletedExceptionally());
+	}
+
+	@Test
+	void externallyCompletingCloseFutureDoesNotReleaseOtherCallers() {
+		final Context context = createReadyContext();
+		context.track("goal1", null);
+		final CompletableFuture<Void> publish = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publish);
+		final CompletableFuture<Void> first = context.closeAsync();
+		final CompletableFuture<Void> second = context.closeAsync();
+		first.completeAsync(() -> null).join();
+		assertFalse(second.isDone());
+		assertFalse(context.closeAsync().isDone());
+		publish.complete(null);
+		second.join();
+		assertTrue(context.isClosed());
 	}
 }
