@@ -1,7 +1,6 @@
 package com.absmartly.sdk.internal.hashing;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.math.RoundingMode;
 
 import com.absmartly.sdk.internal.Buffers;
@@ -20,24 +19,31 @@ public abstract class Hashing {
 		return hashUnit(unitToString(unit));
 	}
 
-	// Numeric unit UIDs hash like the JavaScript SDK's value.toFixed(0): rounded to an integer, no
-	// decimal point.
+	// Numeric unit UIDs hash like the JavaScript SDK's value.toFixed(0). JavaScript numbers are doubles,
+	// so every numeric type is converted to double first (a long beyond 2^53 rounds as it would in
+	// JavaScript), negative values that round to zero keep their sign ("-0"), and magnitudes of 1e21
+	// or more use JavaScript's exponent notation ("1e+21").
 	public static String unitToString(final Object uid) {
 		if (uid instanceof String) {
 			return (String) uid;
 		}
-		if ((uid instanceof Integer) || (uid instanceof Long) || (uid instanceof Short) || (uid instanceof Byte)
-				|| (uid instanceof BigInteger)) {
-			return uid.toString();
-		}
-		if (uid instanceof BigDecimal) {
-			return ((BigDecimal) uid).setScale(0, RoundingMode.HALF_UP).toPlainString();
-		}
 		final double value = ((Number) uid).doubleValue();
-		if (Double.isNaN(value) || Double.isInfinite(value)) {
-			return value > 0 ? "Infinity" : (value < 0 ? "-Infinity" : "NaN");
+		if (Double.isNaN(value)) {
+			return "NaN";
 		}
-		return new BigDecimal(value).setScale(0, RoundingMode.HALF_UP).toPlainString();
+		if (Double.isInfinite(value)) {
+			return value > 0 ? "Infinity" : "-Infinity";
+		}
+		final double magnitude = Math.abs(value);
+		final String sign = value < 0 ? "-" : "";
+		if (magnitude >= 1e21) {
+			final BigDecimal shortest = new BigDecimal(Double.toString(magnitude)).stripTrailingZeros();
+			final String digits = shortest.unscaledValue().toString();
+			final int exponent = digits.length() - 1 - shortest.scale();
+			final String mantissa = digits.length() == 1 ? digits : digits.charAt(0) + "." + digits.substring(1);
+			return sign + mantissa + "e+" + exponent;
+		}
+		return sign + new BigDecimal(magnitude).setScale(0, RoundingMode.HALF_UP).toPlainString();
 	}
 
 	public static byte[] hashUnit(CharSequence unit) {

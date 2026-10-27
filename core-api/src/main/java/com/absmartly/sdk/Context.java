@@ -1,6 +1,8 @@
 package com.absmartly.sdk;
 
 import java.io.Closeable;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -334,7 +336,7 @@ public class Context implements Closeable {
 			if (((String) uid).isEmpty()) {
 				throw new IllegalArgumentException(String.format("Unit '%s' UID must not be blank.", unitType));
 			}
-		} else if (!(uid instanceof Number)) {
+		} else if (!isImmutableNumber(uid)) {
 			throw new IllegalArgumentException(String.format("Unit '%s' must be a string or a number.", unitType));
 		}
 
@@ -355,11 +357,38 @@ public class Context implements Closeable {
 		}
 	}
 
+	// Mutable Number implementations (AtomicInteger, ...) are rejected: the context caches the unit's
+	// hash, so a UID that changes after it is set would be published under its old identity.
+	private static boolean isImmutableNumber(final Object uid) {
+		return (uid instanceof Integer) || (uid instanceof Long) || (uid instanceof Short) || (uid instanceof Byte)
+				|| (uid instanceof Double) || (uid instanceof Float) || (uid instanceof BigInteger)
+				|| (uid instanceof BigDecimal);
+	}
+
 	private static boolean sameUid(final Object a, final Object b) {
 		if ((a instanceof Number) && (b instanceof Number)) {
-			return ((Number) a).doubleValue() == ((Number) b).doubleValue();
+			final BigDecimal x = toBigDecimal((Number) a);
+			final BigDecimal y = toBigDecimal((Number) b);
+			if ((x == null) || (y == null)) {
+				return Double.valueOf(((Number) a).doubleValue()).equals(((Number) b).doubleValue());
+			}
+			return x.compareTo(y) == 0;
 		}
 		return a.equals(b);
+	}
+
+	private static BigDecimal toBigDecimal(final Number value) {
+		if (value instanceof BigDecimal) {
+			return (BigDecimal) value;
+		}
+		if (value instanceof BigInteger) {
+			return new BigDecimal((BigInteger) value);
+		}
+		if ((value instanceof Double) || (value instanceof Float)) {
+			final double d = value.doubleValue();
+			return (Double.isNaN(d) || Double.isInfinite(d)) ? null : new BigDecimal(d);
+		}
+		return BigDecimal.valueOf(value.longValue());
 	}
 
 	// holdoutAssignments pins the holdout decisions used to compute suppression. A null entry means

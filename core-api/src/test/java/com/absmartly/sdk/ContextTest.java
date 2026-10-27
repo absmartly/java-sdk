@@ -3173,9 +3173,15 @@ class ContextTest extends TestUtils {
 		assertEquals("126", Hashing.unitToString(125.75));
 		assertEquals("125", Hashing.unitToString(125));
 		assertEquals("-3", Hashing.unitToString(-2.5));
+		assertEquals("-0", Hashing.unitToString(-0.1));
+		assertEquals("0", Hashing.unitToString(-0.0));
 		assertEquals("123456789", Hashing.unitToString(123456789L));
+		assertEquals("9007199254740992", Hashing.unitToString(9007199254740993L));
+		assertEquals("1e+21", Hashing.unitToString(1e21));
+		assertEquals("1.2345e+22", Hashing.unitToString(1.2345e22));
+		assertEquals("-1e+21", Hashing.unitToString(-1e21));
+		assertEquals("999999999999999868928", Hashing.unitToString(999999999999999900000.0));
 
-		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		final Context numeric = createContext(ContextConfig.create().setUnit("user_id", 125.75), dataFutureReady);
 		final Context text = createContext(ContextConfig.create().setUnit("user_id", "126"), dataFutureReady);
 		numeric.track("goal", null);
@@ -3220,5 +3226,29 @@ class ContextTest extends TestUtils {
 		verify(dataProvider, Mockito.never()).getContextData();
 		Mockito.verifyNoInteractions(eventLogger);
 		assertTrue(context.isFailed());
+	}
+
+	@Test
+	void setUnitComparesLargeNumericUidsExactly() {
+		final Context context = createContext(ContextConfig.create().setUnit("user_id", 9007199254740992L),
+				dataFutureReady);
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("user_id", 9007199254740993L));
+		assertEquals("Unit 'user_id' UID already set.", error.getMessage());
+		assertDoesNotThrow(() -> context.setUnit("user_id", 9007199254740992.0));
+		assertEquals(9007199254740992.0, context.getUnit("user_id"));
+	}
+
+	@Test
+	void setUnitRejectsMutableNumbers() {
+		final Context context = createReadyContext();
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("account_id", new java.util.concurrent.atomic.AtomicInteger(125)));
+		assertEquals("Unit 'account_id' must be a string or a number.", error.getMessage());
+		assertNull(context.getUnit("account_id"));
+
+		assertThrows(IllegalArgumentException.class, () -> createContext(
+				ContextConfig.create().setUnit("account_id", new java.util.concurrent.atomic.AtomicLong(1)),
+				dataFutureReady));
 	}
 }
