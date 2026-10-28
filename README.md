@@ -19,15 +19,11 @@ The `android.permission.INTERNET` permission is required. To add this permission
 If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
 
 
-## Migrating to 2.0.0 (BREAKING)
+## Upgrading from 1.6.3
 
-Read methods now throw `IllegalStateException` instead of returning defaults when the context is not ready, or after it is finalized (matching the JavaScript SDK):
+The public unit getters remain compatible with 1.6.3: `getUnit` returns a `String` and `getUnits` returns `Map<String, String>`. Unit UIDs may now also be numeric; numeric values are returned by the new `getUnitValue` and `getUnitValues` accessors, while the original getters return their string form.
 
-- `getTreatment`, `peekTreatment`, `getVariableValue`, `peekVariableValue`, `getVariableKeys`, `getCustomFieldKeys`, `getCustomFieldValue`, `getCustomFieldValueType` throw `"ABsmartly Context is not yet ready."` before ready, `"ABsmartly Context is finalizing."` while closing and `"ABsmartly Context is finalized."` after close.
-- `getExperiments` throws `"ABsmartly Context is not yet ready."` before ready; like JS `experiments()`, it still works after finalize.
-- All error messages now use the `ABsmartly` casing (was `ABSmartly`), and the closing message is now `"ABsmartly Context is finalizing."` (was `"ABSmartly Context is closing."`).
-
-Wait for the context before reading, e.g. `context.waitUntilReady()`, and check `context.isReady()` / `context.isFailed()` if you need a fallback.
+Context reads retain the 1.6.3 lifecycle behavior. Before ready they throw `"ABSmartly Context is not yet ready"`; while closing and after close they throw `"ABSmartly Context is closing"` and `"ABSmartly Context is closed"`, respectively. Custom-field reads remain available once the context is ready, including while closing and after close.
 
 ## Installation
 

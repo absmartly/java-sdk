@@ -5,6 +5,8 @@ import java.util.Map;
 
 import javax.annotation.Nonnull;
 
+import com.absmartly.sdk.internal.hashing.Hashing;
+
 public class ContextConfig {
 	public static ContextConfig create() {
 		return new ContextConfig();
@@ -27,11 +29,28 @@ public class ContextConfig {
 		return this;
 	}
 
-	public Object getUnit(@Nonnull final String unitType) {
+	public String getUnit(@Nonnull final String unitType) {
+		final Object uid = getUnitValue(unitType);
+		return uid != null ? Hashing.unitToString(uid) : null;
+	}
+
+	public Object getUnitValue(@Nonnull final String unitType) {
 		return units_ != null ? units_.get(unitType) : null;
 	}
 
-	public Map<String, Object> getUnits() {
+	public Map<String, String> getUnits() {
+		if (units_ == null) {
+			return null;
+		}
+
+		final Map<String, String> units = new HashMap<String, String>(units_.size());
+		for (final Map.Entry<String, Object> entry : units_.entrySet()) {
+			units.put(entry.getKey(), Hashing.unitToString(entry.getValue()));
+		}
+		return units;
+	}
+
+	public Map<String, Object> getUnitValues() {
 		return units_;
 	}
 

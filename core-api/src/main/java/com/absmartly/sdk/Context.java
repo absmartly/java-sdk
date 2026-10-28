@@ -65,7 +65,7 @@ public class Context implements Closeable {
 
 		units_ = new HashMap<String, Object>();
 
-		final Map<String, Object> units = config.getUnits();
+		final Map<String, Object> units = config.getUnitValues();
 		if (units != null) {
 			setUnits(units);
 		}
@@ -107,14 +107,12 @@ public class Context implements Closeable {
 				@Override
 				public void accept(ContextData data) {
 					Context.this.setData(data);
-					try {
-						Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
-					} finally {
-						final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
-						if (rf != null) {
-							rf.complete(null);
-						}
+					final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
+					if (rf != null) {
+						rf.complete(null);
 					}
+
+					Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
 
 					if (Context.this.getPendingCount() > 0) {
 						Context.this.setTimeout();
@@ -124,14 +122,12 @@ public class Context implements Closeable {
 				@Override
 				public Void apply(Throwable exception) {
 					Context.this.setDataFailed(exception);
-					try {
-						Context.this.logError(exception);
-					} finally {
-						final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
-						if (rf != null) {
-							rf.complete(null);
-						}
+					final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
+					if (rf != null) {
+						rf.complete(null);
 					}
+
+					Context.this.logError(exception);
 
 					return null;
 				}
@@ -163,8 +159,6 @@ public class Context implements Closeable {
 		return isClosing();
 	}
 
-	// Waits go through readyFuture_ rather than data_: data_ is set before the Ready event is logged,
-	// and the future only completes after it, so a caller never returns before the event.
 	public CompletableFuture<Context> waitUntilReadyAsync() {
 		final CompletableFuture<Void> rf = readyFuture_.get();
 		if (rf != null) {
@@ -205,7 +199,7 @@ public class Context implements Closeable {
 	}
 
 	public String[] getCustomFieldKeys() {
-		checkReady(true);
+		checkReady(false);
 
 		final Set<String> keys = new HashSet<String>();
 
@@ -226,7 +220,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValue(@Nonnull final String experimentName, @Nonnull final String key) {
-		checkReady(true);
+		checkReady(false);
 
 		try {
 			dataLock_.readLock().lock();
@@ -244,7 +238,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValueType(@Nonnull final String experimentName, @Nonnull final String key) {
-		checkReady(true);
+		checkReady(false);
 
 		try {
 			dataLock_.readLock().lock();
@@ -306,7 +300,12 @@ public class Context implements Closeable {
 		}
 	}
 
-	public Object getUnit(@Nonnull final String unitType) {
+	public String getUnit(@Nonnull final String unitType) {
+		final Object uid = getUnitValue(unitType);
+		return uid != null ? Hashing.unitToString(uid) : null;
+	}
+
+	public Object getUnitValue(@Nonnull final String unitType) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
@@ -420,7 +419,16 @@ public class Context implements Closeable {
 		}
 	}
 
-	public Map<String, Object> getUnits() {
+	public Map<String, String> getUnits() {
+		final Map<String, Object> values = getUnitValues();
+		final Map<String, String> units = new HashMap<String, String>(values.size());
+		for (final Map.Entry<String, Object> entry : values.entrySet()) {
+			units.put(entry.getKey(), Hashing.unitToString(entry.getValue()));
+		}
+		return units;
+	}
+
+	public Map<String, Object> getUnitValues() {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
@@ -747,21 +755,17 @@ public class Context implements Closeable {
 				public void accept(ContextData data) {
 					Context.this.setData(data);
 					refreshing_.set(false);
-					try {
-						Context.this.logEvent(ContextEventLogger.EventType.Refresh, data);
-					} finally {
-						newRefreshFuture.complete(null);
-					}
+					newRefreshFuture.complete(null);
+
+					Context.this.logEvent(ContextEventLogger.EventType.Refresh, data);
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
 				@Override
 				public Void apply(Throwable exception) {
 					refreshing_.set(false);
-					try {
-						Context.this.logError(exception);
-					} finally {
-						newRefreshFuture.completeExceptionally(exception);
-					}
+					newRefreshFuture.completeExceptionally(exception);
+
+					Context.this.logError(exception);
 					return null;
 				}
 			});
@@ -782,7 +786,7 @@ public class Context implements Closeable {
 	public CompletableFuture<Void> closeAsync() {
 		final CompletableFuture<Void> attempt;
 		// The decision to start a close and the publication of its future happen under one lock, so
-		// every other caller gets that attempt's future, which completes only after the Close event.
+		// every other caller gets that attempt's future.
 		synchronized (closeLock_) {
 			if (closed_.get() || closing_.get()) {
 				final CompletableFuture<Void> current = closingFuture_.get();
@@ -805,11 +809,9 @@ public class Context implements Closeable {
 				public void accept(Void x) {
 					closed_.set(true);
 					closing_.set(false);
-					try {
-						Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-					} finally {
-						attempt.complete(null);
-					}
+					attempt.complete(null);
+
+					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
 				@Override
@@ -828,19 +830,16 @@ public class Context implements Closeable {
 		} else {
 			closed_.set(true);
 			closing_.set(false);
+			attempt.complete(null);
 
-			try {
-				Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-			} finally {
-				attempt.complete(null);
-			}
+			Context.this.logEvent(ContextEventLogger.EventType.Close, null);
 		}
 
 		return closeCallerFuture(attempt);
 	}
 
 	// Do not expose the internal completion gate: completing or cancelling a caller's dependent future
-	// must not release any other close caller before the Close event is logged.
+	// must not release any other close caller.
 	private static CompletableFuture<Void> closeCallerFuture(final CompletableFuture<Void> attempt) {
 		return attempt.thenApply(new Function<Void, Void>() {
 			@Override
@@ -1004,15 +1003,15 @@ public class Context implements Closeable {
 
 	private void checkNotClosed() {
 		if (closed_.get()) {
-			throw new IllegalStateException("ABsmartly Context is finalized.");
+			throw new IllegalStateException("ABSmartly Context is closed");
 		} else if (closing_.get()) {
-			throw new IllegalStateException("ABsmartly Context is finalizing.");
+			throw new IllegalStateException("ABSmartly Context is closing");
 		}
 	}
 
 	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
-			throw new IllegalStateException("ABsmartly Context is not yet ready.");
+			throw new IllegalStateException("ABSmartly Context is not yet ready");
 		} else if (expectNotClosed) {
 			checkNotClosed();
 		}
