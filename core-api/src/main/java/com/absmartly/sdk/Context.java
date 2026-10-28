@@ -788,7 +788,9 @@ public class Context implements Closeable {
 		// The decision to start a close and the publication of its future happen under one lock, so
 		// every other caller gets that attempt's future.
 		synchronized (closeLock_) {
-			if (closed_.get() || closing_.get()) {
+			// Read closing_ before closed_: a finishing attempt sets closed_ and then clears closing_
+			// outside this lock, so the reverse order can see both false and start a second close.
+			if (closing_.get() || closed_.get()) {
 				final CompletableFuture<Void> current = closingFuture_;
 				if ((current == null) || (closed_.get() && current.isCompletedExceptionally())) {
 					return CompletableFuture.completedFuture(null);

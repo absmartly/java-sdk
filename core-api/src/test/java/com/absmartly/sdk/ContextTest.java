@@ -3369,29 +3369,27 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
-	void cancellingOneCloseFutureDoesNotDisturbOtherCallers() throws InterruptedException {
-		final AtomicReference<Boolean> lateDone = new AtomicReference<>();
-		final AtomicReference<Context> contextRef = new AtomicReference<>();
-		final AtomicReference<CompletableFuture<Void>> first = new AtomicReference<>();
-		Mockito.doAnswer(invocation -> {
-			if (invocation.getArgument(1) == ContextEventLogger.EventType.Close) {
-				first.get().cancel(false);
-				lateDone.set(contextRef.get().closeAsync().isDone());
-			}
-			return null;
-		}).when(eventLogger).handleEvent(any(), any(), any());
-
+	void cancellingOneCloseFutureWhilePublishingDoesNotDisturbOtherCallers() {
 		final Context context = createReadyContext();
-		contextRef.set(context);
 		context.track("goal1", null);
 		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
 		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
 
-		first.set(context.closeAsync());
-		publishFuture.complete(null);
-		context.closeAsync().join();
+		final CompletableFuture<Void> first = context.closeAsync();
+		final CompletableFuture<Void> second = context.closeAsync();
+		assertTrue(first.cancel(false));
 
-		assertEquals(Boolean.TRUE, awaitValue(lateDone));
+		assertFalse(second.isDone());
+		final CompletableFuture<Void> third = context.closeAsync();
+		assertFalse(third.isDone());
+		assertTrue(context.isClosing());
+
+		publishFuture.complete(null);
+		second.join();
+		third.join();
+
+		assertFalse(second.isCancelled());
+		assertFalse(third.isCancelled());
 		assertTrue(context.isClosed());
 		final CompletableFuture<Void> after = context.closeAsync();
 		assertTrue(after.isDone());
