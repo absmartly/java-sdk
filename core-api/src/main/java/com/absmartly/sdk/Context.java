@@ -301,8 +301,7 @@ public class Context implements Closeable {
 	}
 
 	public String getUnit(@Nonnull final String unitType) {
-		final Object uid = getUnitValue(unitType);
-		return uid != null ? Hashing.unitToString(uid) : null;
+		return ContextConfig.unitString(getUnitValue(unitType));
 	}
 
 	public Object getUnitValue(@Nonnull final String unitType) {
@@ -323,15 +322,19 @@ public class Context implements Closeable {
 		putUnit(unitType, uid);
 	}
 
-	private void putUnit(final String unitType, Object uid) {
+	private void putUnit(final String unitType, final Object value) {
 		checkNotClosed();
 
-		if (uid instanceof String) {
-			uid = ((String) uid).trim();
-			if (((String) uid).isEmpty()) {
+		final Object uid;
+		if (value instanceof String) {
+			final String trimmed = ((String) value).trim();
+			if (trimmed.isEmpty()) {
 				throw new IllegalArgumentException(String.format("Unit '%s' UID must not be blank.", unitType));
 			}
-		} else if (!isImmutableNumber(uid)) {
+			uid = trimmed;
+		} else if (isImmutableNumber(value)) {
+			uid = value;
+		} else {
 			throw new IllegalArgumentException(String.format("Unit '%s' must be a string or a number.", unitType));
 		}
 
@@ -420,12 +423,7 @@ public class Context implements Closeable {
 	}
 
 	public Map<String, String> getUnits() {
-		final Map<String, Object> values = getUnitValues();
-		final Map<String, String> units = new HashMap<String, String>(values.size());
-		for (final Map.Entry<String, Object> entry : values.entrySet()) {
-			units.put(entry.getKey(), Hashing.unitToString(entry.getValue()));
-		}
-		return units;
+		return ContextConfig.unitStrings(getUnitValues());
 	}
 
 	public Map<String, Object> getUnitValues() {
@@ -809,11 +807,7 @@ public class Context implements Closeable {
 			flush().thenAccept(new Consumer<Void>() {
 				@Override
 				public void accept(Void x) {
-					closed_.set(true);
-					closing_.set(false);
-					attempt.complete(null);
-
-					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+					Context.this.completeClose(attempt);
 				}
 			}).exceptionally(new Function<Throwable, Void>() {
 				@Override
@@ -830,14 +824,18 @@ public class Context implements Closeable {
 				}
 			});
 		} else {
-			closed_.set(true);
-			closing_.set(false);
-			attempt.complete(null);
-
-			Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+			completeClose(attempt);
 		}
 
 		return closeCallerFuture(attempt);
+	}
+
+	private void completeClose(final CompletableFuture<Void> attempt) {
+		closed_.set(true);
+		closing_.set(false);
+		attempt.complete(null);
+
+		logEvent(ContextEventLogger.EventType.Close, null);
 	}
 
 	// Do not expose the internal completion gate: completing or cancelling a caller's dependent future

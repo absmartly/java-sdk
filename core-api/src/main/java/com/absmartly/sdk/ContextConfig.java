@@ -30,8 +30,7 @@ public class ContextConfig {
 	}
 
 	public String getUnit(@Nonnull final String unitType) {
-		final Object uid = getUnitValue(unitType);
-		return uid != null ? Hashing.unitToString(uid) : null;
+		return unitString(getUnitValue(unitType));
 	}
 
 	public Object getUnitValue(@Nonnull final String unitType) {
@@ -39,13 +38,19 @@ public class ContextConfig {
 	}
 
 	public Map<String, String> getUnits() {
-		if (units_ == null) {
-			return null;
-		}
+		return units_ != null ? unitStrings(units_) : null;
+	}
 
-		final Map<String, String> units = new HashMap<String, String>(units_.size());
-		for (final Map.Entry<String, Object> entry : units_.entrySet()) {
-			units.put(entry.getKey(), Hashing.unitToString(entry.getValue()));
+	// Shared with Context: a numeric UID is returned in its canonical string form, the same string that
+	// is hashed.
+	static String unitString(final Object uid) {
+		return uid != null ? Hashing.unitToString(uid) : null;
+	}
+
+	static Map<String, String> unitStrings(final Map<String, Object> uids) {
+		final Map<String, String> units = new HashMap<String, String>(uids.size());
+		for (final Map.Entry<String, Object> entry : uids.entrySet()) {
+			units.put(entry.getKey(), unitString(entry.getValue()));
 		}
 		return units;
 	}
