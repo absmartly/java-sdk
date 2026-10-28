@@ -1,6 +1,8 @@
 package com.absmartly.sdk;
 
 import java.io.Closeable;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -61,9 +63,9 @@ public class Context implements Closeable {
 		audienceMatcher_ = audienceMatcher;
 		scheduler_ = scheduler;
 
-		units_ = new HashMap<String, String>();
+		units_ = new HashMap<String, Object>();
 
-		final Map<String, String> units = config.getUnits();
+		final Map<String, Object> units = config.getUnitValues();
 		if (units != null) {
 			setUnits(units);
 		}
@@ -158,36 +160,28 @@ public class Context implements Closeable {
 	}
 
 	public CompletableFuture<Context> waitUntilReadyAsync() {
-		if (data_ != null) {
-			return CompletableFuture.completedFuture(this);
-		} else {
-			final CompletableFuture<Void> rf = readyFuture_.get();
-			if (rf != null) {
-				return rf.thenApply(new Function<Void, Context>() {
-					@Override
-					public Context apply(Void k) {
-						return Context.this;
-					}
-				});
-			}
-			return CompletableFuture.completedFuture(this);
+		final CompletableFuture<Void> rf = readyFuture_.get();
+		if (rf != null) {
+			return rf.thenApply(new Function<Void, Context>() {
+				@Override
+				public Context apply(Void k) {
+					return Context.this;
+				}
+			});
 		}
+		return CompletableFuture.completedFuture(this);
 	}
 
 	public Context waitUntilReady() {
-		if (data_ == null) {
-			final CompletableFuture<Void> future = readyFuture_.get(); // cache here to avoid locking
-			if (future != null && !future.isDone()) {
-				future.join();
-			}
+		final CompletableFuture<Void> future = readyFuture_.get(); // cache here to avoid locking
+		if (future != null && !future.isDone()) {
+			future.join();
 		}
 		return this;
 	}
 
 	public String[] getExperiments() {
-		if (!isReady() || isClosed() || isClosing()) {
-			return new String[0];
-		}
+		checkReady(false);
 
 		try {
 			dataLock_.readLock().lock();
@@ -205,9 +199,7 @@ public class Context implements Closeable {
 	}
 
 	public String[] getCustomFieldKeys() {
-		if (!isReady() || isClosed() || isClosing()) {
-			return new String[0];
-		}
+		checkReady(false);
 
 		final Set<String> keys = new HashSet<String>();
 
@@ -228,9 +220,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValue(@Nonnull final String experimentName, @Nonnull final String key) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return null;
-		}
+		checkReady(false);
 
 		try {
 			dataLock_.readLock().lock();
@@ -248,9 +238,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getCustomFieldValueType(@Nonnull final String experimentName, @Nonnull final String key) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return null;
-		}
+		checkReady(false);
 
 		try {
 			dataLock_.readLock().lock();
@@ -313,6 +301,10 @@ public class Context implements Closeable {
 	}
 
 	public String getUnit(@Nonnull final String unitType) {
+		return ContextConfig.unitString(getUnitValue(unitType));
+	}
+
+	public Object getUnitValue(@Nonnull final String unitType) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
@@ -323,28 +315,78 @@ public class Context implements Closeable {
 	}
 
 	public void setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
+		putUnit(unitType, uid);
+	}
+
+	public void setUnit(@Nonnull final String unitType, @Nonnull final Number uid) {
+		putUnit(unitType, uid);
+	}
+
+	private void putUnit(final String unitType, final Object value) {
 		checkNotClosed();
+
+		final Object uid;
+		if (value instanceof String) {
+			final String trimmed = ((String) value).trim();
+			if (trimmed.isEmpty()) {
+				throw new IllegalArgumentException(String.format("Unit '%s' UID must not be blank.", unitType));
+			}
+			uid = trimmed;
+		} else if (isImmutableNumber(value)) {
+			uid = value;
+		} else {
+			throw new IllegalArgumentException(String.format("Unit '%s' must be a string or a number.", unitType));
+		}
 
 		final ReentrantReadWriteLock.WriteLock writeLock = contextLock_.writeLock();
 		try {
 			writeLock.lock();
 
-			final String previous = units_.get(unitType);
-			if ((previous != null) && !previous.equals(uid)) {
+			final Object previous = units_.get(unitType);
+			if ((previous != null) && !sameUid(previous, uid)) {
 				throw new IllegalArgumentException(String.format("Unit '%s' UID already set.", unitType));
 			}
 
-			final String trimmed = uid.trim();
-			if (trimmed.isEmpty()) {
-				throw new IllegalArgumentException(String.format("Unit '%s' UID must not be blank.", unitType));
-			}
-
-			units_.put(unitType, trimmed);
+			units_.put(unitType, uid);
 
 			invalidateAssignmentsPinnedWithMissingUnit(unitType);
 		} finally {
 			writeLock.unlock();
 		}
+	}
+
+	// Mutable Number implementations (AtomicInteger, ...) are rejected: the context caches the unit's
+	// hash, so a UID that changes after it is set would be published under its old identity.
+	private static boolean isImmutableNumber(final Object uid) {
+		return (uid instanceof Integer) || (uid instanceof Long) || (uid instanceof Short) || (uid instanceof Byte)
+				|| (uid instanceof Double) || (uid instanceof Float) || (uid instanceof BigInteger)
+				|| (uid instanceof BigDecimal);
+	}
+
+	private static boolean sameUid(final Object a, final Object b) {
+		if ((a instanceof Number) && (b instanceof Number)) {
+			final BigDecimal x = toBigDecimal((Number) a);
+			final BigDecimal y = toBigDecimal((Number) b);
+			if ((x == null) || (y == null)) {
+				return Double.valueOf(((Number) a).doubleValue()).equals(((Number) b).doubleValue());
+			}
+			return x.compareTo(y) == 0;
+		}
+		return a.equals(b);
+	}
+
+	private static BigDecimal toBigDecimal(final Number value) {
+		if (value instanceof BigDecimal) {
+			return (BigDecimal) value;
+		}
+		if (value instanceof BigInteger) {
+			return new BigDecimal((BigInteger) value);
+		}
+		if ((value instanceof Double) || (value instanceof Float)) {
+			final double d = value.doubleValue();
+			return (Double.isNaN(d) || Double.isInfinite(d)) ? null : new BigDecimal(d);
+		}
+		return BigDecimal.valueOf(value.longValue());
 	}
 
 	// holdoutAssignments pins the holdout decisions used to compute suppression. A null entry means
@@ -381,20 +423,22 @@ public class Context implements Closeable {
 	}
 
 	public Map<String, String> getUnits() {
+		return ContextConfig.unitStrings(getUnitValues());
+	}
+
+	public Map<String, Object> getUnitValues() {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
-			return new HashMap<String, String>(units_);
+			return new HashMap<String, Object>(units_);
 		} finally {
 			readLock.unlock();
 		}
 	}
 
-	public void setUnits(@Nonnull final Map<String, String> units) {
-		for (Map.Entry<String, String> entry : units.entrySet()) {
-			String key = entry.getKey();
-			String value = entry.getValue();
-			setUnit(key, value);
+	public void setUnits(@Nonnull final Map<String, ?> units) {
+		for (Map.Entry<String, ?> entry : units.entrySet()) {
+			putUnit(entry.getKey(), entry.getValue());
 		}
 	}
 
@@ -445,13 +489,7 @@ public class Context implements Closeable {
 	}
 
 	public int getTreatment(@Nonnull final String experimentName) {
-		if (!isReady()) {
-			return 0;
-		}
-
-		if (isClosed() || isClosing()) {
-			return 0;
-		}
+		checkReady(true);
 
 		return getExposedTreatmentVariant(getAssignment(experimentName));
 	}
@@ -584,17 +622,13 @@ public class Context implements Closeable {
 	}
 
 	public int peekTreatment(@Nonnull final String experimentName) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return 0;
-		}
+		checkReady(true);
 
 		return getAssignment(experimentName).variant;
 	}
 
 	public Map<String, List<String>> getVariableKeys() {
-		if (!isReady() || isClosed() || isClosing()) {
-			return new HashMap<String, List<String>>();
-		}
+		checkReady(true);
 
 		final Map<String, List<String>> variableKeys = new HashMap<String, List<String>>(indexVariables_.size());
 
@@ -617,9 +651,7 @@ public class Context implements Closeable {
 	}
 
 	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return defaultValue;
-		}
+		checkReady(true);
 
 		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false));
 		if (assignment != null) {
@@ -657,9 +689,7 @@ public class Context implements Closeable {
 	}
 
 	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
-		if (!isReady() || isClosed() || isClosing()) {
-			return defaultValue;
-		}
+		checkReady(true);
 
 		final Assignment assignment = getVariableAssignment(key, true);
 		if (assignment != null) {
@@ -710,6 +740,10 @@ public class Context implements Closeable {
 	public CompletableFuture<Void> refreshAsync() {
 		checkNotClosed();
 
+		if (failed_) {
+			return CompletableFuture.completedFuture(null);
+		}
+
 		if (refreshing_.compareAndSet(false, true)) {
 			final CompletableFuture<Void> newRefreshFuture = new CompletableFuture<Void>();
 			refreshFuture_.set(newRefreshFuture);
@@ -748,59 +782,71 @@ public class Context implements Closeable {
 	}
 
 	public CompletableFuture<Void> closeAsync() {
-		if (!closed_.get()) {
-			if (closing_.compareAndSet(false, true)) {
-				clearRefreshTimer();
-
-				if (pendingCount_.get() > 0) {
-					final CompletableFuture<Void> newClosingFuture = new CompletableFuture<Void>();
-					closingFuture_.set(newClosingFuture);
-
-					flush().thenAccept(new Consumer<Void>() {
-						@Override
-						public void accept(Void x) {
-							closed_.set(true);
-							closing_.set(false);
-							newClosingFuture.complete(null);
-
-							Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-						}
-					}).exceptionally(new Function<Throwable, Void>() {
-						@Override
-						public Void apply(Throwable exception) {
-							// If events were restored by flush's failure handler, leave the context
-							// open so a retry of closeAsync() can attempt to publish them.
-							if (pendingCount_.get() == 0) {
-								closed_.set(true);
-							}
-							closing_.set(false);
-							newClosingFuture.completeExceptionally(exception);
-
-							return null;
-						}
-					});
-
-					return newClosingFuture;
-				} else {
-					closed_.set(true);
-					closing_.set(false);
-
-					Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-
-					// Nothing was pending here, so no closingFuture_ was published for this
-					// attempt; return directly to avoid picking up a stale future left behind
-					// by an earlier failed close attempt.
+		final CompletableFuture<Void> attempt;
+		// The decision to start a close and the publication of its future happen under one lock, so
+		// every other caller gets that attempt's future.
+		synchronized (closeLock_) {
+			// Read closing_ before closed_: a finishing attempt sets closed_ and then clears closing_
+			// outside this lock, so the reverse order can see both false and start a second close.
+			if (closing_.get() || closed_.get()) {
+				final CompletableFuture<Void> current = closingFuture_;
+				if ((current == null) || (closed_.get() && current.isCompletedExceptionally())) {
 					return CompletableFuture.completedFuture(null);
 				}
+				return closeCallerFuture(current);
 			}
 
-			final CompletableFuture<Void> future = closingFuture_.get();
-			if (future != null) {
-				return future;
-			}
+			closing_.set(true);
+			attempt = new CompletableFuture<Void>();
+			closingFuture_ = attempt;
 		}
 
-		return CompletableFuture.completedFuture(null);
+		clearRefreshTimer();
+
+		if (pendingCount_.get() > 0) {
+			flush().thenAccept(new Consumer<Void>() {
+				@Override
+				public void accept(Void x) {
+					Context.this.completeClose(attempt);
+				}
+			}).exceptionally(new Function<Throwable, Void>() {
+				@Override
+				public Void apply(Throwable exception) {
+					// If events were restored by flush's failure handler, leave the context
+					// open so a retry of closeAsync() can attempt to publish them.
+					if (pendingCount_.get() == 0) {
+						closed_.set(true);
+					}
+					closing_.set(false);
+					attempt.completeExceptionally(exception);
+
+					return null;
+				}
+			});
+		} else {
+			completeClose(attempt);
+		}
+
+		return closeCallerFuture(attempt);
+	}
+
+	private void completeClose(final CompletableFuture<Void> attempt) {
+		closed_.set(true);
+		closing_.set(false);
+		attempt.complete(null);
+
+		logEvent(ContextEventLogger.EventType.Close, null);
+	}
+
+	// Do not expose the internal completion gate: completing or cancelling a caller's dependent future
+	// must not release any other close caller.
+	private static CompletableFuture<Void> closeCallerFuture(final CompletableFuture<Void> attempt) {
+		return attempt.thenApply(new Function<Void, Void>() {
+			@Override
+			public Void apply(Void value) {
+				return null;
+			}
+		});
 	}
 
 	@Override
@@ -864,9 +910,9 @@ public class Context implements Closeable {
 					try {
 						contextLock_.writeLock().lock();
 						event.units = Algorithm.mapSetToArray(units_.entrySet(), new Unit[0],
-								new Function<Map.Entry<String, String>, Unit>() {
+								new Function<Map.Entry<String, Object>, Unit>() {
 									@Override
-									public Unit apply(Map.Entry<String, String> entry) {
+									public Unit apply(Map.Entry<String, Object> entry) {
 										return new Unit(entry.getKey(),
 												new String(getUnitHash(entry.getKey(), entry.getValue()),
 														StandardCharsets.US_ASCII));
@@ -957,15 +1003,15 @@ public class Context implements Closeable {
 
 	private void checkNotClosed() {
 		if (closed_.get()) {
-			throw new IllegalStateException("ABSmartly Context is finalized.");
+			throw new IllegalStateException("ABSmartly Context is closed");
 		} else if (closing_.get()) {
-			throw new IllegalStateException("ABSmartly Context is closing.");
+			throw new IllegalStateException("ABSmartly Context is closing");
 		}
 	}
 
 	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
-			throw new IllegalStateException("ABSmartly Context is not yet ready.");
+			throw new IllegalStateException("ABSmartly Context is not yet ready");
 		} else if (expectNotClosed) {
 			checkNotClosed();
 		}
@@ -1252,7 +1298,7 @@ public class Context implements Closeable {
 						if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 							assignment.variant = 0;
 						} else if (experiment.data.fullOnVariant == 0) {
-							final String uid = units_.get(unitType);
+							final Object uid = units_.get(unitType);
 							if (uid != null) {
 								final byte[] unitHash = Context.this.getUnitHash(unitType, uid);
 
@@ -1414,7 +1460,7 @@ public class Context implements Closeable {
 		try {
 			readLock.lock();
 
-			final String uid = units_.get(unitType);
+			final Object uid = units_.get(unitType);
 			if (uid == null) {
 				return null;
 			}
@@ -1434,7 +1480,7 @@ public class Context implements Closeable {
 		try {
 			writeLock.lock();
 
-			final String uid = units_.get(unitType);
+			final Object uid = units_.get(unitType);
 			if (uid == null) {
 				return null;
 			}
@@ -1479,7 +1525,7 @@ public class Context implements Closeable {
 		return Concurrency.getRW(dataLock_, indexVariables_, key);
 	}
 
-	private byte[] getUnitHash(final String unitType, final String unitUID) {
+	private byte[] getUnitHash(final String unitType, final Object unitUID) {
 		return Concurrency.computeIfAbsentRW(contextLock_, hashedUnits_, unitType, new Function<String, byte[]>() {
 			@Override
 			public byte[] apply(String key) {
@@ -1764,7 +1810,7 @@ public class Context implements Closeable {
 	private final VariableParser variableParser_;
 	private final AudienceMatcher audienceMatcher_;
 	private final ScheduledExecutorService scheduler_;
-	private final Map<String, String> units_;
+	private final Map<String, Object> units_;
 	private volatile boolean failed_;
 	private volatile Throwable readyError_;
 
@@ -1812,7 +1858,9 @@ public class Context implements Closeable {
 
 	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
-	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	private final Object closeLock_ = new Object();
+	// Guarded by closeLock_.
+	private CompletableFuture<Void> closingFuture_;
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
 
 	private final ReentrantLock timeoutLock_ = new ReentrantLock();

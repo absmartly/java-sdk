@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -39,6 +40,7 @@ import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
+import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.Attribute;
 import com.absmartly.sdk.json.ContextData;
@@ -235,6 +237,23 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
+	void readsReturnDefaultsWhenLoadFailed() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isReady());
+		assertTrue(context.isFailed());
+
+		assertEquals(0, context.getTreatment("exp_test_ab"));
+		assertEquals(0, context.peekTreatment("exp_test_ab"));
+		assertEquals(17, context.getVariableValue("banner.border", 17));
+		assertEquals(17, context.peekVariableValue("banner.border", 17));
+		assertTrue(context.getVariableKeys().isEmpty());
+		assertArrayEquals(new String[0], context.getExperiments());
+		assertArrayEquals(new String[0], context.getCustomFieldKeys());
+		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
+		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
+	}
+
+	@Test
 	void readyErrorReturnsNullOnSuccess() {
 		final Context context = createReadyContext();
 		assertNull(context.readyError());
@@ -349,34 +368,29 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isReady());
 		assertFalse(context.isFailed());
 
-		final String notReadyMessage = "ABSmartly Context is not yet ready.";
+		final String notReadyMessage = "ABSmartly Context is not yet ready";
 		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
 
-		assertEquals(0, context.peekTreatment("exp_test_ab"));
-		assertEquals(0, context.getTreatment("exp_test_ab"));
-		assertArrayEquals(new String[0], context.getExperiments());
-		assertEquals(17, context.getVariableValue("banner.border", 17));
-		assertEquals(17, context.peekVariableValue("banner.border", 17));
-		assertEquals(new HashMap<>(), context.getVariableKeys());
-		assertArrayEquals(new String[0], context.getCustomFieldKeys());
-		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
-		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
-	}
-
-	@Test
-	void returnsDefaultsWhenNotReady() {
-		final Context context = createContext(dataFuture);
-		assertFalse(context.isReady());
-
-		assertEquals(0, context.peekTreatment("exp_test_ab"));
-		assertEquals(0, context.getTreatment("exp_test_ab"));
-		assertArrayEquals(new String[0], context.getExperiments());
-		assertEquals("default", context.getVariableValue("banner.border", "default"));
-		assertEquals("default", context.peekVariableValue("banner.border", "default"));
-		assertTrue(context.getVariableKeys().isEmpty());
-		assertArrayEquals(new String[0], context.getCustomFieldKeys());
-		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
-		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
+		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getExperiments).getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(notReadyMessage, assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, context::getCustomFieldKeys).getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, () -> context.getCustomFieldValue("exp_test_ab", "key"))
+						.getMessage());
+		assertEquals(notReadyMessage,
+				assertThrows(IllegalStateException.class, () -> context.getCustomFieldValueType("exp_test_ab", "key"))
+						.getMessage());
 	}
 
 	@Test
@@ -395,7 +409,7 @@ class ContextTest extends TestUtils {
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
 
-		final String closingMessage = "ABSmartly Context is closing.";
+		final String closingMessage = "ABSmartly Context is closing";
 		assertEquals(closingMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closingMessage,
@@ -417,15 +431,22 @@ class ContextTest extends TestUtils {
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::publish).getMessage());
 		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
 
-		assertEquals(0, context.peekTreatment("exp_test_ab"));
-		assertEquals(0, context.getTreatment("exp_test_ab"));
-		assertArrayEquals(new String[0], context.getExperiments());
-		assertEquals(17, context.getVariableValue("banner.border", 17));
-		assertEquals(17, context.peekVariableValue("banner.border", 17));
-		assertEquals(new HashMap<>(), context.getVariableKeys());
-		assertArrayEquals(new String[0], context.getCustomFieldKeys());
-		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
-		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
+		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
+		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
+		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closingMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closingMessage, assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+		// custom field reads have no lifecycle guard after ready, as in 1.6.3
+		assertDoesNotThrow(context::getCustomFieldKeys);
+		assertDoesNotThrow(() -> context.getCustomFieldValue("exp_test_ab", "key"));
+		assertDoesNotThrow(() -> context.getCustomFieldValueType("exp_test_ab", "key"));
+		assertEquals(data.experiments.length, context.getExperiments().length);
 	}
 
 	@Test
@@ -443,7 +464,7 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isClosing());
 		assertTrue(context.isClosed());
 
-		final String closedMessage = "ABSmartly Context is finalized.";
+		final String closedMessage = "ABSmartly Context is closed";
 		assertEquals(closedMessage,
 				assertThrows(IllegalStateException.class, () -> context.setAttribute("attr1", "value1")).getMessage());
 		assertEquals(closedMessage,
@@ -465,15 +486,22 @@ class ContextTest extends TestUtils {
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::publish).getMessage());
 		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getData).getMessage());
 
-		assertEquals(0, context.peekTreatment("exp_test_ab"));
-		assertEquals(0, context.getTreatment("exp_test_ab"));
-		assertArrayEquals(new String[0], context.getExperiments());
-		assertEquals(17, context.getVariableValue("banner.border", 17));
-		assertEquals(17, context.peekVariableValue("banner.border", 17));
-		assertEquals(new HashMap<>(), context.getVariableKeys());
-		assertArrayEquals(new String[0], context.getCustomFieldKeys());
-		assertNull(context.getCustomFieldValue("exp_test_ab", "key"));
-		assertNull(context.getCustomFieldValueType("exp_test_ab", "key"));
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekTreatment("exp_test_ab")).getMessage());
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class, () -> context.getTreatment("exp_test_ab")).getMessage());
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class, () -> context.getVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closedMessage,
+				assertThrows(IllegalStateException.class, () -> context.peekVariableValue("banner.border", 17))
+						.getMessage());
+		assertEquals(closedMessage, assertThrows(IllegalStateException.class, context::getVariableKeys).getMessage());
+		// custom field reads have no lifecycle guard after ready, as in 1.6.3
+		assertDoesNotThrow(context::getCustomFieldKeys);
+		assertDoesNotThrow(() -> context.getCustomFieldValue("exp_test_ab", "key"));
+		assertDoesNotThrow(() -> context.getCustomFieldValueType("exp_test_ab", "key"));
+		assertEquals(data.experiments.length, context.getExperiments().length);
 	}
 
 	@Test
@@ -1754,7 +1782,7 @@ class ContextTest extends TestUtils {
 
 		final CompletableFuture<Void> closingFuture = context.closeAsync();
 		final CompletableFuture<Void> closingFutureNext = context.closeAsync();
-		assertSame(closingFuture, closingFutureNext);
+		assertNotSame(closingFuture, closingFutureNext);
 
 		assertTrue(context.isClosing());
 		assertFalse(context.isClosed());
@@ -2490,19 +2518,6 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
-	void refreshDoesNotCallPublishWhenFailed() {
-		final Context context = createContext(dataFutureFailed);
-		assertTrue(context.isReady());
-		assertTrue(context.isFailed());
-
-		when(dataProvider.getContextData()).thenReturn(refreshDataFutureReady);
-
-		context.refresh();
-
-		verify(dataProvider, Mockito.timeout(5000).times(1)).getContextData();
-	}
-
-	@Test
 	void publishIncludesExposureData() {
 		final Context context = createReadyContext();
 
@@ -2648,7 +2663,7 @@ class ContextTest extends TestUtils {
 	}
 
 	@Test
-	void closeAsyncReturnsSameFutureWhenCalledTwice() {
+	void closeAsyncReturnsIndependentFuturesForTheSameAttempt() {
 		final Context context = createReadyContext();
 
 		context.track("goal1", mapOf("amount", 125));
@@ -2659,7 +2674,7 @@ class ContextTest extends TestUtils {
 		final CompletableFuture<Void> closeFuture1 = context.closeAsync();
 		final CompletableFuture<Void> closeFuture2 = context.closeAsync();
 
-		assertSame(closeFuture1, closeFuture2);
+		assertNotSame(closeFuture1, closeFuture2);
 
 		publishFuture.complete(null);
 		closeFuture1.join();
@@ -3038,5 +3053,400 @@ class ContextTest extends TestUtils {
 		final CompletableFuture<Void> retryPublish = assertDoesNotThrow(context::publishAsync);
 		retryPublish.join();
 		assertEquals(0, context.getPendingCount());
+	}
+
+	// With pending events the Close event is logged from the publish stage, after closeAsync() settles.
+	private static <T> T awaitValue(final AtomicReference<T> ref) throws InterruptedException {
+		final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+		while (ref.get() == null && System.nanoTime() < deadline) {
+			Thread.sleep(5);
+		}
+		return ref.get();
+	}
+
+	private void recordFutureStateOnEvent(final ContextEventLogger.EventType type,
+			final AtomicReference<CompletableFuture<?>> future, final AtomicReference<Boolean> doneWhenLogged) {
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == type && future.get() != null) {
+				doneWhenLogged.set(future.get().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+	}
+
+	@Test
+	void readyFutureSettlesBeforeReadyEventIsLogged() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Ready, future, doneWhenLogged);
+
+		final Context context = createContext(dataFuture);
+		future.set(context.waitUntilReadyAsync());
+		dataFuture.complete(data);
+
+		assertEquals(Boolean.TRUE, doneWhenLogged.get());
+		assertTrue(future.get().isDone());
+	}
+
+	@Test
+	void readyFutureSettlesBeforeErrorEventIsLoggedOnFailedLoad() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Error, future, doneWhenLogged);
+
+		final Context context = createContext(dataFuture);
+		future.set(context.waitUntilReadyAsync());
+		dataFuture.completeExceptionally(new Exception("FAILED"));
+
+		assertEquals(Boolean.TRUE, doneWhenLogged.get());
+		assertTrue(context.isFailed());
+	}
+
+	@Test
+	void refreshFutureSettlesBeforeRefreshEventIsLogged() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Refresh, future, doneWhenLogged);
+
+		final Context context = createReadyContext();
+		when(dataProvider.getContextData()).thenReturn(refreshDataFuture);
+		future.set(context.refreshAsync());
+		refreshDataFuture.complete(refreshData);
+
+		assertEquals(Boolean.TRUE, doneWhenLogged.get());
+		assertTrue(future.get().isDone());
+	}
+
+	@Test
+	void refreshFutureSettlesBeforeErrorEventIsLoggedOnFailure() {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Error, future, doneWhenLogged);
+
+		final Context context = createReadyContext();
+		when(dataProvider.getContextData()).thenReturn(refreshDataFuture);
+		future.set(context.refreshAsync());
+		refreshDataFuture.completeExceptionally(new Exception("FAILED"));
+
+		assertEquals(Boolean.TRUE, doneWhenLogged.get());
+		assertTrue(future.get().isCompletedExceptionally());
+	}
+
+	@Test
+	void closeFutureSettlesBeforeCloseEventIsLogged() throws InterruptedException {
+		final AtomicReference<CompletableFuture<?>> future = new AtomicReference<>();
+		final AtomicReference<Boolean> doneWhenLogged = new AtomicReference<>();
+		recordFutureStateOnEvent(ContextEventLogger.EventType.Close, future, doneWhenLogged);
+
+		final Context context = createReadyContext();
+		context.track("goal1", null);
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		future.set(context.closeAsync());
+		publishFuture.complete(null);
+		future.get().join();
+
+		assertEquals(Boolean.TRUE, awaitValue(doneWhenLogged));
+		assertTrue(context.isClosed());
+	}
+
+	@Test
+	void numericUnitsKeepTheirType() {
+		final ContextConfig config = ContextConfig.create()
+				.setUnit("session_id", "abc")
+				.setUnit("user_id", 125)
+				.setUnit("float_id", 125.75);
+		final Context context = createContext(config, dataFutureReady);
+		context.setUnit("org_id", 99L);
+
+		assertEquals(125, context.getUnitValue("user_id"));
+		assertEquals(125.75, context.getUnitValue("float_id"));
+		assertEquals(99L, context.getUnitValue("org_id"));
+		assertEquals("abc", context.getUnitValue("session_id"));
+		assertEquals(mapOf("session_id", "abc", "user_id", 125, "float_id", 125.75, "org_id", 99L),
+				context.getUnitValues());
+
+		// the 1.6.3 getters keep their String types and return the string form
+		assertEquals("125", context.getUnit("user_id"));
+		assertEquals("126", context.getUnit("float_id"));
+		assertEquals("99", context.getUnit("org_id"));
+		assertEquals("abc", context.getUnit("session_id"));
+		assertNull(context.getUnit("missing"));
+		final Map<String, String> strings = context.getUnits();
+		assertEquals(mapOf("session_id", "abc", "user_id", "125", "float_id", "126", "org_id", "99"), strings);
+		assertEquals("125", config.getUnit("user_id"));
+		assertEquals(125, config.getUnitValue("user_id"));
+		assertEquals(mapOf("session_id", "abc", "user_id", "125", "float_id", "126"), config.getUnits());
+		assertEquals(mapOf("session_id", "abc", "user_id", 125, "float_id", 125.75), config.getUnitValues());
+	}
+
+	@Test
+	void numericUnitHashesLikeIntegerString() {
+		assertEquals("126", Hashing.unitToString(125.75));
+		assertEquals("125", Hashing.unitToString(125));
+		assertEquals("-3", Hashing.unitToString(-2.5));
+		assertEquals("-0", Hashing.unitToString(-0.1));
+		assertEquals("0", Hashing.unitToString(-0.0));
+		assertEquals("123456789", Hashing.unitToString(123456789L));
+		assertEquals("9007199254740992", Hashing.unitToString(9007199254740993L));
+		assertEquals("1e+21", Hashing.unitToString(1e21));
+		assertEquals("1e+23", Hashing.unitToString(1e23));
+		assertEquals("6.189700196426902e+26", Hashing.unitToString(Math.scalb(1.0, 89)));
+		// Expected strings from Node's toFixed(0).
+		assertEquals("1.1805916207174113e+21", Hashing.unitToString(Math.scalb(1.0, 70)));
+		assertEquals("3.6267774588438875e+24", Hashing.unitToString(3 * Math.scalb(1.0, 80)));
+		assertEquals("1.2345678901234569e+23", Hashing.unitToString(123456789012345680000000.0));
+		assertEquals("1.7976931348623157e+308", Hashing.unitToString(Double.MAX_VALUE));
+		assertEquals("1.2345e+22", Hashing.unitToString(1.2345e22));
+		assertEquals("-1e+21", Hashing.unitToString(-1e21));
+		assertEquals("999999999999999868928", Hashing.unitToString(999999999999999900000.0));
+
+		final Context numeric = createContext(ContextConfig.create().setUnit("user_id", 125.75), dataFutureReady);
+		final Context text = createContext(ContextConfig.create().setUnit("user_id", "126"), dataFutureReady);
+		numeric.track("goal", null);
+		text.track("goal", null);
+		final List<PublishEvent> events = new ArrayList<>();
+		Mockito.doAnswer(invocation -> {
+			events.add(invocation.getArgument(1));
+			return CompletableFuture.completedFuture(null);
+		}).when(eventHandler).publish(any(), any());
+		numeric.publish();
+		text.publish();
+
+		assertEquals(2, events.size());
+		assertEquals(events.get(1).units[0].uid, events.get(0).units[0].uid);
+	}
+
+	@Test
+	void setUnitRejectsSameNumericValueOnlyWhenDifferent() {
+		final Context context = createContext(ContextConfig.create().setUnit("user_id", 12345), dataFutureReady);
+		assertDoesNotThrow(() -> context.setUnit("user_id", 12345));
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("user_id", 54321));
+		assertEquals("Unit 'user_id' UID already set.", error.getMessage());
+	}
+
+	@Test
+	void setUnitChecksBlankBeforeAlreadySet() {
+		final Context context = createReadyContext();
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("user_id", "  "));
+		assertEquals("Unit 'user_id' UID must not be blank.", error.getMessage());
+	}
+
+	@Test
+	void refreshOnFailedContextIsANoOp() {
+		final Context context = createContext(dataFutureFailed);
+		assertTrue(context.isFailed());
+		Mockito.clearInvocations(eventLogger);
+
+		context.refresh();
+
+		verify(dataProvider, Mockito.never()).getContextData();
+		Mockito.verifyNoInteractions(eventLogger);
+		assertTrue(context.isFailed());
+	}
+
+	@Test
+	void setUnitComparesLargeNumericUidsExactly() {
+		final Context context = createContext(ContextConfig.create().setUnit("user_id", 9007199254740992L),
+				dataFutureReady);
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("user_id", 9007199254740993L));
+		assertEquals("Unit 'user_id' UID already set.", error.getMessage());
+		assertDoesNotThrow(() -> context.setUnit("user_id", 9007199254740992.0));
+		assertEquals(9007199254740992.0, context.getUnitValue("user_id"));
+	}
+
+	@Test
+	void setUnitRejectsMutableNumbers() {
+		final Context context = createReadyContext();
+		final IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> context.setUnit("account_id", new java.util.concurrent.atomic.AtomicInteger(125)));
+		assertEquals("Unit 'account_id' must be a string or a number.", error.getMessage());
+		assertNull(context.getUnit("account_id"));
+
+		assertThrows(IllegalArgumentException.class, () -> createContext(
+				ContextConfig.create().setUnit("account_id", new java.util.concurrent.atomic.AtomicLong(1)),
+				dataFutureReady));
+	}
+
+	@Test
+	void lateReadinessWaitersInsideReadyEventSeeSettledFuture() {
+		final AtomicReference<Boolean> lateWaiterDone = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Ready) {
+				lateWaiterDone.set(contextRef.get().waitUntilReadyAsync().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createContext(dataFuture);
+		contextRef.set(context);
+		dataFuture.complete(data);
+
+		assertEquals(Boolean.TRUE, lateWaiterDone.get());
+		assertTrue(context.waitUntilReadyAsync().isDone());
+	}
+
+	@Test
+	void lateCloseCallersInsideCloseEventSeeSettledFuture() throws InterruptedException {
+		final AtomicReference<Boolean> lateCloseDone = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Close) {
+				lateCloseDone.set(contextRef.get().closeAsync().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createReadyContext();
+		contextRef.set(context);
+		context.track("goal1", null);
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> closing = context.closeAsync();
+		publishFuture.complete(null);
+		closing.join();
+
+		assertEquals(Boolean.TRUE, awaitValue(lateCloseDone));
+		assertTrue(context.closeAsync().isDone());
+	}
+
+	@Test
+	void lateCloseCallersInsideCloseEventSeeSettledFutureWithNothingPending() {
+		final AtomicReference<Boolean> lateCloseDone = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Close) {
+				lateCloseDone.set(contextRef.get().closeAsync().isDone());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createReadyContext();
+		contextRef.set(context);
+		context.close();
+
+		assertEquals(Boolean.TRUE, lateCloseDone.get());
+		assertTrue(context.closeAsync().isDone());
+	}
+
+	@Test
+	@Timeout(60)
+	void concurrentClosesLogOneCloseEvent() throws Exception {
+		final ExecutorService pool = Executors.newFixedThreadPool(3);
+		try {
+			for (int i = 0; i < 3000; ++i) {
+				final java.util.concurrent.atomic.AtomicInteger closeEvents = new java.util.concurrent.atomic.AtomicInteger();
+				final ContextEventLogger logger = (ctx, type, data) -> {
+					if (type == ContextEventLogger.EventType.Close) {
+						closeEvents.incrementAndGet();
+					}
+				};
+				final Context context = Context.create(clock, ContextConfig.create().setUnits(units), scheduler,
+						dataFutureReady, dataProvider, eventHandler, logger, variableParser, audienceMatcher);
+				final java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(3);
+				final List<java.util.concurrent.Future<Boolean>> results = new ArrayList<>();
+				for (int t = 0; t < 3; ++t) {
+					results.add(pool.submit(() -> {
+						start.await();
+						context.closeAsync().join();
+						return true;
+					}));
+				}
+				for (final java.util.concurrent.Future<Boolean> result : results) {
+					assertTrue(result.get());
+				}
+				assertEquals(1, closeEvents.get(), "Close event logged more than once");
+			}
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	@Test
+	void cancellingOneCloseFutureWhilePublishingDoesNotDisturbOtherCallers() {
+		final Context context = createReadyContext();
+		context.track("goal1", null);
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+
+		final CompletableFuture<Void> first = context.closeAsync();
+		final CompletableFuture<Void> second = context.closeAsync();
+		assertTrue(first.cancel(false));
+
+		assertFalse(second.isDone());
+		final CompletableFuture<Void> third = context.closeAsync();
+		assertFalse(third.isDone());
+		assertTrue(context.isClosing());
+
+		publishFuture.complete(null);
+		second.join();
+		third.join();
+
+		assertFalse(second.isCancelled());
+		assertFalse(third.isCancelled());
+		assertTrue(context.isClosed());
+		final CompletableFuture<Void> after = context.closeAsync();
+		assertTrue(after.isDone());
+		assertFalse(after.isCompletedExceptionally());
+	}
+
+	@Test
+	void externallyCompletingCloseFutureDoesNotReleaseOtherCallers() {
+		final Context context = createReadyContext();
+		context.track("goal1", null);
+		final CompletableFuture<Void> publish = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publish);
+		final CompletableFuture<Void> first = context.closeAsync();
+		final CompletableFuture<Void> second = context.closeAsync();
+		first.completeAsync(() -> null).join();
+		assertFalse(second.isDone());
+		assertFalse(context.closeAsync().isDone());
+		publish.complete(null);
+		second.join();
+		assertTrue(context.isClosed());
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void eventLoggerMayWaitForReadinessInsideReadyEvent() {
+		final AtomicReference<Boolean> readyInLogger = new AtomicReference<>();
+		final AtomicReference<Context> contextRef = new AtomicReference<>();
+		Mockito.doAnswer(invocation -> {
+			if (invocation.getArgument(1) == ContextEventLogger.EventType.Ready) {
+				contextRef.get().waitUntilReady();
+				contextRef.get().waitUntilReadyAsync().join();
+				readyInLogger.set(contextRef.get().isReady());
+			}
+			return null;
+		}).when(eventLogger).handleEvent(any(), any(), any());
+
+		final Context context = createContext(dataFuture);
+		contextRef.set(context);
+		dataFuture.complete(data);
+
+		assertEquals(Boolean.TRUE, readyInLogger.get());
+	}
+
+	@Test
+	void customFieldReadsStillWorkWhileClosingAndAfterClose() {
+		final Context context = createReadyContext();
+		final String[] keys = context.getCustomFieldKeys();
+		context.track("goal1", null);
+		final CompletableFuture<Void> publishFuture = new CompletableFuture<>();
+		when(eventHandler.publish(any(), any())).thenReturn(publishFuture);
+		final CompletableFuture<Void> closing = context.closeAsync();
+		assertTrue(context.isClosing());
+		assertArrayEquals(keys, context.getCustomFieldKeys());
+
+		publishFuture.complete(null);
+		closing.join();
+		assertTrue(context.isClosed());
+		assertArrayEquals(keys, context.getCustomFieldKeys());
 	}
 }

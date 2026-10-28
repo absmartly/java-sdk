@@ -19,6 +19,12 @@ The `android.permission.INTERNET` permission is required. To add this permission
 If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
 
 
+## Upgrading from 1.6.3
+
+The public unit getters remain compatible with 1.6.3: `getUnit` returns a `String` and `getUnits` returns `Map<String, String>`. Unit UIDs may now also be numeric; numeric values are returned by the new `getUnitValue` and `getUnitValues` accessors, while the original getters return their string form.
+
+Context reads retain the 1.6.3 lifecycle behavior. Before ready they throw `"ABSmartly Context is not yet ready"`; while closing and after close they throw `"ABSmartly Context is closing"` and `"ABSmartly Context is closed"`, respectively. Custom-field reads remain available once the context is ready, including while closing and after close.
+
 ## Installation
 
 #### Gradle
