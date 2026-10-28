@@ -789,7 +789,7 @@ public class Context implements Closeable {
 		// every other caller gets that attempt's future.
 		synchronized (closeLock_) {
 			if (closed_.get() || closing_.get()) {
-				final CompletableFuture<Void> current = closingFuture_.get();
+				final CompletableFuture<Void> current = closingFuture_;
 				if ((current == null) || (closed_.get() && current.isCompletedExceptionally())) {
 					return CompletableFuture.completedFuture(null);
 				}
@@ -798,7 +798,7 @@ public class Context implements Closeable {
 
 			closing_.set(true);
 			attempt = new CompletableFuture<Void>();
-			closingFuture_.set(attempt);
+			closingFuture_ = attempt;
 		}
 
 		clearRefreshTimer();
@@ -1859,7 +1859,8 @@ public class Context implements Closeable {
 	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final Object closeLock_ = new Object();
-	private final AtomicReference<CompletableFuture<Void>> closingFuture_ = new AtomicReference<CompletableFuture<Void>>();
+	// Guarded by closeLock_.
+	private CompletableFuture<Void> closingFuture_;
 	private final AtomicReference<CompletableFuture<Void>> refreshFuture_ = new AtomicReference<CompletableFuture<Void>>();
 
 	private final ReentrantLock timeoutLock_ = new ReentrantLock();

@@ -38,11 +38,9 @@ public abstract class Hashing {
 		final double magnitude = Math.abs(value);
 		final String sign = value < 0 ? "-" : "";
 		if (magnitude >= 1e21) {
-			final BigDecimal shortest = shortestRoundTrip(magnitude).stripTrailingZeros();
-			final String digits = shortest.unscaledValue().toString();
-			final int exponent = digits.length() - 1 - shortest.scale();
-			final String mantissa = digits.length() == 1 ? digits : digits.charAt(0) + "." + digits.substring(1);
-			return sign + mantissa + "e+" + exponent;
+			// At least 1e21 with at most 17 significant digits, so the scale is negative and
+			// BigDecimal.toString() always uses scientific notation ("1.2345E+22").
+			return sign + shortestRoundTrip(magnitude).stripTrailingZeros().toString().replace('E', 'e');
 		}
 		return sign + new BigDecimal(magnitude).setScale(0, RoundingMode.HALF_UP).toPlainString();
 	}
