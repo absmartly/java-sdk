@@ -1,5 +1,9 @@
 package com.absmartly.sdk.internal.hashing;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
+
 import com.absmartly.sdk.internal.Buffers;
 
 public abstract class Hashing {
@@ -11,6 +15,60 @@ public abstract class Hashing {
 			return new byte[512];
 		}
 	};
+
+	public static byte[] hashUnit(Object unit) {
+		return hashUnit(unitToString(unit));
+	}
+
+	// Numeric unit UIDs hash like the JavaScript SDK's value.toFixed(0). JavaScript numbers are doubles,
+	// so every numeric type is converted to double first (a long beyond 2^53 rounds as it would in
+	// JavaScript), negative values that round to zero keep their sign ("-0"), and magnitudes of 1e21
+	// or more use JavaScript's exponent notation ("1e+21").
+	public static String unitToString(final Object uid) {
+		if (uid instanceof String) {
+			return (String) uid;
+		}
+		final double value = ((Number) uid).doubleValue();
+		if (Double.isNaN(value)) {
+			return "NaN";
+		}
+		if (Double.isInfinite(value)) {
+			return value > 0 ? "Infinity" : "-Infinity";
+		}
+		final double magnitude = Math.abs(value);
+		final String sign = value < 0 ? "-" : "";
+		if (magnitude >= 1e21) {
+			// At least 1e21 with at most 17 significant digits, so the scale is negative and
+			// BigDecimal.toString() always uses scientific notation ("1.2345E+22").
+			return sign + shortestRoundTrip(magnitude).stripTrailingZeros().toString().replace('E', 'e');
+		}
+		return sign + new BigDecimal(magnitude).setScale(0, RoundingMode.HALF_UP).toPlainString();
+	}
+
+	// The fewest significant digits that read back as the same double, closest to the exact value when
+	// two qualify, as in JavaScript's Number-to-String conversion (ECMA-262 Number::toString). Both
+	// neighbours are tried at each precision: the shortest round-trip decimal is not always the nearest
+	// one (2^89). Double.toString is not shortest on every JDK (JDK 11 gives 9.999999999999999E22).
+	private static BigDecimal shortestRoundTrip(final double value) {
+		final BigDecimal exact = new BigDecimal(value);
+		for (int precision = 1; precision <= 17; ++precision) {
+			final BigDecimal down = exact.round(new MathContext(precision, RoundingMode.FLOOR));
+			final BigDecimal up = exact.round(new MathContext(precision, RoundingMode.CEILING));
+			final boolean downOk = down.doubleValue() == value;
+			final boolean upOk = up.doubleValue() == value;
+			if (downOk && upOk) {
+				final int cmp = exact.subtract(down).compareTo(up.subtract(exact));
+				return cmp <= 0 ? down : up;
+			}
+			if (downOk) {
+				return down;
+			}
+			if (upOk) {
+				return up;
+			}
+		}
+		return exact;
+	}
 
 	public static byte[] hashUnit(CharSequence unit) {
 		final int n = unit.length();

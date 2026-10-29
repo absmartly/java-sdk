@@ -5,6 +5,8 @@ import java.util.Map;
 
 import javax.annotation.Nonnull;
 
+import com.absmartly.sdk.internal.hashing.Hashing;
+
 public class ContextConfig {
 	public static ContextConfig create() {
 		return new ContextConfig();
@@ -13,27 +15,57 @@ public class ContextConfig {
 	private ContextConfig() {}
 
 	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
-		if (units_ == null) {
-			units_ = new HashMap<String, String>();
-		}
-
-		units_.put(unitType, uid);
-		return this;
+		return putUnit(unitType, uid);
 	}
 
-	public ContextConfig setUnits(@Nonnull final Map<String, String> units) {
-		for (final Map.Entry<String, String> entry : units.entrySet()) {
-			setUnit(entry.getKey(), entry.getValue());
+	public ContextConfig setUnit(@Nonnull final String unitType, @Nonnull final Number uid) {
+		return putUnit(unitType, uid);
+	}
+
+	public ContextConfig setUnits(@Nonnull final Map<String, ?> units) {
+		for (final Map.Entry<String, ?> entry : units.entrySet()) {
+			putUnit(entry.getKey(), entry.getValue());
 		}
 		return this;
 	}
 
 	public String getUnit(@Nonnull final String unitType) {
+		return unitString(getUnitValue(unitType));
+	}
+
+	public Object getUnitValue(@Nonnull final String unitType) {
 		return units_ != null ? units_.get(unitType) : null;
 	}
 
 	public Map<String, String> getUnits() {
+		return units_ != null ? unitStrings(units_) : null;
+	}
+
+	// Shared with Context: a numeric UID is returned in its canonical string form, the same string that
+	// is hashed.
+	static String unitString(final Object uid) {
+		return uid != null ? Hashing.unitToString(uid) : null;
+	}
+
+	static Map<String, String> unitStrings(final Map<String, Object> uids) {
+		final Map<String, String> units = new HashMap<String, String>(uids.size());
+		for (final Map.Entry<String, Object> entry : uids.entrySet()) {
+			units.put(entry.getKey(), unitString(entry.getValue()));
+		}
+		return units;
+	}
+
+	public Map<String, Object> getUnitValues() {
 		return units_;
+	}
+
+	private ContextConfig putUnit(final String unitType, final Object uid) {
+		if (units_ == null) {
+			units_ = new HashMap<String, Object>();
+		}
+
+		units_.put(unitType, uid);
+		return this;
 	}
 
 	public ContextConfig setAttribute(@Nonnull final String name, @Nonnull final Object value) {
@@ -135,7 +167,7 @@ public class ContextConfig {
 		return this.refreshInterval_;
 	}
 
-	private Map<String, String> units_;
+	private Map<String, Object> units_;
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
 	private Map<String, Integer> cassignments_;
