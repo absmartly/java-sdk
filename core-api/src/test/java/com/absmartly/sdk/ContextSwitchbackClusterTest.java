@@ -61,7 +61,7 @@ class ContextSwitchbackClusterTest {
 		return createContext(TestUtils.mapOf(UNIT_TYPE, UID), data);
 	}
 
-	Context createContext(Map<String, String> units, ContextData data) {
+	Context createContext(Map<String, ?> units, ContextData data) {
 		final ContextConfig config = ContextConfig.create();
 		config.setUnits(units);
 		return Context.create(clock, config, mock(ScheduledExecutorService.class),
@@ -122,6 +122,70 @@ class ContextSwitchbackClusterTest {
 			experiment.switchbackClusterCount = count;
 			assertArrayEquals(expectedSchedule(UID_HASH, count), peekSchedule(createContext(dataOf(experiment))));
 		}
+	}
+
+	// A numeric UID is clustered by its canonical string (Hashing.unitToString, JavaScript toFixed(0)),
+	// the form ordinary assignment hashes and publish sends, so it shares the schedule, bucket and
+	// exposures of that string.
+	@Test
+	void numericUnitUidClustersLikeItsCanonicalString() {
+		final Object[][] cases = {{123456789L, "123456789"}, {123456789.0, "123456789"},
+				{9007199254740993L, "9007199254740992"}, {125.75, "126"}};
+		for (final int count : new int[]{10, 100}) {
+			final Experiment experiment = switchback(ARMS, HOUR);
+			experiment.switchbackClusterCount = count;
+			for (final Object[] pair : cases) {
+				setUp();
+				final Context numeric = createContext(TestUtils.mapOf(UNIT_TYPE, pair[0]), dataOf(experiment));
+				final PublishEvent numericEvent = exposeAndPublish(numeric);
+				final int[] numericSchedule = peekSchedule(numeric);
+				setUp();
+				final Context text = createContext(TestUtils.mapOf(UNIT_TYPE, pair[1]), dataOf(experiment));
+				final PublishEvent textEvent = exposeAndPublish(text);
+
+				final String unitHash = new String(Hashing.hashUnit((String) pair[1]), StandardCharsets.US_ASCII);
+				assertArrayEquals(expectedSchedule(unitHash, count), numericSchedule);
+				assertArrayEquals(peekSchedule(text), numericSchedule);
+				assertArrayEquals(textEvent.units, numericEvent.units);
+				assertArrayEquals(textEvent.exposures, numericEvent.exposures);
+				assertEquals(unitHash, numericEvent.units[0].uid);
+			}
+		}
+	}
+
+	// Independent reference (Python hashlib MD5 and murmur3 over the platform formulas) for numeric
+	// UIDs: the unit hash, its bucket and periods 0..11 of that bucket with 3 arms.
+	@Test
+	void numericUnitUidMatchesTheIndependentReference() {
+		final Object[][] cases = {
+				{123456789L, "JfnnlDI7RTiF9RgfG2JNCw", 10, 0, new int[]{2, 0, 1, 2, 1, 0, 0, 1, 2, 1, 0, 2}},
+				{123456789L, "JfnnlDI7RTiF9RgfG2JNCw", 100, 10, new int[]{0, 2, 1, 2, 1, 0, 0, 2, 1, 1, 0, 2}},
+				{9007199254740993L, "OngwCmjeKhIQyeNybDy4eg", 10, 7, new int[]{1, 2, 0, 0, 1, 2, 2, 1, 0, 0, 2, 1}},
+				{9007199254740993L, "OngwCmjeKhIQyeNybDy4eg", 100, 37,
+						new int[]{0, 2, 1, 2, 0, 1, 2, 1, 0, 1, 2, 0}}};
+		for (final Object[] golden : cases) {
+			setUp();
+			final Experiment experiment = switchback(ARMS, HOUR);
+			experiment.switchbackClusterCount = (Integer) golden[2];
+			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, golden[0]), dataOf(experiment));
+			final int[] schedule = (int[]) golden[4];
+			final PublishEvent event = exposeAndPublish(context);
+
+			assertEquals(golden[1], event.units[0].uid);
+			assertEquals(golden[3], SwitchbackBuckets.bucketOf(SEED_HI, SEED_LO, event.units[0].uid,
+					(Integer) golden[2]));
+			assertArrayEquals(new Exposure[]{exposure(schedule[0], ANCHOR, true, false)}, event.exposures);
+			assertArrayEquals(schedule, peekSchedule(context));
+		}
+	}
+
+	PublishEvent exposeAndPublish(Context context) {
+		clock.now = ANCHOR;
+		context.getTreatment("exp_sb");
+		context.publish();
+		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(Mockito.eq(context), captor.capture());
+		return captor.getValue();
 	}
 
 	@Test
