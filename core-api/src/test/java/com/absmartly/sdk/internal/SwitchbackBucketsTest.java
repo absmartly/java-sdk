@@ -26,7 +26,7 @@ import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 
 // Fixture copied byte-for-byte from absmartly/abs
-// lib/utils/src/test/resources/switchback/bucket-golden-vectors.json (git blob 7b1d3fed5985).
+// lib/utils/src/test/resources/switchback/bucket-golden-vectors.json (git blob c2da44286878).
 class SwitchbackBucketsTest {
 	static JsonNode loadVectors() throws IOException {
 		final InputStream in = SwitchbackBucketsTest.class.getClassLoader()
