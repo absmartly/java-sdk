@@ -74,11 +74,15 @@ class ContextSwitchbackClusterTest {
 		context.refresh();
 	}
 
-	Exposure[] publishExposures(Context context) {
+	PublishEvent publishEvent(Context context) {
 		context.publish();
 		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(Mockito.eq(context), captor.capture());
-		return captor.getValue().exposures;
+		return captor.getValue();
+	}
+
+	Exposure[] publishExposures(Context context) {
+		return publishEvent(context).exposures;
 	}
 
 	static Experiment attributeSwitchback(String path, int count) {
@@ -135,11 +139,9 @@ class ContextSwitchbackClusterTest {
 			final Experiment experiment = switchback(ARMS, HOUR);
 			experiment.switchbackClusterCount = count;
 			for (final Object[] pair : cases) {
-				setUp();
 				final Context numeric = createContext(TestUtils.mapOf(UNIT_TYPE, pair[0]), dataOf(experiment));
 				final PublishEvent numericEvent = exposeAndPublish(numeric);
 				final int[] numericSchedule = peekSchedule(numeric);
-				setUp();
 				final Context text = createContext(TestUtils.mapOf(UNIT_TYPE, pair[1]), dataOf(experiment));
 				final PublishEvent textEvent = exposeAndPublish(text);
 
@@ -164,7 +166,6 @@ class ContextSwitchbackClusterTest {
 				{9007199254740993L, "OngwCmjeKhIQyeNybDy4eg", 100, 37,
 						new int[]{0, 2, 1, 2, 0, 1, 2, 1, 0, 1, 2, 0}}};
 		for (final Object[] golden : cases) {
-			setUp();
 			final Experiment experiment = switchback(ARMS, HOUR);
 			experiment.switchbackClusterCount = (Integer) golden[2];
 			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, golden[0]), dataOf(experiment));
@@ -182,10 +183,7 @@ class ContextSwitchbackClusterTest {
 	PublishEvent exposeAndPublish(Context context) {
 		clock.now = ANCHOR;
 		context.getTreatment("exp_sb");
-		context.publish();
-		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
-		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(Mockito.eq(context), captor.capture());
-		return captor.getValue();
+		return publishEvent(context);
 	}
 
 	@Test
