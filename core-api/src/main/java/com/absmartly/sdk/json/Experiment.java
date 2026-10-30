@@ -5,6 +5,8 @@ import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import com.absmartly.sdk.java.util.Objects;
+
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Experiment {
@@ -32,6 +34,22 @@ public class Experiment {
 	// (from the top-level `holdouts` array) that cover this experiment. Null or empty means the
 	// experiment is not covered by any holdout. Absent on holdout entries themselves.
 	public int[] holdoutIds;
+
+	// Switchback configuration. randomizationType is "unit" or "switchback"; null means unit.
+	// Instants and durations are epoch/duration milliseconds. Carryover and burn windows are
+	// analysis-only and never read by assignment.
+	public String randomizationType;
+	public String switchbackClusterUnitType;
+	public Long switchbackStartAt;
+	public Long switchbackPeriodMs;
+	public Long switchbackCarryoverDurationMs;
+	public Long switchbackBurnInDurationMs;
+	public Long switchbackBurnOutDurationMs;
+	public String switchbackDesignType;
+	public String switchbackEstimand;
+	// Hashed cluster buckets: count is 10, 50 or 100; a null attribute hashes the experiment unit.
+	public Integer switchbackClusterCount;
+	public String switchbackClusterAttribute;
 
 	public Experiment() {}
 
@@ -78,7 +96,33 @@ public class Experiment {
 			return false;
 		if (holdoutType != null ? !holdoutType.equals(that.holdoutType) : that.holdoutType != null)
 			return false;
-		return Arrays.equals(holdoutIds, that.holdoutIds);
+		if (!Arrays.equals(holdoutIds, that.holdoutIds))
+			return false;
+		if (!Objects.equals(randomizationType, that.randomizationType))
+			return false;
+		if (!Objects.equals(switchbackClusterUnitType, that.switchbackClusterUnitType))
+			return false;
+		if (!Objects.equals(switchbackStartAt, that.switchbackStartAt))
+			return false;
+		if (!Objects.equals(switchbackPeriodMs, that.switchbackPeriodMs))
+			return false;
+		if (!Objects.equals(switchbackCarryoverDurationMs, that.switchbackCarryoverDurationMs))
+			return false;
+		if (!Objects.equals(switchbackBurnInDurationMs, that.switchbackBurnInDurationMs))
+			return false;
+		if (!Objects.equals(switchbackBurnOutDurationMs, that.switchbackBurnOutDurationMs))
+			return false;
+		if (!Objects.equals(switchbackDesignType, that.switchbackDesignType))
+			return false;
+		if (!Objects.equals(switchbackEstimand, that.switchbackEstimand))
+			return false;
+		if (!Objects.equals(switchbackClusterCount, that.switchbackClusterCount))
+			return false;
+		return Objects.equals(switchbackClusterAttribute, that.switchbackClusterAttribute);
+	}
+
+	private static int hash(Object o) {
+		return (o != null) ? o.hashCode() : 0;
 	}
 
 	@Override
@@ -101,6 +145,17 @@ public class Experiment {
 		result = 31 * result + Arrays.hashCode(customFieldValues);
 		result = 31 * result + (holdoutType != null ? holdoutType.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(holdoutIds);
+		result = 31 * result + hash(randomizationType);
+		result = 31 * result + hash(switchbackClusterUnitType);
+		result = 31 * result + hash(switchbackStartAt);
+		result = 31 * result + hash(switchbackPeriodMs);
+		result = 31 * result + hash(switchbackCarryoverDurationMs);
+		result = 31 * result + hash(switchbackBurnInDurationMs);
+		result = 31 * result + hash(switchbackBurnOutDurationMs);
+		result = 31 * result + hash(switchbackDesignType);
+		result = 31 * result + hash(switchbackEstimand);
+		result = 31 * result + hash(switchbackClusterCount);
+		result = 31 * result + hash(switchbackClusterAttribute);
 		return result;
 	}
 
@@ -125,6 +180,17 @@ public class Experiment {
 				", customFieldValues=" + Arrays.toString(customFieldValues) +
 				", holdoutType='" + holdoutType + '\'' +
 				", holdoutIds=" + Arrays.toString(holdoutIds) +
+				", randomizationType='" + randomizationType + '\'' +
+				", switchbackClusterUnitType='" + switchbackClusterUnitType + '\'' +
+				", switchbackStartAt=" + switchbackStartAt +
+				", switchbackPeriodMs=" + switchbackPeriodMs +
+				", switchbackCarryoverDurationMs=" + switchbackCarryoverDurationMs +
+				", switchbackBurnInDurationMs=" + switchbackBurnInDurationMs +
+				", switchbackBurnOutDurationMs=" + switchbackBurnOutDurationMs +
+				", switchbackDesignType='" + switchbackDesignType + '\'' +
+				", switchbackEstimand='" + switchbackEstimand + '\'' +
+				", switchbackClusterCount=" + switchbackClusterCount +
+				", switchbackClusterAttribute='" + switchbackClusterAttribute + '\'' +
 				'}';
 	}
 }

@@ -1,0 +1,4352 @@
+{
+  "unitKeys" : [
+    {
+      "unitUid" : "user-1",
+      "key" : "1tdwU5K8evYzMovqjExpBA"
+    },
+    {
+      "unitUid" : "123",
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA"
+    },
+    {
+      "unitUid" : 123,
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA"
+    },
+    {
+      "unitUid" : 0,
+      "key" : "z80ghJXVZe9m59_5-Ydk2g"
+    },
+    {
+      "unitUid" : -42,
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A"
+    },
+    {
+      "unitUid" : 9007199254740991,
+      "key" : "i_qa0JD7v4flGPHOJKk-7g"
+    },
+    {
+      "unitUid" : "",
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg"
+    },
+    {
+      "unitUid" : "São Paulo",
+      "key" : "6nbArp3YF-tEj9Gz22JTuw"
+    },
+    {
+      "unitUid" : "東京",
+      "key" : "cHuhfH742e8Is57zFK30Mg"
+    },
+    {
+      "unitUid" : "😀",
+      "key" : "KgLqw51xanDs83V5GFkntg"
+    },
+    {
+      "unitUid" : "a\u001Fb",
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ"
+    },
+    {
+      "unitUid" : "x'y\\z",
+      "key" : "WOAvK4WUCN3v173kQ-NR-g"
+    }
+  ],
+  "attributeKeys" : [
+    {
+      "value" : "Lisboa",
+      "key" : "Lisboa"
+    },
+    {
+      "value" : "São Paulo",
+      "key" : "São Paulo"
+    },
+    {
+      "value" : "東京",
+      "key" : "東京"
+    },
+    {
+      "value" : "😀",
+      "key" : "😀"
+    },
+    {
+      "value" : "42",
+      "key" : "42"
+    },
+    {
+      "value" : 42,
+      "key" : "42"
+    },
+    {
+      "value" : -7,
+      "key" : "-7"
+    },
+    {
+      "value" : 0,
+      "key" : "0"
+    },
+    {
+      "value" : 9007199254740991,
+      "key" : "9007199254740991"
+    },
+    {
+      "value" : -9007199254740991,
+      "key" : "-9007199254740991"
+    },
+    {
+      "value" : 18446744073709551615,
+      "key" : "18446744073709551615"
+    },
+    {
+      "value" : "a b",
+      "key" : "a b"
+    },
+    {
+      "value" : " lead",
+      "key" : " lead"
+    },
+    {
+      "value" : "x'y\\z",
+      "key" : "x'y\\z"
+    },
+    {
+      "value" : "a\u001Fb",
+      "key" : "a\u001Fb"
+    },
+    {
+      "value" : "",
+      "key" : null
+    },
+    {
+      "value" : null,
+      "key" : null
+    },
+    {
+      "value" : true,
+      "key" : null
+    },
+    {
+      "value" : false,
+      "key" : null
+    },
+    {
+      "value" : 1.5,
+      "key" : null
+    },
+    {
+      "value" : 2.0,
+      "key" : null
+    }
+  ],
+  "buckets" : [
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 49
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 99
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 84
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "1tdwU5K8evYzMovqjExpBA",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 56
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 68
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 55
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 10
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 60
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 55
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 50
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 68
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 55
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 10
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 60
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 55
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "ICy5YqxZB1uWSwcVLSNLcA",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 50
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 90
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 28
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 78
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 28
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 78
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 14
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 14
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 13
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 13
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 90
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 54
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "z80ghJXVZe9m59_5-Ydk2g",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 58
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 26
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 26
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 19
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 69
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 20
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 20
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 96
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "jfy4n9hiDj5_tqA6U_MH3A",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 57
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 86
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 20
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 70
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 43
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 43
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 54
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 71
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 97
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "i_qa0JD7v4flGPHOJKk-7g",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 87
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 38
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 88
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 20
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 70
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 49
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 49
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "1B2M2Y8AsgTpgAmY7PhCfg",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 52
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 43
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 93
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 44
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 94
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 11
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 11
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 16
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 66
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "6nbArp3YF-tEj9Gz22JTuw",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 77
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 82
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 90
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 16
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 16
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 25
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 75
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "cHuhfH742e8Is57zFK30Mg",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 92
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 28
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 28
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 49
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 49
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 16
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 66
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 87
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 11
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 61
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "KgLqw51xanDs83V5GFkntg",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 72
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 17
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 17
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 17
+    },
+    {
+      "key" : "3eFBzFDWEYpd2q4aAbdPmQ",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 67
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 24
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 24
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 62
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 58
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 20
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 70
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 86
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 31
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 31
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 28
+    },
+    {
+      "key" : "WOAvK4WUCN3v173kQ-NR-g",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 78
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 26
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 76
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 62
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 62
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 17
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 67
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 13
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 63
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 45
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 45
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "Lisboa",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 17
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 67
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 26
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 26
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 10
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 60
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 87
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 80
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 38
+    },
+    {
+      "key" : "São Paulo",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 88
+    },
+    {
+      "key" : "東京",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "東京",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 38
+    },
+    {
+      "key" : "東京",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 88
+    },
+    {
+      "key" : "東京",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "東京",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : "東京",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : "東京",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "東京",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 20
+    },
+    {
+      "key" : "東京",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 20
+    },
+    {
+      "key" : "東京",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "東京",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 24
+    },
+    {
+      "key" : "東京",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 24
+    },
+    {
+      "key" : "東京",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "東京",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 19
+    },
+    {
+      "key" : "東京",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 19
+    },
+    {
+      "key" : "東京",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "東京",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "東京",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 92
+    },
+    {
+      "key" : "東京",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "東京",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 17
+    },
+    {
+      "key" : "東京",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 67
+    },
+    {
+      "key" : "東京",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "東京",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "東京",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 72
+    },
+    {
+      "key" : "東京",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "東京",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "東京",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 50
+    },
+    {
+      "key" : "😀",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "😀",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 25
+    },
+    {
+      "key" : "😀",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 25
+    },
+    {
+      "key" : "😀",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "😀",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "😀",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 72
+    },
+    {
+      "key" : "😀",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "😀",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "😀",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "😀",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "😀",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "😀",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "😀",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "😀",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 11
+    },
+    {
+      "key" : "😀",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 11
+    },
+    {
+      "key" : "😀",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "😀",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "😀",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 62
+    },
+    {
+      "key" : "😀",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "😀",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "😀",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 92
+    },
+    {
+      "key" : "😀",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "😀",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "😀",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "😀",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "😀",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "😀",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "42",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "42",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 32
+    },
+    {
+      "key" : "42",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 82
+    },
+    {
+      "key" : "42",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "42",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "42",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "42",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "42",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "42",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "42",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "42",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "42",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 72
+    },
+    {
+      "key" : "42",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "42",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "42",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "42",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "42",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 41
+    },
+    {
+      "key" : "42",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 91
+    },
+    {
+      "key" : "42",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "42",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 10
+    },
+    {
+      "key" : "42",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 60
+    },
+    {
+      "key" : "42",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "42",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 26
+    },
+    {
+      "key" : "42",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 26
+    },
+    {
+      "key" : "42",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "42",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 45
+    },
+    {
+      "key" : "42",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 45
+    },
+    {
+      "key" : "-7",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "-7",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 14
+    },
+    {
+      "key" : "-7",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 14
+    },
+    {
+      "key" : "-7",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "-7",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "-7",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 77
+    },
+    {
+      "key" : "-7",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "-7",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 31
+    },
+    {
+      "key" : "-7",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 31
+    },
+    {
+      "key" : "-7",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "-7",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "-7",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 89
+    },
+    {
+      "key" : "-7",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "-7",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 28
+    },
+    {
+      "key" : "-7",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 78
+    },
+    {
+      "key" : "-7",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "-7",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "-7",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "-7",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "-7",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "-7",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "-7",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "-7",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "-7",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 71
+    },
+    {
+      "key" : "-7",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "-7",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 23
+    },
+    {
+      "key" : "-7",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 73
+    },
+    {
+      "key" : "0",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "0",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 44
+    },
+    {
+      "key" : "0",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 94
+    },
+    {
+      "key" : "0",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "0",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 22
+    },
+    {
+      "key" : "0",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 72
+    },
+    {
+      "key" : "0",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "0",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "0",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 56
+    },
+    {
+      "key" : "0",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "0",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "0",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 77
+    },
+    {
+      "key" : "0",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "0",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "0",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "0",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "0",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "0",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "0",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "0",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 24
+    },
+    {
+      "key" : "0",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 24
+    },
+    {
+      "key" : "0",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "0",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "0",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "0",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "0",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 18
+    },
+    {
+      "key" : "0",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 68
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 50
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 85
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 47
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 45
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 95
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "9007199254740991",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 80
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 33
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 83
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 25
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 25
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 77
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 86
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 48
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 48
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 39
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 89
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 96
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "-9007199254740991",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 92
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 90
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 90
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 58
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 43
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 93
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 31
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 31
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "18446744073709551615",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 42
+    },
+    {
+      "key" : "a b",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "a b",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 25
+    },
+    {
+      "key" : "a b",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 75
+    },
+    {
+      "key" : "a b",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "a b",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "a b",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "a b",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "a b",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "a b",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 71
+    },
+    {
+      "key" : "a b",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "a b",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "a b",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : "a b",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "a b",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "a b",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 27
+    },
+    {
+      "key" : "a b",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "a b",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "a b",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "a b",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "a b",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "a b",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "a b",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "a b",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "a b",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 59
+    },
+    {
+      "key" : "a b",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "a b",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 10
+    },
+    {
+      "key" : "a b",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 60
+    },
+    {
+      "key" : " lead",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : " lead",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : " lead",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : " lead",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : " lead",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : " lead",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 30
+    },
+    {
+      "key" : " lead",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : " lead",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 35
+    },
+    {
+      "key" : " lead",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 85
+    },
+    {
+      "key" : " lead",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : " lead",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : " lead",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 57
+    },
+    {
+      "key" : " lead",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : " lead",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : " lead",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : " lead",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : " lead",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 10
+    },
+    {
+      "key" : " lead",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 10
+    },
+    {
+      "key" : " lead",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : " lead",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : " lead",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 87
+    },
+    {
+      "key" : " lead",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : " lead",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : " lead",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 57
+    },
+    {
+      "key" : " lead",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : " lead",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : " lead",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 79
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 48
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 98
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 8
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 58
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 45
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 95
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 5
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 55
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 0
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 40
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 36
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 37
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 87
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 7
+    },
+    {
+      "key" : "x'y\\z",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 57
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "0",
+      "count" : 10,
+      "expectedBucket" : 2
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "0",
+      "count" : 50,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "0",
+      "count" : 100,
+      "expectedBucket" : 12
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "1",
+      "count" : 10,
+      "expectedBucket" : 1
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "1",
+      "count" : 50,
+      "expectedBucket" : 21
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "1",
+      "count" : 100,
+      "expectedBucket" : 71
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-1",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-1",
+      "count" : 50,
+      "expectedBucket" : 14
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-1",
+      "count" : 100,
+      "expectedBucket" : 64
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "42",
+      "count" : 10,
+      "expectedBucket" : 6
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "42",
+      "count" : 50,
+      "expectedBucket" : 46
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "42",
+      "count" : 100,
+      "expectedBucket" : 96
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-123456789012345",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-123456789012345",
+      "count" : 50,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-123456789012345",
+      "count" : 100,
+      "expectedBucket" : 34
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "8589934591",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "8589934591",
+      "count" : 50,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "8589934591",
+      "count" : 100,
+      "expectedBucket" : 29
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-4294967295",
+      "count" : 10,
+      "expectedBucket" : 4
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-4294967295",
+      "count" : 50,
+      "expectedBucket" : 24
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-4294967295",
+      "count" : 100,
+      "expectedBucket" : 74
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-9223372036854775808",
+      "count" : 10,
+      "expectedBucket" : 3
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-9223372036854775808",
+      "count" : 50,
+      "expectedBucket" : 43
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "-9223372036854775808",
+      "count" : 100,
+      "expectedBucket" : 43
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "9223372036854775807",
+      "count" : 10,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "9223372036854775807",
+      "count" : 50,
+      "expectedBucket" : 9
+    },
+    {
+      "key" : "a\u001Fb",
+      "seed" : "9223372036854775807",
+      "count" : 100,
+      "expectedBucket" : 59
+    }
+  ]
+}
