@@ -133,6 +133,16 @@ class ContextSystemAttributesTest extends TestUtils {
 	}
 
 	@Test
+	void noClientWarningIsLoggedOncePerJvm() {
+		final ContextConfig config = ContextConfig.create().setIncludeSystemAttributes(true);
+		createContext(config, null, audienceData);
+		assertTrue(Context.noClientWarningLogged());
+		// Further contexts without a client reuse the same guard rather than logging again.
+		createContext(config, null, audienceData);
+		assertTrue(Context.noClientWarningLogged());
+	}
+
+	@Test
 	void systemAttributesAreAudienceVariables() {
 		final ContextData data = new DefaultContextDataDeserializer().deserialize(
 				getResourceBytes("audience_context.json"), 0, getResourceBytes("audience_context.json").length);

@@ -40,6 +40,12 @@ public class Context implements Closeable {
 	private static final int ASSIGNMENT_RETIRED = 2;
 	private static final int MAX_EXPOSURE_ATTEMPTS = 3;
 	private static final Logger log = LoggerFactory.getLogger(Context.class);
+	// Logged once per JVM: server-side code typically creates a context per request.
+	private static final AtomicBoolean noClientWarningLogged_ = new AtomicBoolean(false);
+
+	static boolean noClientWarningLogged() {
+		return noClientWarningLogged_.get();
+	}
 
 	/**
 	 * Creates a context with no client. Equivalent to the client-aware overload with a null client: the environment
@@ -80,7 +86,7 @@ public class Context implements Closeable {
 		environmentName_ = client != null ? client.getEnvironment() : null;
 		applicationName_ = client != null ? client.getApplication() : null;
 		applicationVersion_ = client != null ? client.getApplicationVersion() : null;
-		if (includeSystemAttributes_ && client == null) {
+		if (includeSystemAttributes_ && client == null && noClientWarningLogged_.compareAndSet(false, true)) {
 			log.warn("System attributes are enabled but the context has no client: only sdk_name and sdk_version "
 					+ "are included, and environment-scoped assignment rules never match");
 		}
