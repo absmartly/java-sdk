@@ -2258,4 +2258,61 @@ class ContextHoldoutTest extends TestUtils {
 		// the caller's own array, handed in via ContextData, must remain exactly as constructed.
 		assertArrayEquals(new int[]{12, 11}, callerArray);
 	}
+
+	// Ported from the JavaScript SDK: a matching assignment rule is an explicit, author-specified
+	// assignment and wins over holdout suppression; the holdout still fires its own exposure.
+	static final String US_RULE = "{\"rules\":[{\"name\":\"US Internal Users\",\"type\":\"assign\","
+			+ "\"conditions\":{\"and\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"US\"}]}]},"
+			+ "\"environments\":[],\"variant\":1}]}";
+
+	@Test
+	void matchingAssignmentRuleWinsOverHoldoutSuppression() {
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_rules"), 11);
+		experiment.assignmentRules = US_RULE;
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_rules_suppression", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				experiment));
+		context.setAttribute("country", "US");
+
+		assertEquals(1, context.getTreatment("exp_holdout_rules"));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID,
+				new Exposure(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
+						false, true),
+				holdoutExposure(11, "holdout_rules_suppression", 0));
+		expected.attributes = new Attribute[]{new Attribute("country", "US", clock.millis())};
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	@Test
+	void matchingSplitRuleWinsOverHoldoutSuppression() {
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_split_rule"), 11);
+		experiment.assignmentRules = "{\"rules\":[{\"name\":\"Everyone\",\"type\":\"split\",\"conditions\":null,"
+				+ "\"environments\":[],\"percentages\":\"0/100\"}]}";
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
+
+		assertEquals(1, context.peekTreatment("exp_holdout_split_rule"));
+		assertEquals(1, context.getTreatment("exp_holdout_split_rule"));
+		assertEquals(2, context.getPendingCount());
+	}
+
+	@Test
+	void heldOutUnitIsSuppressedWhenRuleDoesNotMatch() {
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_rules"), 11);
+		experiment.assignmentRules = US_RULE;
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
+		context.setAttribute("country", "GB");
+
+		assertEquals(0, context.getTreatment("exp_holdout_rules"));
+		assertEquals(1, context.getPendingCount()); // the holdout exposure only
+
+		// Once a rule matches, the unit is no longer held out and the rule's variant is exposed.
+		context.setAttribute("country", "US");
+		assertEquals(1, context.getTreatment("exp_holdout_rules"));
+		assertEquals(2, context.getPendingCount());
+	}
 }

@@ -430,6 +430,14 @@ public class Context implements Closeable {
 		final Iterator<Assignment> it = assignmentCache_.values().iterator();
 		while (it.hasNext()) {
 			final Assignment assignment = it.next();
+			if (assignment.ruleMissingUnit && unitType.equals(assignment.unitType)) {
+				// A split rule resolved without its unit gave the full-on variant; with the unit now
+				// available it must be re-randomized, but only while that variant is still unseen.
+				if (assignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED, ASSIGNMENT_RETIRED)) {
+					it.remove();
+				}
+				continue;
+			}
 			final Assignment[] holdoutAssignments = assignment.holdoutAssignments;
 			if ((holdoutAssignments != null) && unitType.equals(assignment.unitType)) {
 				for (final Assignment holdoutAssignment : holdoutAssignments) {
@@ -624,6 +632,7 @@ public class Context implements Closeable {
 		exposure.fullOn = assignment.fullOn;
 		exposure.custom = assignment.custom;
 		exposure.audienceMismatch = assignment.audienceMismatch;
+		exposure.ruleOverride = assignment.ruleOverride;
 
 		try {
 			eventLock_.lock();
@@ -1073,6 +1082,10 @@ public class Context implements Closeable {
 	}
 
 	private boolean audienceMatches(final Experiment experiment, final Assignment assignment) {
+		// A rule-won assignment never consulted the audience, so an audience change cannot make it stale.
+		if (assignment.ruleOverride) {
+			return true;
+		}
 		if (experiment.audience != null && experiment.audience.length() > 0) {
 			if (attrsSeq_.get() > assignment.attrsSeq) {
 				final Map<String, Object> attrs = buildAttributesMap();
@@ -1086,6 +1099,92 @@ public class Context implements Closeable {
 			}
 		}
 		return true;
+	}
+
+	// Called with the read lock held, so it only reads: the cached Assignment is never updated here,
+	// and a changed rule outcome is reported as stale for the write path to rebuild. Re-resolves the
+	// rules only when they changed (a refresh) or an attribute was set since the assignment was built.
+	private boolean ruleMatches(final Experiment experiment, final Assignment assignment) {
+		final boolean rulesChanged = !Objects.equals(experiment.assignmentRules, assignment.ruleKey);
+		if (!rulesChanged && attrsSeq_.get() <= assignment.attrsSeq) {
+			return true;
+		}
+
+		// An exposed split resolved without its unit keeps resolving as if the unit were still
+		// missing, so a unit set afterwards cannot switch the variant the user already saw.
+		final boolean exposed = assignment.exposureState.get() != ASSIGNMENT_UNEXPOSED;
+		final boolean unitPinnedMissing = assignment.ruleMissingUnit && exposed;
+		final RuleResolution rule = resolveRule(experiment, unitPinnedMissing, false);
+		final Integer ruleVariant = rule != null ? rule.variant : null;
+		if (!Objects.equals(ruleVariant, assignment.ruleVariant)) {
+			return false;
+		}
+
+		// Same variant, but now resolved by a split without its unit (or no longer so). The JavaScript
+		// SDK updates the flag in place; here the read path must not mutate, so an unexposed
+		// assignment is rebuilt instead, letting setUnit evict and re-randomize it later. An exposed
+		// one is kept: rebuilding it would queue a second exposure.
+		final boolean missingUnit = rule != null && rule.missingUnit;
+		return exposed || missingUnit == assignment.ruleMissingUnit;
+	}
+
+	private static final class RuleResolution {
+		RuleResolution(int variant, boolean missingUnit) {
+			this.variant = variant;
+			this.missingUnit = missingUnit;
+		}
+
+		final int variant;
+		final boolean missingUnit;
+	}
+
+	// Resolves the experiment's assignment rules to a variant, or null when no rule applies. A fixed
+	// variant out of range or a split whose length differs from the variant count is ignored. A split
+	// with no unit to randomize over gives the full-on variant and is flagged missingUnit.
+	// Called with contextLock_ held. cacheAssigner is false on the read path, where the hashed-unit and
+	// assigner caches must not be written (computeIfAbsentRW would try to upgrade to the write lock).
+	private RuleResolution resolveRule(final Experiment experiment, final boolean unitPinnedMissing,
+			final boolean cacheAssigner) {
+		if (experiment.assignmentRules == null || experiment.assignmentRules.isEmpty()) {
+			return null;
+		}
+
+		final AudienceMatcher.RuleAction action = audienceMatcher_.evaluateRules(experiment.assignmentRules,
+				environmentName_, buildAttributesMap());
+		if (action == null) {
+			return null;
+		}
+
+		final int variantCount = experiment.variants != null ? experiment.variants.length : 0;
+		if (!action.isSplit()) {
+			final int variant = action.getVariant();
+			return (variant >= 0 && variant < variantCount) ? new RuleResolution(variant, false) : null;
+		}
+
+		final double[] split = action.getSplit();
+		if (split.length != variantCount) {
+			return null;
+		}
+
+		final String unitType = experiment.unitType;
+		final Object uid = (unitType != null && !unitPinnedMissing) ? units_.get(unitType) : null;
+		if (uid == null) {
+			return new RuleResolution(experiment.fullOnVariant, true);
+		}
+
+		final VariantAssigner assigner;
+		if (cacheAssigner) {
+			assigner = getVariantAssigner(unitType, getUnitHash(unitType, uid));
+		} else {
+			final VariantAssigner cached = assigners_.get(unitType);
+			if (cached != null) {
+				assigner = cached;
+			} else {
+				final byte[] cachedHash = hashedUnits_.get(unitType);
+				assigner = new VariantAssigner(cachedHash != null ? cachedHash : Hashing.hashUnit(uid));
+			}
+		}
+		return new RuleResolution(assigner.assign(split, experiment.seedHi, experiment.seedLo), false);
 	}
 
 	private static class Assignment {
@@ -1114,6 +1213,15 @@ public class Context implements Closeable {
 		Integer customAssignment;
 
 		boolean audienceMismatch;
+		// The variant was set by a matching custom assignment rule. Takes precedence over holdout
+		// suppression, the audience, traffic and custom assignments; excluded from analysis.
+		boolean ruleOverride;
+		// The assignment rules JSON this Assignment was resolved against, and the variant they
+		// resolved to (null when no rule applied), used by ruleMatches to detect staleness.
+		String ruleKey;
+		Integer ruleVariant;
+		// A split rule matched while the unit was missing, so the full-on variant was used.
+		boolean ruleMissingUnit;
 		// Held out by a union of applicable holdouts: no exposure for this experiment, control
 		// values only. `holdouts` is the resolved applicable list (by id+iteration identity, see
 		// holdoutSetMatches), used to invalidate this cached assignment when coverage changes.
@@ -1223,8 +1331,10 @@ public class Context implements Closeable {
 						// previously not-running experiment
 						return assignment;
 					}
-				} else if (Objects.equals(custom, assignment.customAssignment)) {
+				} else if (assignment.ruleOverride || Objects.equals(custom, assignment.customAssignment)) {
+					// A matching rule wins over a custom assignment, so a custom change is not staleness.
 					if (experimentMatches(experiment, assignment)
+							&& ruleMatches(experiment.data, assignment)
 							&& audienceMatches(experiment.data, assignment)) {
 						// assignment up-to-date
 						return assignment;
@@ -1273,16 +1383,6 @@ public class Context implements Closeable {
 					// aliasing is safe.
 					assignment.holdouts = experiment.holdouts;
 
-					if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
-						final Map<String, Object> attrs = buildAttributesMap();
-
-						final AudienceMatcher.Result match = audienceMatcher_
-								.evaluate(experiment.data.audience, attrs);
-						if (match != null) {
-							assignment.audienceMismatch = !match.get();
-						}
-					}
-
 					boolean suppressed = false;
 					if (experiment.holdouts != null && experiment.holdouts.length > 0) {
 						// Union across every applicable holdout: any one of them holding this
@@ -1309,9 +1409,33 @@ public class Context implements Closeable {
 						}
 						assignment.holdoutAssignments = holdoutAssignments;
 					}
-					assignment.suppressed = suppressed;
+					// Rules are resolved after the holdouts so the holdout decisions above stay pinned and
+					// still fire their own exposures. Set even when suppressed, so ruleMatches does not
+					// treat the assignment as stale on every lookup.
+					assignment.ruleKey = experiment.data.assignmentRules;
+					final RuleResolution rule = resolveRule(experiment.data, false, true);
+					if (rule != null) {
+						assignment.ruleVariant = rule.variant;
+						assignment.ruleMissingUnit = rule.missingUnit;
+					}
 
-					if (suppressed) {
+					if (rule == null && experiment.data.audience != null && experiment.data.audience.length() > 0) {
+						final AudienceMatcher.Result match = audienceMatcher_
+								.evaluate(experiment.data.audience, buildAttributesMap());
+						if (match != null) {
+							assignment.audienceMismatch = !match.get();
+						}
+					}
+
+					// A matching rule is an explicit, author-specified assignment, like an override: it
+					// wins over holdout suppression (the unit is not treated as held out, though the
+					// holdouts above still fire), the audience, traffic and custom assignments.
+					assignment.suppressed = suppressed && rule == null;
+
+					if (rule != null) {
+						assignment.variant = rule.variant;
+						assignment.ruleOverride = true;
+					} else if (suppressed) {
 						// A held-out unit is not a participant in this experiment: assigned stays
 						// false so it never wins variable-key resolution against a genuinely
 						// assigned experiment and never fires this experiment's own exposure.
@@ -1421,7 +1545,7 @@ public class Context implements Closeable {
 						failure = holdoutFailure;
 					}
 				}
-				if (assignment.assigned || assignment.overridden) {
+				if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
 					if (failure != null) {
 						throw failure;
 					}
