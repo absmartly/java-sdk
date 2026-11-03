@@ -105,9 +105,9 @@ public class AudienceMatcher {
 	}
 
 	/**
-	 * Evaluates the audience filter. Returns null when the audience is empty or has no filter, and when evaluating the
-	 * filter fails (including a filter nested deeply enough to overflow the stack), so a malformed audience never
-	 * throws into the caller.
+	 * Evaluates the audience filter. Returns null when the audience is empty or has no filter. When evaluating the
+	 * filter fails (including a filter nested deeply enough to overflow the stack) the result is a mismatch, so a
+	 * strict audience fails closed and a malformed audience never throws into the caller.
 	 */
 	public Result evaluate(String audience, Map<String, Object> attributes) {
 		final Map<String, Object> audienceMap = deserialize(audience);
@@ -117,9 +117,12 @@ public class AudienceMatcher {
 				try {
 					return new Result(jsonExpr_.evaluateBooleanExpr(filter, attributes));
 				} catch (RuntimeException e) {
-					log.warn("Failed to evaluate audience filter", e);
+					log.warn("Failed to evaluate audience filter; treating it as a mismatch", e);
+					return new Result(false);
 				} catch (StackOverflowError e) {
-					log.warn("Failed to evaluate audience filter: expression is nested too deeply");
+					log.warn(
+							"Failed to evaluate audience filter: expression is nested too deeply; treating it as a mismatch");
+					return new Result(false);
 				}
 			}
 		}

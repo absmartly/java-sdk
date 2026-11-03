@@ -291,18 +291,18 @@ class AudienceMatcherTest extends TestUtils {
 	}
 
 	@Test
-	void audienceThatOverflowsTheStackIsIndeterminate() {
+	void audienceThatOverflowsTheStackIsAMismatch() {
 		final AudienceDeserializer deserializer = mock(AudienceDeserializer.class);
 		when(deserializer.deserialize(any(), anyInt(), anyInt())).thenReturn(mapOf("filter", deepNot(200_000)));
-		assertNull(new AudienceMatcher(deserializer).evaluate("{}", mapOf()));
+		assertFalse(new AudienceMatcher(deserializer).evaluate("{}", mapOf()).get());
 	}
 
 	@Test
-	void audienceThatThrowsIsIndeterminate() {
+	void audienceThatThrowsIsAMismatch() {
 		final JsonExpr jsonExpr = mock(JsonExpr.class);
 		when(jsonExpr.evaluateBooleanExpr(any(), any())).thenThrow(new IllegalStateException("boom"));
-		assertNull(new AudienceMatcher(new DefaultAudienceDeserializer(), jsonExpr)
-				.evaluate("{\"filter\":[{\"value\":true}]}", mapOf()));
+		assertFalse(new AudienceMatcher(new DefaultAudienceDeserializer(), jsonExpr)
+				.evaluate("{\"filter\":[{\"value\":true}]}", mapOf()).get());
 	}
 
 	@Test
