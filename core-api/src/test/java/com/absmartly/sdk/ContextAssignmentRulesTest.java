@@ -534,6 +534,71 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(0, exposures.get(0).variant);
 	}
 
+	// An exposed assign-rule assignment whose matching rule becomes a split resolved without its unit
+	// (same variant) must be pinned, so a unit set afterwards cannot switch the variant the user saw.
+	@Test
+	void exposedAssignThenSplitWithoutUnitOnSameVariantStaysPinned() {
+		final Context context = createWithoutSession(
+				data(rules(assign("GB", GB, "[]", 0), split(US, "0/100/0"))));
+		context.setAttribute("country", "GB");
+		assertEquals(0, context.getTreatment(EXP));
+
+		context.setAttribute("country", "US");
+		assertEquals(0, context.getTreatment(EXP));
+
+		context.setUnit("session_id", SESSION_ID);
+		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.getTreatment(EXP));
+
+		final List<Exposure> exposures = publishedExposures(context);
+		assertEquals(1, exposures.size());
+		assertEquals(0, exposures.get(0).variant);
+		assertTrue(exposures.get(0).ruleOverride);
+	}
+
+	// Exposed branch of ruleMatches: the rule outcome changes from "split without unit" to the
+	// same variant from an assign rule. The exposed assignment is kept and never re-exposed.
+	@Test
+	void exposedSplitWithoutUnitThenAssignOnSameVariantIsNotReExposed() {
+		final Context context = createWithoutSession(
+				data(rules(split(US, "0/100/0"), assign("GB", GB, "[]", 0))));
+		context.setAttribute("country", "US");
+		assertEquals(0, context.getTreatment(EXP));
+
+		context.setAttribute("country", "GB");
+		assertEquals(0, context.getTreatment(EXP));
+
+		context.setUnit("session_id", SESSION_ID);
+		assertEquals(0, context.getTreatment(EXP));
+
+		final List<Exposure> exposures = publishedExposures(context);
+		assertEquals(1, exposures.size());
+		assertEquals(0, exposures.get(0).variant);
+	}
+
+	// A rule-won assignment is not "assigned"; once the experiment disappears it must not keep
+	// serving the rule's variant.
+	@Test
+	void ruleVariantDroppedWhenExperimentIsRemoved() {
+		final Context context = create(rulesData);
+		context.setAttribute("country", "US");
+		assertEquals(1, context.getTreatment(EXP));
+
+		final ContextData without = data(rules(assign("US Internal Users", US, "[]", 1)));
+		final List<Experiment> remaining = new ArrayList<Experiment>();
+		for (final Experiment experiment : without.experiments) {
+			if (!experiment.name.equals(EXP)) {
+				remaining.add(experiment);
+			}
+		}
+		without.experiments = remaining.toArray(new Experiment[0]);
+		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(without));
+		context.refresh();
+
+		assertEquals(0, context.peekTreatment(EXP));
+		assertEquals(0, context.getTreatment(EXP));
+	}
+
 	@Test
 	void exposedSplitWithoutUnitStaysPinnedWhenCustomAssignmentLost() {
 		final Context context = createWithoutSession(data(rules(split(US, "0/100/0"))));

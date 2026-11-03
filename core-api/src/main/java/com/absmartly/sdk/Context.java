@@ -1120,12 +1120,31 @@ public class Context implements Closeable {
 			return false;
 		}
 
-		// Same variant, but now resolved by a split without its unit (or no longer so). The JavaScript
-		// SDK updates the flag in place; here the read path must not mutate, so an unexposed
-		// assignment is rebuilt instead, letting setUnit evict and re-randomize it later. An exposed
-		// one is kept: rebuilding it would queue a second exposure.
+		// Same variant, but now resolved by a split without its unit (or no longer so). The read path
+		// must not mutate, so this is reported as stale: the write path rebuilds an unexposed
+		// assignment (letting setUnit evict and re-randomize it later) and updates an exposed one in
+		// place (see reuseExposedRuleAssignment), so it is pinned without being exposed again.
 		final boolean missingUnit = rule != null && rule.missingUnit;
-		return exposed || missingUnit == assignment.ruleMissingUnit;
+		return missingUnit == assignment.ruleMissingUnit;
+	}
+
+	// Called with the write lock held. When the freshly resolved assignment is a rule win with the
+	// same variant as an already-exposed cached one for the same experiment run, the cached object
+	// is kept and only its rule bookkeeping is refreshed: creating a new Assignment would reset its
+	// exposure state and publish the same decision a second time, and keeping the old flags would
+	// leave a split resolved without its unit unpinned.
+	private Assignment reuseExposedRuleAssignment(final ContextExperiment experiment, final Assignment previous,
+			final Assignment fresh) {
+		if (previous == null || experiment == null || !fresh.ruleOverride || !previous.ruleOverride
+				|| previous.overridden || previous.variant != fresh.variant
+				|| previous.exposureState.get() != ASSIGNMENT_EXPOSED || !experimentMatches(experiment, previous)) {
+			return null;
+		}
+		previous.ruleKey = fresh.ruleKey;
+		previous.ruleVariant = fresh.ruleVariant;
+		previous.ruleMissingUnit = fresh.ruleMissingUnit;
+		previous.attrsSeq = fresh.attrsSeq;
+		return previous;
 	}
 
 	private static final class RuleResolution {
@@ -1327,7 +1346,9 @@ public class Context implements Closeable {
 						return assignment;
 					}
 				} else if (experiment == null) {
-					if (!assignment.assigned) {
+					// A rule-won assignment is not "assigned" either, but its variant came from the
+					// experiment's rules, so it must be rebuilt once the experiment is gone.
+					if (!assignment.assigned && !assignment.ruleOverride) {
 						// previously not-running experiment
 						return assignment;
 					}
@@ -1487,6 +1508,12 @@ public class Context implements Closeable {
 			if ((experiment != null) && experiment.data.variants != null && assignment.variant >= 0
 					&& (assignment.variant < experiment.data.variants.length)) {
 				assignment.variables = experiment.variables.get(assignment.variant);
+			}
+
+			final Assignment reused = reuseExposedRuleAssignment(experiment, assignmentCache_.get(experimentName),
+					assignment);
+			if (reused != null) {
+				return reused;
 			}
 
 			assignmentCache_.put(experimentName, assignment);
