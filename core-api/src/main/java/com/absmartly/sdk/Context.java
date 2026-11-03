@@ -46,14 +46,36 @@ public class Context implements Closeable {
 			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
 			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher) {
 		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
-				variableParser, audienceMatcher);
+				variableParser, audienceMatcher, null);
+	}
+
+	/**
+	 * @param client
+	 *            the client the context's data comes from, or null. Supplies the environment name that assignment
+	 *            rules are scoped to, and the application, application version and SDK name and version used as
+	 *            system attributes.
+	 */
+	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
+			@Nonnull final ScheduledExecutorService scheduler,
+			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
+			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
+			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher,
+			@Nullable final Client client) {
+		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
+				variableParser, audienceMatcher, client);
 	}
 
 	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
 			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
 			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,
-			AudienceMatcher audienceMatcher) {
+			AudienceMatcher audienceMatcher, Client client) {
 		clock_ = clock;
+		includeSystemAttributes_ = config.getIncludeSystemAttributes();
+		environmentName_ = client != null ? client.getEnvironment() : null;
+		applicationName_ = client != null ? client.getApplication() : null;
+		applicationVersion_ = client != null ? client.getApplicationVersion() : null;
+		agentName_ = client != null ? client.getAgentName() : null;
+		agentVersion_ = client != null ? client.getAgentVersion() : null;
 		publishDelay_ = config.getPublishDelay();
 		refreshInterval_ = config.getRefreshInterval();
 		eventHandler_ = eventHandler;
@@ -918,7 +940,7 @@ public class Context implements Closeable {
 														StandardCharsets.US_ASCII));
 									}
 								});
-						event.attributes = attributes_.isEmpty() ? null : attributes_.toArray(new Attribute[0]);
+						event.attributes = buildPublishAttributes(event.publishedAt);
 					} finally {
 						contextLock_.writeLock().unlock();
 					}
@@ -1793,15 +1815,51 @@ public class Context implements Closeable {
 		}
 	}
 
+	// Variables available to audience filters and assignment-rule conditions. System attributes come first so
+	// that a user attribute of the same name overrides them. Called with contextLock_ held.
 	private Map<String, Object> buildAttributesMap() {
-		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
+		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size() + 3);
+		if (includeSystemAttributes_) {
+			attrs.put("application", applicationName_);
+			attrs.put("environment", environmentName_);
+			if (hasApplicationVersion()) {
+				attrs.put("app_version", applicationVersion_);
+			}
+		}
 		for (final Attribute attr : attributes_) {
 			attrs.put(attr.name, attr.value);
 		}
 		return attrs;
 	}
 
+	// Called with contextLock_ held.
+	private Attribute[] buildPublishAttributes(final long now) {
+		final List<Attribute> attrs = new ArrayList<Attribute>(attributes_.size() + 5);
+		if (includeSystemAttributes_) {
+			attrs.add(new Attribute("sdk_name", agentName_, now));
+			attrs.add(new Attribute("sdk_version", agentVersion_, now));
+			attrs.add(new Attribute("application", applicationName_, now));
+			attrs.add(new Attribute("environment", environmentName_, now));
+			if (hasApplicationVersion()) {
+				attrs.add(new Attribute("app_version", applicationVersion_, now));
+			}
+		}
+		attrs.addAll(attributes_);
+		return attrs.isEmpty() ? null : attrs.toArray(new Attribute[0]);
+	}
+
+	// Matches the JavaScript SDK, where the default application version 0 means "not set".
+	private boolean hasApplicationVersion() {
+		return applicationVersion_ != null && !applicationVersion_.isEmpty() && !applicationVersion_.equals("0");
+	}
+
 	private final Clock clock_;
+	private final boolean includeSystemAttributes_;
+	private final String environmentName_;
+	private final String applicationName_;
+	private final String applicationVersion_;
+	private final String agentName_;
+	private final String agentVersion_;
 	private final long publishDelay_;
 	private final long refreshInterval_;
 	private final ContextEventHandler eventHandler_;
