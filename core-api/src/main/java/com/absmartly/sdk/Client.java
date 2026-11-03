@@ -81,9 +81,9 @@ public class Client implements Closeable {
 		headers_.put("X-API-Key", apiKey);
 		headers_.put("X-Application", application);
 		headers_.put("X-Environment", environment);
-		final String applicationVersion = config.getApplicationVersion();
-		headers_.put("X-Application-Version",
-				(applicationVersion != null && !applicationVersion.isEmpty()) ? applicationVersion : "0");
+		final String configuredVersion = config.getApplicationVersion();
+		final String applicationVersion = (configuredVersion != null) ? configuredVersion : "0";
+		headers_.put("X-Application-Version", applicationVersion);
 		headers_.put("X-Agent", SdkVersion.AGENT);
 
 		application_ = application;
@@ -182,6 +182,7 @@ public class Client implements Closeable {
 		return application_;
 	}
 
+	/** The value sent as the X-Application-Version header: the configured version, or "0" when none is set. */
 	public String getApplicationVersion() {
 		return applicationVersion_;
 	}

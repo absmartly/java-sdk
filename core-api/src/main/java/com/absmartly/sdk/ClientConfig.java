@@ -4,6 +4,7 @@ import java.util.Properties;
 import java.util.concurrent.Executor;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 public class ClientConfig {
 	public static ClientConfig create() {
@@ -27,9 +28,26 @@ public class ClientConfig {
 
 	private ClientConfig setApplicationVersionIfPresent(final String applicationVersion) {
 		if (applicationVersion != null) {
-			applicationVersion_ = applicationVersion;
+			applicationVersion_ = normalizeApplicationVersion(applicationVersion);
 		}
 		return this;
+	}
+
+	// Null, empty or whitespace-only means no version is set.
+	private static String normalizeApplicationVersion(final String applicationVersion) {
+		if (applicationVersion == null) {
+			return null;
+		}
+		final String trimmed = applicationVersion.trim();
+		return trimmed.isEmpty() ? null : trimmed;
+	}
+
+	/**
+	 * Whether an application version counts as set: not null and not "0". "0" is what the X-Application-Version header
+	 * carries when no version is configured, so it is treated as unset for the app_version system attribute.
+	 */
+	static boolean isApplicationVersionSet(final String applicationVersion) {
+		return applicationVersion != null && !applicationVersion.trim().isEmpty() && !"0".equals(applicationVersion);
 	}
 
 	public String getEndpoint() {
@@ -74,13 +92,18 @@ public class ClientConfig {
 
 	/**
 	 * Sets the application version sent as the X-Application-Version header and, when system attributes are enabled,
-	 * as the app_version attribute. Accepts a semantic version string (e.g. "2.4.1") or a number.
+	 * as the app_version attribute, for example a semantic version such as "2.4.1". Surrounding whitespace is removed;
+	 * a null, empty or whitespace-only value means no version is set, which is sent as "0". A version of "0" is
+	 * treated as unset, so app_version is then left out.
 	 */
-	public ClientConfig setApplicationVersion(@Nonnull final String applicationVersion) {
-		applicationVersion_ = applicationVersion;
+	public ClientConfig setApplicationVersion(@Nullable final String applicationVersion) {
+		applicationVersion_ = normalizeApplicationVersion(applicationVersion);
 		return this;
 	}
 
+	/**
+	 * Sets a numeric application version. 0 means no version is set: it is sent as "0" and app_version is left out.
+	 */
 	public ClientConfig setApplicationVersion(final long applicationVersion) {
 		applicationVersion_ = Long.toString(applicationVersion);
 		return this;

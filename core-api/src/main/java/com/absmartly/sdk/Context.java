@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 
 import com.absmartly.sdk.internal.Algorithm;
 import com.absmartly.sdk.internal.Concurrency;
+import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
@@ -40,6 +41,11 @@ public class Context implements Closeable {
 	private static final int MAX_EXPOSURE_ATTEMPTS = 3;
 	private static final Logger log = LoggerFactory.getLogger(Context.class);
 
+	/**
+	 * Creates a context with no client. Equivalent to the client-aware overload with a null client: the environment
+	 * is unknown, so assignment rules scoped to environments never match, and system attributes (when enabled) carry
+	 * only sdk_name and sdk_version.
+	 */
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
@@ -51,11 +57,11 @@ public class Context implements Closeable {
 
 	/**
 	 * @param client
-	 *            the client the context's data comes from, or null. Supplies the environment name that assignment
-	 *            rules are scoped to, and the application, application version and SDK name and version used as
-	 *            system attributes.
+	 *            the client whose configuration supplies the environment that assignment rules are scoped to, and the
+	 *            application and application version used as system attributes. It need not be the source of the
+	 *            context's data. May be null; see the overload without a client.
 	 */
-	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
+	static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
 			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
@@ -74,8 +80,10 @@ public class Context implements Closeable {
 		environmentName_ = client != null ? client.getEnvironment() : null;
 		applicationName_ = client != null ? client.getApplication() : null;
 		applicationVersion_ = client != null ? client.getApplicationVersion() : null;
-		agentName_ = client != null ? client.getAgentName() : null;
-		agentVersion_ = client != null ? client.getAgentVersion() : null;
+		if (includeSystemAttributes_ && client == null) {
+			log.warn("System attributes are enabled but the context has no client: only sdk_name and sdk_version "
+					+ "are included, and environment-scoped assignment rules never match");
+		}
 		publishDelay_ = config.getPublishDelay();
 		refreshInterval_ = config.getRefreshInterval();
 		eventHandler_ = eventHandler;
@@ -430,7 +438,7 @@ public class Context implements Closeable {
 		final Iterator<Assignment> it = assignmentCache_.values().iterator();
 		while (it.hasNext()) {
 			final Assignment assignment = it.next();
-			if (assignment.ruleMissingUnit && unitType.equals(assignment.unitType)) {
+			if (assignment.ruleOverride && assignment.ruleMissingUnit && unitType.equals(assignment.unitType)) {
 				// A split rule resolved without its unit gave the full-on variant; with the unit now
 				// available it must be re-randomized, but only while that variant is still unseen.
 				if (assignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED, ASSIGNMENT_RETIRED)) {
@@ -1234,10 +1242,12 @@ public class Context implements Closeable {
 
 		boolean audienceMismatch;
 		// The variant was set by a matching custom assignment rule. Takes precedence over holdout
-		// suppression, the audience, traffic and custom assignments; excluded from analysis.
+		// suppression, the audience, traffic and custom assignments; the exposure is flagged so the
+		// backend can exclude it from analysis.
 		boolean ruleOverride;
-		// The assignment rules JSON this Assignment was resolved against, and the variant they
-		// resolved to (null when no rule applied), used by ruleMatches to detect staleness.
+		// The assignment rules JSON string this Assignment was resolved against (the environment is
+		// fixed for the context's lifetime, so it is not part of it), and the variant they resolved
+		// to (null when no rule applied), used by ruleMatches to detect staleness.
 		String ruleKey;
 		Integer ruleVariant;
 		// A split rule matched while the unit was missing, so the full-on variant was used.
@@ -1432,11 +1442,13 @@ public class Context implements Closeable {
 						assignment.holdoutAssignments = holdoutAssignments;
 					}
 					// Rules are resolved after the holdouts so the holdout decisions above stay pinned and
-					// still fire their own exposures. Set even when suppressed, so ruleMatches does not
-					// treat the assignment as stale on every lookup.
+					// still fire their own exposures. ruleKey is recorded for every assignment, including
+					// those with no matching rule, so ruleMatches only re-resolves after a refresh changes
+					// the rules or an attribute is set.
 					assignment.ruleKey = experiment.data.assignmentRules;
 					final RuleResolution rule = resolveRule(experiment, false, true);
 					if (rule != null) {
+						assignment.ruleOverride = true;
 						assignment.ruleVariant = rule.variant;
 						assignment.ruleMissingUnit = rule.missingUnit;
 					}
@@ -1456,7 +1468,6 @@ public class Context implements Closeable {
 
 					if (rule != null) {
 						assignment.variant = rule.variant;
-						assignment.ruleOverride = true;
 					} else if (suppressed) {
 						// A held-out unit is not a participant in this experiment: assigned stays
 						// false so it never wins variable-key resolution against a genuinely
@@ -1980,9 +1991,9 @@ public class Context implements Closeable {
 	private Map<String, Object> buildAttributesMap() {
 		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size() + 3);
 		if (includeSystemAttributes_) {
-			attrs.put("application", applicationName_);
-			attrs.put("environment", environmentName_);
-			if (hasApplicationVersion()) {
+			putIfNotNull(attrs, "application", applicationName_);
+			putIfNotNull(attrs, "environment", environmentName_);
+			if (ClientConfig.isApplicationVersionSet(applicationVersion_)) {
 				attrs.put("app_version", applicationVersion_);
 			}
 		}
@@ -1996,11 +2007,15 @@ public class Context implements Closeable {
 	private Attribute[] buildPublishAttributes(final long now) {
 		final List<Attribute> attrs = new ArrayList<Attribute>(attributes_.size() + 5);
 		if (includeSystemAttributes_) {
-			attrs.add(new Attribute("sdk_name", agentName_, now));
-			attrs.add(new Attribute("sdk_version", agentVersion_, now));
-			attrs.add(new Attribute("application", applicationName_, now));
-			attrs.add(new Attribute("environment", environmentName_, now));
-			if (hasApplicationVersion()) {
+			attrs.add(new Attribute("sdk_name", SdkVersion.NAME, now));
+			attrs.add(new Attribute("sdk_version", SdkVersion.VERSION, now));
+			if (applicationName_ != null) {
+				attrs.add(new Attribute("application", applicationName_, now));
+			}
+			if (environmentName_ != null) {
+				attrs.add(new Attribute("environment", environmentName_, now));
+			}
+			if (ClientConfig.isApplicationVersionSet(applicationVersion_)) {
 				attrs.add(new Attribute("app_version", applicationVersion_, now));
 			}
 		}
@@ -2009,8 +2024,10 @@ public class Context implements Closeable {
 	}
 
 	// Matches the JavaScript SDK, where the default application version 0 means "not set".
-	private boolean hasApplicationVersion() {
-		return applicationVersion_ != null && !applicationVersion_.isEmpty() && !applicationVersion_.equals("0");
+	private static void putIfNotNull(final Map<String, Object> map, final String key, final Object value) {
+		if (value != null) {
+			map.put(key, value);
+		}
 	}
 
 	private final Clock clock_;
@@ -2018,8 +2035,6 @@ public class Context implements Closeable {
 	private final String environmentName_;
 	private final String applicationName_;
 	private final String applicationVersion_;
-	private final String agentName_;
-	private final String agentVersion_;
 	private final long publishDelay_;
 	private final long refreshInterval_;
 	private final ContextEventHandler eventHandler_;

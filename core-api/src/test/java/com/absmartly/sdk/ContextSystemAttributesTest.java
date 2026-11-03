@@ -96,7 +96,7 @@ class ContextSystemAttributesTest extends TestUtils {
 
 	@Test
 	void publishOmitsAppVersionWhenNotSet() {
-		for (final String version : new String[]{null, "", "0"}) {
+		for (final String version : new String[]{null, "", "  ", "0"}) {
 			reset(eventHandler);
 			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 
@@ -113,19 +113,23 @@ class ContextSystemAttributesTest extends TestUtils {
 		}
 	}
 
+	// Without a client only the SDK's own name and version are known; the client-supplied values are
+	// left out instead of being published (or evaluated) as null.
 	@Test
-	void publishWithoutClientSendsNullSystemValues() {
+	void publishWithoutClientSendsOnlySdkAttributes() {
 		final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
 				.setIncludeSystemAttributes(true);
 		final Context context = createContext(config, null, audienceData);
+		context.setAttribute("age", 21);
 		context.track("goal", null);
 
 		final PublishEvent event = publishAndCapture(context);
-		assertEquals(4, event.attributes.length);
-		assertEquals("sdk_name", event.attributes[0].name);
-		assertNull(event.attributes[0].value);
-		assertEquals("environment", event.attributes[3].name);
-		assertNull(event.attributes[3].value);
+		final long now = clock.millis();
+		assertArrayEquals(new Attribute[]{
+				new Attribute("sdk_name", "absmartly-java-sdk", now),
+				new Attribute("sdk_version", SdkVersion.VERSION, now),
+				new Attribute("age", 21, now),
+		}, event.attributes);
 	}
 
 	@Test

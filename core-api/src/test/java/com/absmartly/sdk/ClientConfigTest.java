@@ -38,6 +38,20 @@ class ClientConfigTest extends TestUtils {
 		assertNull(ClientConfig.create().getApplicationVersion());
 		assertEquals("2.4.1", ClientConfig.create().setApplicationVersion("2.4.1").getApplicationVersion());
 		assertEquals("1004", ClientConfig.create().setApplicationVersion(1004).getApplicationVersion());
+		assertEquals("2.4.1", ClientConfig.create().setApplicationVersion(" 2.4.1 ").getApplicationVersion());
+		assertNull(ClientConfig.create().setApplicationVersion("").getApplicationVersion());
+		assertNull(ClientConfig.create().setApplicationVersion("   ").getApplicationVersion());
+		assertNull(ClientConfig.create().setApplicationVersion((String) null).getApplicationVersion());
+	}
+
+	@Test
+	void isApplicationVersionSet() {
+		assertFalse(ClientConfig.isApplicationVersionSet(null));
+		assertFalse(ClientConfig.isApplicationVersionSet(""));
+		assertFalse(ClientConfig.isApplicationVersionSet(" "));
+		assertFalse(ClientConfig.isApplicationVersionSet("0"));
+		assertTrue(ClientConfig.isApplicationVersionSet("1"));
+		assertTrue(ClientConfig.isApplicationVersionSet("2.4.1"));
 	}
 
 	@Test
@@ -52,6 +66,9 @@ class ClientConfigTest extends TestUtils {
 		final ClientConfig config = ClientConfig.createFromProperties(props);
 		assertEquals("3.1.0", config.getApplicationVersion());
 		assertNull(ClientConfig.createFromProperties(new Properties()).getApplicationVersion());
+		final Properties blank = new Properties();
+		blank.setProperty("application_version", " ");
+		assertNull(ClientConfig.createFromProperties(blank).getApplicationVersion());
 	}
 
 	@Test

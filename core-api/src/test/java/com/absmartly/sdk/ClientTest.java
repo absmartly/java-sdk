@@ -410,5 +410,7 @@ class ClientTest extends TestUtils {
 		final org.mockito.ArgumentCaptor<Map<String, String>> headers = org.mockito.ArgumentCaptor.forClass(Map.class);
 		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), headers.capture(), any());
 		assertEquals("0", headers.getValue().get("X-Application-Version"));
+		// The getter agrees with the header: "0" when no version is set.
+		assertEquals("0", client.getApplicationVersion());
 	}
 }
