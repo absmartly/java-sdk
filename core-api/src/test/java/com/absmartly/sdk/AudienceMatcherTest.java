@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -234,7 +237,6 @@ class AudienceMatcherTest extends TestUtils {
 		final RuleAction assign = RuleAction.assign(3);
 		assertFalse(assign.isSplit());
 		assertEquals(3, assign.getVariant());
-		assertNull(assign.getSplit());
 		assertEquals("RuleAction{variant=3}", assign.toString());
 
 		final double[] fractions = new double[]{0.5, 0.5};
@@ -251,5 +253,67 @@ class AudienceMatcherTest extends TestUtils {
 		assertNotEquals(assign, null);
 		assertNotEquals(assign, "x");
 		assertEquals(RuleAction.assign(3).hashCode(), assign.hashCode());
+	}
+
+	// Deeply nested expression trees, built directly so Jackson's own depth limit is not involved.
+	static Object deepNot(int depth) {
+		Object expr = mapOf("value", (Object) true);
+		for (int i = 0; i < depth; ++i) {
+			expr = mapOf("not", expr);
+		}
+		return expr;
+	}
+
+	@Test
+	void ruleConditionsThatOverflowTheStackAreSkipped() {
+		final Map<String, Object> deep = new HashMap<String, Object>();
+		deep.put("name", "deep");
+		deep.put("type", "assign");
+		deep.put("variant", 1);
+		deep.put("conditions", deepNot(200_000));
+		final Map<String, Object> fallback = new HashMap<String, Object>();
+		fallback.put("name", "fallback");
+		fallback.put("type", "assign");
+		fallback.put("variant", 2);
+		final List<Object> rules = new ArrayList<Object>();
+		rules.add(deep);
+		rules.add(fallback);
+
+		final AudienceMatcher.ParsedRules parsed = new AudienceMatcher.ParsedRules(rules);
+		assertEquals(RuleAction.assign(2), matcher.evaluateRules(parsed, "production", us, "exp"));
+	}
+
+	@Test
+	void audienceThatOverflowsTheStackIsIndeterminate() {
+		final AudienceDeserializer deserializer = mock(AudienceDeserializer.class);
+		when(deserializer.deserialize(any(), anyInt(), anyInt())).thenReturn(mapOf("filter", deepNot(200_000)));
+		assertNull(new AudienceMatcher(deserializer).evaluate("{}", mapOf()));
+	}
+
+	@Test
+	void audienceThatThrowsIsIndeterminate() {
+		final JsonExpr jsonExpr = mock(JsonExpr.class);
+		when(jsonExpr.evaluateBooleanExpr(any(), any())).thenThrow(new IllegalStateException("boom"));
+		assertNull(new AudienceMatcher(new DefaultAudienceDeserializer(), jsonExpr)
+				.evaluate("{\"filter\":[{\"value\":true}]}", mapOf()));
+	}
+
+	@Test
+	void parseRulesFlagsInvalidJsonAndIgnoresMissingRules() {
+		assertNull(matcher.parseRules(null));
+		assertNull(matcher.parseRules(""));
+		assertTrue(matcher.parseRules("{not json").isInvalid());
+		assertFalse(matcher.parseRules("{}").isInvalid());
+		assertNull(matcher.evaluateRules(matcher.parseRules("{}"), "production", us, "exp"));
+		assertNull(matcher.evaluateRules(matcher.parseRules("{not json"), "production", us, "exp"));
+		assertNull(matcher.evaluateRules((AudienceMatcher.ParsedRules) null, "production", us, "exp"));
+	}
+
+	@Test
+	void ruleActionAccessorsRejectTheWrongKind() {
+		assertThrows(IllegalStateException.class, () -> RuleAction.assign(1).getSplit());
+		assertThrows(IllegalStateException.class, () -> RuleAction.split(new double[]{1.0}).getVariant());
+		assertEquals(1, RuleAction.assign(1).getVariant());
+		assertArrayEquals(new double[]{1.0}, RuleAction.split(new double[]{1.0}).getSplit());
 	}
 }

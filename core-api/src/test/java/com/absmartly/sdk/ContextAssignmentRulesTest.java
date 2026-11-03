@@ -144,6 +144,25 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.getTreatment("exp_test_ab"));
 	}
 
+	// Rules are parsed once when the data is installed, not on every lookup after an attribute
+	// change, so an invalid string costs (and logs) once rather than on every getTreatment.
+	@Test
+	void rulesAreParsedOncePerDataInstall() {
+		final DefaultAudienceDeserializer deserializer = spy(new DefaultAudienceDeserializer());
+		final String invalid = "{\"rules\":[";
+		final Context context = Context.create(clock,
+				ContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), scheduler,
+				CompletableFuture.completedFuture(data(invalid, null, false)), dataProvider, eventHandler, null,
+				new DefaultVariableParser(), new AudienceMatcher(deserializer), client());
+
+		for (int i = 0; i < 20; ++i) {
+			context.setAttribute("n", i);
+			assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		}
+		verify(deserializer, times(1)).deserialize(eq(invalid.getBytes(java.nio.charset.Charset.forName("UTF-8"))),
+				eq(0), eq(invalid.length()));
+	}
+
 	@Test
 	void ruleVariantWhenRuleMatches() {
 		final Context context = create(rulesData);

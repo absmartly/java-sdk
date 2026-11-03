@@ -1104,8 +1104,8 @@ public class Context implements Closeable {
 	// Called with the read lock held, so it only reads: the cached Assignment is never updated here,
 	// and a changed rule outcome is reported as stale for the write path to rebuild. Re-resolves the
 	// rules only when they changed (a refresh) or an attribute was set since the assignment was built.
-	private boolean ruleMatches(final Experiment experiment, final Assignment assignment) {
-		final boolean rulesChanged = !Objects.equals(experiment.assignmentRules, assignment.ruleKey);
+	private boolean ruleMatches(final ContextExperiment experiment, final Assignment assignment) {
+		final boolean rulesChanged = !Objects.equals(experiment.data.assignmentRules, assignment.ruleKey);
 		if (!rulesChanged && attrsSeq_.get() <= assignment.attrsSeq) {
 			return true;
 		}
@@ -1162,14 +1162,15 @@ public class Context implements Closeable {
 	// with no unit to randomize over gives the full-on variant and is flagged missingUnit.
 	// Called with contextLock_ held. cacheAssigner is false on the read path, where the hashed-unit and
 	// assigner caches must not be written (computeIfAbsentRW would try to upgrade to the write lock).
-	private RuleResolution resolveRule(final Experiment experiment, final boolean unitPinnedMissing,
+	private RuleResolution resolveRule(final ContextExperiment contextExperiment, final boolean unitPinnedMissing,
 			final boolean cacheAssigner) {
-		if (experiment.assignmentRules == null || experiment.assignmentRules.isEmpty()) {
+		if (contextExperiment.assignmentRules == null) {
 			return null;
 		}
 
-		final AudienceMatcher.RuleAction action = audienceMatcher_.evaluateRules(experiment.assignmentRules,
-				environmentName_, buildAttributesMap());
+		final Experiment experiment = contextExperiment.data;
+		final AudienceMatcher.RuleAction action = audienceMatcher_.evaluateRules(contextExperiment.assignmentRules,
+				environmentName_, buildAttributesMap(), experiment.name);
 		if (action == null) {
 			return null;
 		}
@@ -1355,7 +1356,7 @@ public class Context implements Closeable {
 				} else if (assignment.ruleOverride || Objects.equals(custom, assignment.customAssignment)) {
 					// A matching rule wins over a custom assignment, so a custom change is not staleness.
 					if (experimentMatches(experiment, assignment)
-							&& ruleMatches(experiment.data, assignment)
+							&& ruleMatches(experiment, assignment)
 							&& audienceMatches(experiment.data, assignment)) {
 						// assignment up-to-date
 						return assignment;
@@ -1434,7 +1435,7 @@ public class Context implements Closeable {
 					// still fire their own exposures. Set even when suppressed, so ruleMatches does not
 					// treat the assignment as stale on every lookup.
 					assignment.ruleKey = experiment.data.assignmentRules;
-					final RuleResolution rule = resolveRule(experiment.data, false, true);
+					final RuleResolution rule = resolveRule(experiment, false, true);
 					if (rule != null) {
 						assignment.ruleVariant = rule.variant;
 						assignment.ruleMissingUnit = rule.missingUnit;
@@ -1777,6 +1778,9 @@ public class Context implements Closeable {
 
 	private static class ContextExperiment {
 		Experiment data;
+		// data.assignmentRules parsed once when the data is installed (null when there are none), so
+		// lookups never re-parse the JSON and an invalid string is logged once per refresh.
+		AudienceMatcher.ParsedRules assignmentRules;
 		Experiment[] holdouts;
 		List<Map<String, Object>> variables;
 		Map<String, ContextCustomFieldValue> customFieldValues;
@@ -1914,6 +1918,11 @@ public class Context implements Closeable {
 						}
 					}
 				}
+			}
+
+			contextExperiment.assignmentRules = audienceMatcher_.parseRules(experiment.assignmentRules);
+			if (contextExperiment.assignmentRules != null && contextExperiment.assignmentRules.isInvalid()) {
+				log.warn("Invalid assignmentRules JSON for experiment '{}'; its rules are ignored", experiment.name);
 			}
 
 			index.put(experiment.name, contextExperiment);

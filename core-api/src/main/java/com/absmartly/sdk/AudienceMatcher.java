@@ -42,34 +42,41 @@ public class AudienceMatcher {
 
 	/**
 	 * The action of the first matching assignment rule: either a fixed variant ({@link #isSplit()} false) or a split
-	 * to randomize the unit over ({@link #isSplit()} true).
+	 * to randomize the unit over ({@link #isSplit()} true). Instances only come from the rule parser, so a split is
+	 * always valid (non-negative fractions summing to 1).
 	 */
-	public static final class RuleAction {
+	static final class RuleAction {
 		private RuleAction(final int variant, final double[] split) {
 			variant_ = variant;
 			split_ = split;
 		}
 
-		public static RuleAction assign(final int variant) {
+		static RuleAction assign(final int variant) {
 			return new RuleAction(variant, null);
 		}
 
-		public static RuleAction split(final double[] split) {
+		static RuleAction split(final double[] split) {
 			return new RuleAction(0, split.clone());
 		}
 
-		public boolean isSplit() {
+		boolean isSplit() {
 			return split_ != null;
 		}
 
-		/** The variant to assign. Meaningful only when {@link #isSplit()} is false. */
-		public int getVariant() {
+		/** The variant to assign. Throws when this is a split. */
+		int getVariant() {
+			if (isSplit()) {
+				throw new IllegalStateException("A split rule action has no fixed variant");
+			}
 			return variant_;
 		}
 
-		/** The split fractions, one per variant. Null unless {@link #isSplit()} is true. */
-		public double[] getSplit() {
-			return split_ != null ? split_.clone() : null;
+		/** The split fractions, one per variant. Throws when this is a fixed variant. */
+		double[] getSplit() {
+			if (!isSplit()) {
+				throw new IllegalStateException("An assign rule action has no split");
+			}
+			return split_.clone();
 		}
 
 		@Override
@@ -97,12 +104,23 @@ public class AudienceMatcher {
 		private final double[] split_;
 	}
 
+	/**
+	 * Evaluates the audience filter. Returns null when the audience is empty or has no filter, and when evaluating the
+	 * filter fails (including a filter nested deeply enough to overflow the stack), so a malformed audience never
+	 * throws into the caller.
+	 */
 	public Result evaluate(String audience, Map<String, Object> attributes) {
 		final Map<String, Object> audienceMap = deserialize(audience);
 		if (audienceMap != null) {
 			final Object filter = audienceMap.get("filter");
 			if (filter instanceof Map || filter instanceof List) {
-				return new Result(jsonExpr_.evaluateBooleanExpr(filter, attributes));
+				try {
+					return new Result(jsonExpr_.evaluateBooleanExpr(filter, attributes));
+				} catch (RuntimeException e) {
+					log.warn("Failed to evaluate audience filter", e);
+				} catch (StackOverflowError e) {
+					log.warn("Failed to evaluate audience filter: expression is nested too deeply");
+				}
 			}
 		}
 
@@ -110,26 +128,68 @@ public class AudienceMatcher {
 	}
 
 	/**
-	 * Evaluates custom assignment rules ({@code {"rules": [...]}}) in order and returns the action of the first rule
-	 * that matches, or null when none does.
-	 *
-	 * A rule is skipped when its type is unknown, an "assign" rule has a non-integer variant, a "split" rule has
-	 * invalid percentages, its non-empty environments list does not contain {@code environmentName}, its conditions
-	 * are not an object, or its conditions do not evaluate to true. A rule without conditions always matches.
-	 * Variant bounds are the caller's responsibility.
+	 * Assignment rules parsed once from their JSON string. {@link #isInvalid()} is true when the string is not valid
+	 * JSON; a valid document without a {@code rules} list has no rules.
 	 */
-	public RuleAction evaluateRules(String assignmentRules, String environmentName, Map<String, Object> attributes) {
+	static final class ParsedRules {
+		ParsedRules(final List<?> rules) {
+			rules_ = rules;
+			invalid_ = false;
+		}
+
+		private ParsedRules(final boolean invalid) {
+			rules_ = null;
+			invalid_ = invalid;
+		}
+
+		boolean isInvalid() {
+			return invalid_;
+		}
+
+		private final List<?> rules_;
+		private final boolean invalid_;
+	}
+
+	private static final ParsedRules INVALID_RULES = new ParsedRules(true);
+	private static final ParsedRules NO_RULES = new ParsedRules(false);
+
+	/** Parses an assignment rules JSON string, or returns null when it is null or empty. */
+	ParsedRules parseRules(final String assignmentRules) {
+		if (assignmentRules == null || assignmentRules.isEmpty()) {
+			return null;
+		}
 		final Map<String, Object> rulesMap = deserialize(assignmentRules);
 		if (rulesMap == null) {
+			return INVALID_RULES;
+		}
+		final Object rules = rulesMap.get("rules");
+		return rules instanceof List ? new ParsedRules((List<?>) rules) : NO_RULES;
+	}
+
+	/** Parses and evaluates assignment rules in one step. See {@link #evaluateRules(ParsedRules, String, Map, String)}. */
+	RuleAction evaluateRules(String assignmentRules, String environmentName, Map<String, Object> attributes) {
+		return evaluateRules(parseRules(assignmentRules), environmentName, attributes, null);
+	}
+
+	/**
+	 * Evaluates parsed assignment rules in order and returns the action of the first rule that matches, or null when
+	 * none does (or the rules are null or invalid).
+	 *
+	 * A rule is skipped when it is not an object, its type is unknown, an "assign" rule has a non-integer variant, a
+	 * "split" rule has invalid percentages, its environments are present but not a list, its non-empty environments
+	 * list does not contain {@code environmentName} (a null environment name never matches a non-empty list), its
+	 * conditions are not an object, or its conditions do not evaluate to true. Conditions that throw, or are nested
+	 * deeply enough to overflow the stack, are logged with the experiment name and the rule is skipped. A rule without
+	 * conditions always matches, and an empty environments list matches every environment. Variant bounds are the
+	 * caller's responsibility.
+	 */
+	RuleAction evaluateRules(final ParsedRules parsed, final String environmentName,
+			final Map<String, Object> attributes, final String experimentName) {
+		if (parsed == null || parsed.rules_ == null) {
 			return null;
 		}
 
-		final Object rulesObj = rulesMap.get("rules");
-		if (!(rulesObj instanceof List)) {
-			return null;
-		}
-
-		for (final Object ruleObj : (List<?>) rulesObj) {
+		for (final Object ruleObj : parsed.rules_) {
 			if (!(ruleObj instanceof Map)) {
 				continue;
 			}
@@ -166,8 +226,11 @@ public class AudienceMatcher {
 					return action;
 				}
 			} catch (RuntimeException e) {
-				log.warn("Failed to evaluate assignment rule conditions for rule {}: {}", rule.get("name"),
-						e.toString());
+				log.warn("Failed to evaluate assignment rule conditions for experiment {}, rule {}", experimentName,
+						rule.get("name"), e);
+			} catch (StackOverflowError e) {
+				log.warn("Failed to evaluate assignment rule conditions for experiment {}, rule {}: nested too deeply",
+						experimentName, rule.get("name"));
 			}
 		}
 
