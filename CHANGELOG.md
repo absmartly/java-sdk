@@ -2,7 +2,17 @@
 
 ## 1.7.0 (unreleased)
 
+### Added
+
+- Custom assignment rules. An experiment's `assignmentRules` are evaluated in order before holdouts, audience targeting, traffic allocation and custom assignments. An `assign` rule gives a fixed variant and a `split` rule randomizes the unit over its own percentages. Rules can be scoped to environments, and rule-assigned exposures are flagged `ruleOverride`. `setOverride()` still wins over every rule.
+- `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte` operators for audience filters and rule conditions.
+- `ContextConfig.setIncludeSystemAttributes(true)` makes `application`, `environment` and `app_version` available to audience filters and rule conditions, and adds `sdk_name`, `sdk_version`, `application`, `environment` and `app_version` to every publish. Disabled by default.
+- `ClientConfig.setApplicationVersion`, sent as `X-Application-Version` (previously always `0`).
+- `Exposure.ruleOverride`, `Experiment.assignmentRules`, and a `Context.create` overload that takes the `Client`. `ABSmartly` passes its configured client, which supplies the environment that rules are scoped to.
+
 ### Changed
+
+- The `X-Agent` header is now `absmartly-java-sdk/<version>` instead of `absmartly-java-sdk`.
 
 - Unit UIDs can be strings or numbers. `ContextConfig.setUnit` and `Context.setUnit` accept a `Number` in addition to a `String`. New `getUnitValue` and `getUnitValues` accessors retain the original numeric type; the existing `getUnit` and `getUnits` accessors remain source- and binary-compatible and return numeric UIDs in their string form. A numeric UID is hashed as its value rounded to an integer (`125.75` hashes as `"126"`), including `"-0"` and exponential forms for large values. Mutable `Number` types such as `AtomicInteger` are rejected.
 - `refresh()` on a context whose initial load failed is a successful no-op: it does not fetch and logs no event.

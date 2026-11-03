@@ -108,6 +108,11 @@ Store `ruleKey` (`assignmentRules + ":" + environmentName`), `ruleVariant` and `
 ## Step 9: Cross-SDK, docs, release
 
 - Add rule, split-rule and semver scenarios to `cross-sdk-tests` and support them in `java-wrapper`.
+  **Deferred:** scenarios gated on a new `requires` capability need an entry for every SDK in
+  `orchestrator/expected-capabilities.json`, the JavaScript and Java wrappers to advertise it (the
+  Java wrapper also has to pass a `Client` on the `createContextWith` path, or environment-scoped
+  rules never match), and a run against a locally published build. To be done as a separate
+  cross-sdk-tests change.
 - README sections: assignment rules, semver operators, system attributes, application version.
 - CHANGELOG under 1.8.0 (or fold into 1.7.0 if it has not shipped). Bump `VERSION`.
 
