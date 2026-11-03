@@ -356,6 +356,36 @@ class ContextAssignmentRulesTest extends TestUtils {
 		context.setAttribute("country", "US");
 		assertEquals("blue", context.getVariableValue("button.color", "default"));
 		assertEquals(1, context.getPendingCount());
+
+		final List<Exposure> exposures = publishedExposures(context);
+		assertEquals(1, exposures.size());
+		assertEquals(1, exposures.get(0).variant);
+		assertTrue(exposures.get(0).ruleOverride);
+		assertFalse(exposures.get(0).assigned);
+	}
+
+	// Pins current behaviour: a refresh that adds a rule to an experiment already exposed through
+	// normal assignment rebuilds it with the rule's variant and queues a second, ruleOverride
+	// exposure. The rule is an explicit author decision taking effect mid-session.
+	@Test
+	void refreshAddingRulesToExposedAssignmentReExposesWithRuleVariant() {
+		final ContextData before = data(null);
+		final ContextData after = data(rules(assign("US", US, "[]", 1)));
+		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(after));
+
+		final Context context = create(before);
+		context.setAttribute("country", "US");
+		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+
+		context.refresh();
+		assertEquals(1, context.getTreatment(EXP));
+
+		final List<Exposure> exposures = publishedExposures(context);
+		assertEquals(2, exposures.size());
+		assertEquals(NORMAL_VARIANT, exposures.get(0).variant);
+		assertFalse(exposures.get(0).ruleOverride);
+		assertEquals(1, exposures.get(1).variant);
+		assertTrue(exposures.get(1).ruleOverride);
 	}
 
 	@Test
@@ -731,12 +761,25 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertTrue(keys.containsKey("button.color"));
 	}
 
-	// Readers race attribute writers that flip the matching rule. Every read must see one of the
-	// variants a rule (or the fallback) can produce, never throw, and the final state must reflect
-	// the last attribute written. Read-path re-resolution must not mutate the cached assignment.
+	// Readers race attribute writers that flip the matching rule and a refresh writer that swaps the
+	// rules between two equivalent sets. Rules: US -> assign 1, GB -> split all to 0, anything else
+	// -> normal assignment (NORMAL_VARIANT). Every read must be one of those outcomes, and every
+	// published exposure must be consistent: ruleOverride exposures carry 0 or 1, the normal one
+	// carries NORMAL_VARIANT. Read-path re-resolution must not mutate the cached assignment.
 	@Test
 	void concurrentAttributeChangesAndReads() throws Exception {
-		final Context context = create(data(rules(assign("US", US, "[]", 1), split(GB, "100/0/0"))));
+		final String rulesA = rules(assign("US", US, "[]", 1), split(GB, "100/0/0"));
+		final String rulesB = rules(split(GB, "100/0/0"), assign("US", US, "[]", 1));
+		when(dataProvider.getContextData()).thenAnswer(new org.mockito.stubbing.Answer<Object>() {
+			int calls = 0;
+
+			@Override
+			public synchronized Object answer(org.mockito.invocation.InvocationOnMock invocation) {
+				return CompletableFuture.completedFuture(data((++calls % 2 == 0) ? rulesA : rulesB));
+			}
+		});
+
+		final Context context = create(data(rulesA));
 		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(8);
 		final java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
 		final java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
@@ -750,7 +793,11 @@ class ContextAssignmentRulesTest extends TestUtils {
 						try {
 							start.await();
 							for (int i = 0; i < 500; ++i) {
-								if (thread % 2 == 0) {
+								if (thread == 0) {
+									if (i % 25 == 0) {
+										context.refresh();
+									}
+								} else if (thread % 2 == 0) {
 									context.setAttribute("country", (i % 3 == 0) ? "US" : (i % 3 == 1) ? "GB" : "PT");
 								} else {
 									final int variant = (i % 2 == 0) ? context.peekTreatment(EXP)
@@ -781,6 +828,18 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(0, context.getTreatment(EXP));
 		context.setAttribute("country", "PT");
 		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+
+		final List<Exposure> exposures = publishedExposures(context);
+		assertFalse(exposures.isEmpty());
+		for (final Exposure exposure : exposures) {
+			if (exposure.ruleOverride) {
+				assertTrue(exposure.variant == 0 || exposure.variant == 1, exposure.toString());
+				assertFalse(exposure.assigned, exposure.toString());
+			} else {
+				assertEquals(NORMAL_VARIANT, exposure.variant, exposure.toString());
+				assertTrue(exposure.assigned, exposure.toString());
+			}
+		}
 	}
 
 	// A split resolved without its unit races setUnit from another thread. Whatever interleaving

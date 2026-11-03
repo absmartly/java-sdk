@@ -2315,4 +2315,86 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(1, context.getTreatment("exp_holdout_rules"));
 		assertEquals(2, context.getPendingCount());
 	}
+
+	// A rule stops matching for a held-out unit: the rebuilt assignment is suppressed (variant 0),
+	// no second experiment exposure is queued, and the holdout exposure does not fire again.
+	@Test
+	void heldOutUnitIsSuppressedAgainWhenRuleStopsMatching() {
+		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_rules"), 11);
+		experiment.assignmentRules = US_RULE;
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
+		context.setAttribute("country", "US");
+
+		assertEquals(1, context.getTreatment("exp_holdout_rules"));
+		assertEquals(2, context.getPendingCount()); // experiment (ruleOverride) + holdout
+
+		context.setAttribute("country", "GB");
+		assertEquals(0, context.getTreatment("exp_holdout_rules"));
+		assertEquals(0, context.peekTreatment("exp_holdout_rules"));
+		assertEquals(2, context.getPendingCount());
+	}
+
+	static Experiment withVariables(Experiment experiment, String key) {
+		experiment.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", "{\"" + key + "\":\"control\"}"),
+				new ExperimentVariant("B", "{\"" + key + "\":\"treatment\"}")
+		};
+		return experiment;
+	}
+
+	// Variables of a held-out experiment won by a rule come from the rule's variant, and both the
+	// experiment exposure (flagged ruleOverride) and the holdout exposure are queued.
+	@Test
+	void variableValueOnHeldOutRuleWonExperiment() {
+		final Experiment experiment = withVariables(coveredBy(newExperiment(1, "exp_holdout_rules"), 11), "color");
+		experiment.assignmentRules = US_RULE;
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_rules_suppression", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				experiment));
+		context.setAttribute("country", "US");
+
+		assertEquals("treatment", context.getVariableValue("color", "default"));
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		// Variable serving fires the applicable holdouts first, then the selected experiment.
+		final PublishEvent expected = publishedEvent(UID,
+				holdoutExposure(11, "holdout_rules_suppression", 0),
+				new Exposure(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
+						false, true));
+		expected.attributes = new Attribute[]{new Attribute("country", "US", clock.millis())};
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
+	// Two experiments share a variable key. Variable resolution walks them in id order and serves the
+	// first that is assigned, overridden or rule-won; a suppressed experiment is only a fallback.
+	@Test
+	void sharedVariableKeyPrefersRuleWonOverSuppressedExperiment() {
+		final Experiment heldOut = withVariables(coveredBy(newExperiment(1, "exp_held_out"), 11), "color");
+		final Experiment ruleWon = withVariables(coveredBy(newExperiment(2, "exp_rule_won"), 11), "color");
+		ruleWon.assignmentRules = US_RULE;
+		final Context context = createReadyContext(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, heldOut,
+				ruleWon));
+
+		context.setAttribute("country", "GB");
+		assertEquals("control", context.peekVariableValue("color", "default")); // suppressed fallback
+
+		context.setAttribute("country", "US");
+		assertEquals("treatment", context.peekVariableValue("color", "default")); // rule-won experiment 2
+	}
+
+	@Test
+	void sharedVariableKeyPrefersEarlierAssignedOverLaterRuleWonExperiment() {
+		final Experiment assigned = withVariables(newExperiment(1, "exp_assigned"), "color");
+		assigned.split = new double[]{1.0, 0.0}; // always variant 0 ("control")
+		final Experiment ruleWon = withVariables(newExperiment(2, "exp_rule_won"), "color");
+		ruleWon.assignmentRules = US_RULE;
+		final Context context = createReadyContext(contextDataOf(new Experiment[0], assigned, ruleWon));
+		context.setAttribute("country", "US");
+
+		assertEquals("control", context.peekVariableValue("color", "default"));
+		assertEquals(1, context.peekTreatment("exp_rule_won"));
+	}
 }

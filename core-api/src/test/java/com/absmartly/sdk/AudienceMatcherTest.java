@@ -114,6 +114,13 @@ class AudienceMatcherTest extends TestUtils {
 	}
 
 	@Test
+	void evaluateRulesEnvironmentNamesAreCaseSensitive() {
+		final String rules = rules(assign(US, "[\"Production\"]", 1));
+		assertNull(matcher.evaluateRules(rules, "production", us));
+		assertEquals(RuleAction.assign(1), matcher.evaluateRules(rules, "Production", us));
+	}
+
+	@Test
 	void evaluateRulesSkipsNonListEnvironments() {
 		assertEquals(RuleAction.assign(2), evaluateUS(assign(null, "\"production\"", 1), FALLBACK));
 		assertEquals(RuleAction.assign(1), evaluateUS(assign(null, "null", 1)));
