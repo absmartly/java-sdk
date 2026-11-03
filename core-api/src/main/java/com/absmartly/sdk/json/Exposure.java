@@ -19,6 +19,8 @@ public class Exposure {
 	public boolean fullOn;
 	public boolean custom;
 	public boolean audienceMismatch;
+	// The variant was set by a matching custom assignment rule. Like an override, excluded from analysis.
+	public boolean ruleOverride;
 
 	public Exposure() {}
 
@@ -37,6 +39,12 @@ public class Exposure {
 		this.audienceMismatch = audienceMismatch;
 	}
 
+	public Exposure(int id, String name, String unit, int variant, long exposedAt, boolean assigned, boolean eligible,
+			boolean overridden, boolean fullOn, boolean custom, boolean audienceMismatch, boolean ruleOverride) {
+		this(id, name, unit, variant, exposedAt, assigned, eligible, overridden, fullOn, custom, audienceMismatch);
+		this.ruleOverride = ruleOverride;
+	}
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o)
@@ -46,7 +54,7 @@ public class Exposure {
 		Exposure exposure = (Exposure) o;
 		return id == exposure.id && variant == exposure.variant && exposedAt == exposure.exposedAt
 				&& assigned == exposure.assigned && eligible == exposure.eligible && overridden == exposure.overridden
-				&& fullOn == exposure.fullOn && custom == exposure.custom
+				&& fullOn == exposure.fullOn && custom == exposure.custom && ruleOverride == exposure.ruleOverride
 				&& Objects.equals(audienceMismatch, exposure.audienceMismatch) && Objects.equals(name, exposure.name)
 				&& Objects.equals(unit, exposure.unit);
 	}
@@ -54,7 +62,7 @@ public class Exposure {
 	@Override
 	public int hashCode() {
 		return Objects.hash(id, name, unit, variant, exposedAt, assigned, eligible, overridden, fullOn, custom,
-				audienceMismatch);
+				audienceMismatch, ruleOverride);
 	}
 
 	@Override
@@ -71,6 +79,7 @@ public class Exposure {
 				", fullOn=" + fullOn +
 				", custom=" + custom +
 				", audienceMismatch=" + audienceMismatch +
+				", ruleOverride=" + ruleOverride +
 				'}';
 	}
 }

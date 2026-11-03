@@ -25,6 +25,10 @@ public class Experiment {
 	public String audience;
 	public CustomFieldValue[] customFieldValues;
 
+	// JSON string of custom assignment rules ({"rules": [...]}), evaluated before holdouts, audience and traffic.
+	// Null or empty when the experiment has none.
+	public String assignmentRules;
+
 	// Set only for entries served in the top-level `holdouts` array; null for ordinary experiments.
 	public String holdoutType;
 
@@ -76,6 +80,8 @@ public class Experiment {
 			return false;
 		if (!Arrays.equals(customFieldValues, that.customFieldValues))
 			return false;
+		if (assignmentRules != null ? !assignmentRules.equals(that.assignmentRules) : that.assignmentRules != null)
+			return false;
 		if (holdoutType != null ? !holdoutType.equals(that.holdoutType) : that.holdoutType != null)
 			return false;
 		return Arrays.equals(holdoutIds, that.holdoutIds);
@@ -99,6 +105,7 @@ public class Experiment {
 		result = 31 * result + (audienceStrict ? 1 : 0);
 		result = 31 * result + (audience != null ? audience.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(customFieldValues);
+		result = 31 * result + (assignmentRules != null ? assignmentRules.hashCode() : 0);
 		result = 31 * result + (holdoutType != null ? holdoutType.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(holdoutIds);
 		return result;
@@ -123,6 +130,7 @@ public class Experiment {
 				", audienceStrict=" + audienceStrict +
 				", audience='" + audience + '\'' +
 				", customFieldValues=" + Arrays.toString(customFieldValues) +
+				", assignmentRules='" + assignmentRules + '\'' +
 				", holdoutType='" + holdoutType + '\'' +
 				", holdoutIds=" + Arrays.toString(holdoutIds) +
 				'}';
