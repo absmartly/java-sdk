@@ -354,7 +354,7 @@ class ClientTest extends TestUtils {
 				"X-API-Key", "test-api-key",
 				"X-Application", "website",
 				"X-Environment", "dev",
-				"X-Application-Version", "2.4.1",
+				"X-Application-Version", "0",
 				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 
 		final PublishEvent event = new PublishEvent();
@@ -412,5 +412,42 @@ class ClientTest extends TestUtils {
 		assertEquals("0", headers.getValue().get("X-Application-Version"));
 		// The getter agrees with the header: "0" when no version is set.
 		assertEquals("0", client.getApplicationVersion());
+	}
+
+	@Test
+	void applicationVersionHeaderIsSentOnlyWhenNumeric() {
+		// The collector parses X-Application-Version as a Long and rejects the request otherwise.
+		assertEquals("1004", Client.applicationVersionHeader("1004"));
+		assertEquals("0", Client.applicationVersionHeader("0"));
+		assertEquals("0", Client.applicationVersionHeader("2.4.1"));
+		assertEquals("0", Client.applicationVersionHeader("1.0"));
+		assertEquals("0", Client.applicationVersionHeader("abc"));
+		assertEquals("0", Client.applicationVersionHeader("-1"));
+		assertEquals("0", Client.applicationVersionHeader("99999999999999999999"));
+		assertEquals("999999999999999999", Client.applicationVersionHeader("999999999999999999"));
+	}
+
+	@Test
+	void semverApplicationVersionKeepsFullValueButSendsZeroHeader() {
+		final HTTPClient httpClient = mock(HTTPClient.class);
+		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
+		final Client client = Client.create(ClientConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setApplicationVersion("2.4.1")
+				.setEnvironment("dev")
+				.setContextEventSerializer(ser), httpClient);
+
+		final PublishEvent event = new PublishEvent();
+		when(ser.serialize(event)).thenReturn(new byte[]{0});
+		when(httpClient.put(any(), any(), any(), any())).thenReturn(getByteResponse(new byte[]{0}));
+
+		client.publish(event).join();
+
+		final org.mockito.ArgumentCaptor<Map<String, String>> headers = org.mockito.ArgumentCaptor.forClass(Map.class);
+		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), headers.capture(), any());
+		assertEquals("0", headers.getValue().get("X-Application-Version"));
+		assertEquals("2.4.1", client.getApplicationVersion());
 	}
 }

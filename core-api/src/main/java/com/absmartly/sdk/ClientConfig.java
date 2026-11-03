@@ -91,8 +91,9 @@ public class ClientConfig {
 	}
 
 	/**
-	 * Sets the application version sent as the X-Application-Version header and, when system attributes are enabled,
-	 * as the app_version attribute, for example a semantic version such as "2.4.1". Surrounding whitespace is removed;
+	 * Sets the application version, sent as the X-Application-Version header when it is a whole number (the collector
+	 * rejects anything else, so other versions are sent as "0") and, when system attributes are enabled, in full as the
+	 * app_version attribute, for example a semantic version such as "2.4.1". Surrounding whitespace is removed;
 	 * a null, empty or whitespace-only value means no version is set, which is sent as "0". A version of "0" is
 	 * treated as unset, so app_version is then left out.
 	 */

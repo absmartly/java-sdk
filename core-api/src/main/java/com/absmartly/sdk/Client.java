@@ -83,7 +83,9 @@ public class Client implements Closeable {
 		headers_.put("X-Environment", environment);
 		final String configuredVersion = config.getApplicationVersion();
 		final String applicationVersion = (configuredVersion != null) ? configuredVersion : "0";
-		headers_.put("X-Application-Version", applicationVersion);
+		// The collector parses X-Application-Version as a whole number and rejects the request otherwise, so a
+		// non-numeric version such as "2.4.1" is sent as "0". The full version is still used for app_version.
+		headers_.put("X-Application-Version", applicationVersionHeader(applicationVersion));
 		headers_.put("X-Agent", SdkVersion.AGENT);
 
 		application_ = application;
@@ -182,7 +184,23 @@ public class Client implements Closeable {
 		return application_;
 	}
 
-	/** The value sent as the X-Application-Version header: the configured version, or "0" when none is set. */
+	static String applicationVersionHeader(final String applicationVersion) {
+		if (applicationVersion.length() > 18) {
+			return "0";
+		}
+		for (int i = 0; i < applicationVersion.length(); ++i) {
+			final char c = applicationVersion.charAt(i);
+			if (c < '0' || c > '9') {
+				return "0";
+			}
+		}
+		return applicationVersion;
+	}
+
+	/**
+	 * The configured application version, or "0" when none is set. The X-Application-Version header carries this value
+	 * only when it is a whole number; otherwise the header is "0".
+	 */
 	public String getApplicationVersion() {
 		return applicationVersion_;
 	}
