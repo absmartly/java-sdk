@@ -34,6 +34,27 @@ class ClientConfigTest extends TestUtils {
 	}
 
 	@Test
+	void setApplicationVersion() {
+		assertNull(ClientConfig.create().getApplicationVersion());
+		assertEquals("2.4.1", ClientConfig.create().setApplicationVersion("2.4.1").getApplicationVersion());
+		assertEquals("1004", ClientConfig.create().setApplicationVersion(1004).getApplicationVersion());
+	}
+
+	@Test
+	void createFromPropertiesWithApplicationVersion() {
+		final Properties props = new Properties();
+		props.putAll(mapOf(
+				"endpoint", "https://test.endpoint.com",
+				"environment", "test",
+				"apikey", "api-key-test",
+				"application", "website",
+				"application_version", "3.1.0"));
+		final ClientConfig config = ClientConfig.createFromProperties(props);
+		assertEquals("3.1.0", config.getApplicationVersion());
+		assertNull(ClientConfig.createFromProperties(new Properties()).getApplicationVersion());
+	}
+
+	@Test
 	void setContextDataDeserializer() {
 		final ContextDataDeserializer deserializer = mock(ContextDataDeserializer.class);
 		final ClientConfig config = ClientConfig.create().setContextDataDeserializer(deserializer);

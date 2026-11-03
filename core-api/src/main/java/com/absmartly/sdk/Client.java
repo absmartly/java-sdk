@@ -16,6 +16,7 @@ import javax.annotation.Nonnull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
@@ -80,8 +81,14 @@ public class Client implements Closeable {
 		headers_.put("X-API-Key", apiKey);
 		headers_.put("X-Application", application);
 		headers_.put("X-Environment", environment);
-		headers_.put("X-Application-Version", Long.toString(0));
-		headers_.put("X-Agent", "absmartly-java-sdk");
+		final String applicationVersion = config.getApplicationVersion();
+		headers_.put("X-Application-Version",
+				(applicationVersion != null && !applicationVersion.isEmpty()) ? applicationVersion : "0");
+		headers_.put("X-Agent", SdkVersion.AGENT);
+
+		application_ = application;
+		applicationVersion_ = applicationVersion;
+		environment_ = environment;
 
 		query_ = new HashMap<String, String>(2);
 		query_.put("application", application);
@@ -171,12 +178,42 @@ public class Client implements Closeable {
 		return publishFuture;
 	}
 
+	public String getApplication() {
+		return application_;
+	}
+
+	public String getApplicationVersion() {
+		return applicationVersion_;
+	}
+
+	public String getEnvironment() {
+		return environment_;
+	}
+
+	/** The SDK name without version, e.g. "absmartly-java-sdk". */
+	public String getAgentName() {
+		return SdkVersion.NAME;
+	}
+
+	/** The SDK version, e.g. "1.7.0". */
+	public String getAgentVersion() {
+		return SdkVersion.VERSION;
+	}
+
+	/** The value sent as the X-Agent header: "&lt;name&gt;/&lt;version&gt;", e.g. "absmartly-java-sdk/1.7.0". */
+	public String getAgent() {
+		return SdkVersion.AGENT;
+	}
+
 	@Override
 	public void close() throws IOException {
 		httpClient_.close();
 	}
 
 	private final String url_;
+	private final String application_;
+	private final String applicationVersion_;
+	private final String environment_;
 	private final Map<String, String> query_;
 	private final Map<String, String> headers_;
 	private final HTTPClient httpClient_;

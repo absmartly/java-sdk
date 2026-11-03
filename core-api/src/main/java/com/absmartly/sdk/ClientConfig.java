@@ -19,10 +19,18 @@ public class ClientConfig {
 				.setEndpoint(properties.getProperty(prefix + "endpoint"))
 				.setEnvironment(properties.getProperty(prefix + "environment"))
 				.setApplication(properties.getProperty(prefix + "application"))
-				.setAPIKey(properties.getProperty(prefix + "apikey"));
+				.setAPIKey(properties.getProperty(prefix + "apikey"))
+				.setApplicationVersionIfPresent(properties.getProperty(prefix + "application_version"));
 	}
 
 	ClientConfig() {}
+
+	private ClientConfig setApplicationVersionIfPresent(final String applicationVersion) {
+		if (applicationVersion != null) {
+			applicationVersion_ = applicationVersion;
+		}
+		return this;
+	}
 
 	public String getEndpoint() {
 		return endpoint_;
@@ -60,6 +68,24 @@ public class ClientConfig {
 		return this;
 	}
 
+	public String getApplicationVersion() {
+		return applicationVersion_;
+	}
+
+	/**
+	 * Sets the application version sent as the X-Application-Version header and, when system attributes are enabled,
+	 * as the app_version attribute. Accepts a semantic version string (e.g. "2.4.1") or a number.
+	 */
+	public ClientConfig setApplicationVersion(@Nonnull final String applicationVersion) {
+		applicationVersion_ = applicationVersion;
+		return this;
+	}
+
+	public ClientConfig setApplicationVersion(final long applicationVersion) {
+		applicationVersion_ = Long.toString(applicationVersion);
+		return this;
+	}
+
 	public ContextDataDeserializer getContextDataDeserializer() {
 		return deserializer_;
 	}
@@ -91,6 +117,7 @@ public class ClientConfig {
 	private String apiKey_;
 	private String environment_;
 	private String application_;
+	private String applicationVersion_;
 	private ContextDataDeserializer deserializer_;
 	private ContextEventSerializer serializer_;
 	private Executor executor_;
