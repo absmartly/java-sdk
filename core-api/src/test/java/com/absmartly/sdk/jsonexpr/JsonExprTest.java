@@ -98,4 +98,20 @@ class JsonExprTest extends TestUtils {
 		assertTrue(jsonExpr.evaluateBooleanExpr(NotReturning_And_Spanish, Kate));
 		assertFalse(jsonExpr.evaluateBooleanExpr(NotReturning_And_Spanish, Maria));
 	}
+
+	@Test
+	void testSemverOperators() {
+		final Map<String, Object> vars = mapOf("app_version", "2.4.1-beta.2");
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_gte", varFor("app_version"), valueFor("2.4.0")),
+				vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_lt", varFor("app_version"), valueFor("2.4.1")),
+				vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_gt", varFor("app_version"), valueFor("2.4.1-beta.1")),
+				vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_lte", varFor("app_version"),
+				valueFor("v2.4.1-beta.2+sha")), vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_eq", varFor("app_version"), valueFor("2.4.1-beta.2")),
+				vars));
+		assertFalse(jsonExpr.evaluateBooleanExpr(binaryOp("semver_eq", varFor("missing"), valueFor("2.4.1")), vars));
+	}
 }
