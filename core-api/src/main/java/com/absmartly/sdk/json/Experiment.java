@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -25,8 +26,11 @@ public class Experiment {
 	public String audience;
 	public CustomFieldValue[] customFieldValues;
 
-	// JSON string of custom assignment rules ({"rules": [...]}), evaluated before holdouts, audience and traffic.
-	// Null or empty when the experiment has none.
+	// JSON string of custom assignment rules ({"rules": [...]}). Null or empty when the experiment has none. Holdouts
+	// are resolved first; a matching rule then takes precedence over holdout suppression, the audience, traffic and
+	// custom assignments, while the holdouts still record their own exposures. An object or array sent in place of
+	// the string is ignored (null) rather than failing the whole context.
+	@JsonDeserialize(using = AssignmentRulesDeserializer.class)
 	public String assignmentRules;
 
 	// Set only for entries served in the top-level `holdouts` array; null for ordinary experiments.

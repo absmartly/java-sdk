@@ -123,6 +123,27 @@ class ContextAssignmentRulesTest extends TestUtils {
 	final ContextData strictData = data(rules(assign("US Users", US, "[]", 1)),
 			"{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}", true);
 
+	// One experiment's assignmentRules sent as an object instead of a string must not fail the
+	// context: that experiment's rules are skipped and every other experiment resolves normally.
+	@Test
+	void malformedAssignmentRulesInResponseOnlySkipThatExperiment() {
+		final java.nio.charset.Charset utf8 = java.nio.charset.Charset.forName("UTF-8");
+		final String json = new String(getResourceBytes("context.json"), utf8)
+				.replace("\"name\":\"exp_test_abc\",", "\"name\":\"exp_test_abc\",\"assignmentRules\":{\"rules\":[]},")
+				.replace("\"name\":\"exp_test_ab\",",
+						"\"name\":\"exp_test_ab\",\"assignmentRules\":\"{\\\"rules\\\":[{\\\"type\\\":\\\"assign\\\",\\\"variant\\\":1}]}\",");
+		assertTrue(json.contains("\"assignmentRules\":{\"rules\":[]}"));
+		final byte[] bytes = json.getBytes(utf8);
+		final ContextData parsed = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+		assertNotNull(parsed);
+
+		final Context context = create(parsed);
+		assertTrue(context.isReady());
+		assertFalse(context.isFailed());
+		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(1, context.getTreatment("exp_test_ab"));
+	}
+
 	@Test
 	void ruleVariantWhenRuleMatches() {
 		final Context context = create(rulesData);

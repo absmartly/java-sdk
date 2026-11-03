@@ -220,6 +220,27 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 	}
 
 	@Test
+	void malformedAssignmentRulesSkipOnlyThatExperiment() {
+		final String json = "{\"experiments\":["
+				+ "{\"id\":1,\"name\":\"exp_object\",\"assignmentRules\":{\"rules\":[]}},"
+				+ "{\"id\":2,\"name\":\"exp_array\",\"assignmentRules\":[1,{\"a\":[2]}]},"
+				+ "{\"id\":3,\"name\":\"exp_number\",\"assignmentRules\":5},"
+				+ "{\"id\":4,\"name\":\"exp_null\",\"assignmentRules\":null},"
+				+ "{\"id\":5,\"name\":\"exp_ok\",\"unitType\":\"session_id\"}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertNotNull(data);
+		assertEquals(5, data.experiments.length);
+		assertNull(data.experiments[0].assignmentRules);
+		assertNull(data.experiments[1].assignmentRules);
+		assertEquals("5", data.experiments[2].assignmentRules);
+		assertNull(data.experiments[3].assignmentRules);
+		assertEquals("exp_ok", data.experiments[4].name);
+		assertEquals("session_id", data.experiments[4].unitType);
+	}
+
+	@Test
 	void testMalformedJsonResponse() {
 		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
 
