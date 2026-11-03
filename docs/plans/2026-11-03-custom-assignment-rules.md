@@ -142,8 +142,10 @@ The plan above is kept as written. Where the shipped code differs:
 - **Step 4:** rules are parsed once when context data is installed and stored on the experiment's
   index entry, so lookups never re-parse the JSON and an invalid string is logged once per data
   install, naming the experiment. `RuleAction`, `evaluateRules` and the parsed-rules type are
-  package-private. Condition failures, including `StackOverflowError` from deeply nested
-  expressions, skip the rule with a warning; audience filters that fail are indeterminate.
+  package-private. Rule-condition failures, including `StackOverflowError` from deeply nested
+  expressions, skip that rule with a warning and evaluation continues with the next rule. An
+  audience filter that fails to evaluate fails closed: it counts as a mismatch, so a strict
+  audience gives variant 0.
   An `assignmentRules` value sent as an object or array is ignored for that experiment only
   (`AssignmentRulesDeserializer`) instead of failing the whole context.
 - **Step 5:** the signature is `resolveRule(contextExperiment, unitPinnedMissing, cacheAssigner)`.
