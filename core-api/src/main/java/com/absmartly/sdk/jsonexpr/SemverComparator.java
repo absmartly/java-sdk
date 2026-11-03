@@ -7,12 +7,17 @@ import java.util.List;
  * Semantic version comparison used by the semver_* operators. Mirrors the JavaScript SDK: a leading "v"/"V" and build
  * metadata are ignored, missing core parts count as 0, numeric identifiers compare numerically (leading zeros
  * ignored) and rank below alphanumeric ones, and a release ranks above any of its pre-releases.
+ *
+ * Parsing is deliberately as permissive as the JavaScript SDK's, so both SDKs order the same inputs the same way: a
+ * non-numeric core part (as in "1.x" or "abc") is not rejected but compared as an alphanumeric identifier, and an
+ * empty pre-release ("1.0.0-") is treated as a release.
  */
 public final class SemverComparator {
 	private SemverComparator() {}
 
 	/**
-	 * @return -1, 0 or 1, or null when either side cannot be converted to a non-empty version string.
+	 * @return -1, 0 or 1, or null when either side is not a string, number or boolean, or has an empty version core
+	 *         after removing a leading v/V and build metadata (for example "", "v", "+build" or "-beta").
 	 */
 	public static Integer compare(final Evaluator evaluator, final Object lhs, final Object rhs) {
 		final String lhsStr = evaluator.stringConvert(lhs);

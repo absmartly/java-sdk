@@ -2023,7 +2023,6 @@ public class Context implements Closeable {
 		return attrs.isEmpty() ? null : attrs.toArray(new Attribute[0]);
 	}
 
-	// Matches the JavaScript SDK, where the default application version 0 means "not set".
 	private static void putIfNotNull(final Map<String, Object> map, final String key, final Object value) {
 		if (value != null) {
 			map.put(key, value);

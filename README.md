@@ -305,26 +305,36 @@ With it enabled:
 - `application`, `environment` and `app_version` (from `ClientConfig.setApplicationVersion`) can be used in audience
   filters and assignment rule conditions. An attribute you set with the same name takes precedence.
 - Every publish also includes `sdk_name`, `sdk_version`, `application`, `environment` and `app_version` as attributes.
-  `app_version` is left out when no application version is set.
+  `app_version` is left out when no application version is set, or it is `0`.
+
+The application, environment and application version come from the client. A context created without one (with the
+public `Context.create`, or through an `ABSmartly` with no client configured) includes only `sdk_name` and
+`sdk_version`.
 
 It is disabled by default.
 
 ### Assignment Rules
 
-Experiments can define assignment rules on the Web Console. They are evaluated in order before holdouts, audience
-targeting, traffic allocation and custom assignments, and the first matching rule decides the variant:
+Experiments can define assignment rules on the Web Console. They are evaluated in order, and the first matching rule
+decides the variant, taking precedence over holdout suppression, audience targeting, traffic allocation and custom
+assignments. Holdouts are still evaluated and still record their own exposures.
 
 - An `assign` rule gives a fixed variant.
 - A `split` rule randomizes the unit over its own percentages, e.g. `20/30/50`. While the experiment's unit is missing,
   a split rule gives the full-on variant (0 for an experiment that is not full-on); once the unit is set, the
   variant is re-randomized, unless it was already exposed.
 
+If the first matching rule's variant is out of range, or its split does not have one percentage per variant, it is
+ignored and normal assignment applies; later rules are not tried.
+
 A rule matches when its conditions evaluate to true against the context attributes and, if it is scoped to
-environments, the client's environment is one of them. Rule-assigned exposures are flagged `ruleOverride` and, like
-overrides, are excluded from analysis. `setOverride()` still takes precedence over every rule.
+environments, the client's environment is one of them. A rule without conditions always matches, and an empty
+environments list means every environment. Environment names are case-sensitive. Contexts without a client have no
+environment, so rules scoped to environments never match there. Rule-assigned exposures are flagged `ruleOverride` so
+the backend can exclude them from analysis. `setOverride()` still takes precedence over every rule.
 
 Conditions can compare versions with `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte`, for
-example against `app_version`. A leading `v` and build metadata are ignored, missing parts count as `0`, and a
+example against `app_version`. A leading `v` or `V` and build metadata are ignored, missing parts count as `0`, and a
 pre-release is lower than its release (`1.0.0-beta < 1.0.0`).
 
 ### SDK Identification

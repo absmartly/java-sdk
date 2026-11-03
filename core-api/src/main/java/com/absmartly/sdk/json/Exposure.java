@@ -19,7 +19,8 @@ public class Exposure {
 	public boolean fullOn;
 	public boolean custom;
 	public boolean audienceMismatch;
-	// The variant was set by a matching custom assignment rule. Like an override, excluded from analysis.
+	// The variant was set by a matching custom assignment rule. Flagged so the backend can exclude it from analysis,
+	// as it does for overrides.
 	public boolean ruleOverride;
 
 	public Exposure() {}

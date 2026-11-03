@@ -119,3 +119,44 @@ Store `ruleKey` (`assignmentRules + ":" + environmentName`), `ruleVariant` and `
 ## Order of PR-sized commits
 
 0 → 1 → 2 → 3 → 4 → 5/6/7 together → 8 (tests land with each step) → 9.
+
+## Deviations in the final implementation
+
+The plan above is kept as written. Where the shipped code differs:
+
+- **Step 0:** `ClientConfig.setApplicationVersion` trims its value and stores null for a blank one.
+  `X-Application-Version` sends `"0"` when no version is set, and `Client.getApplicationVersion()`
+  returns that same header value. "Unset" (null or `"0"`) is decided by one predicate,
+  `ClientConfig.isApplicationVersionSet`, shared by `Client` and `Context`.
+- **Step 1:** the comparison lives in `jsonexpr/SemverComparator.compare`, not
+  `ExprEvaluator.versionCompare`. It returns null only when a side is not a string, number or
+  boolean, or has an empty version core after removing a leading `v`/`V` and build metadata.
+  Non-numeric core parts (`1.x`, `abc`) are compared as alphanumeric identifiers, not rejected,
+  matching the JavaScript SDK. A numeric identifier always ranks below an alphanumeric one; mixed
+  identifiers are not compared lexically.
+- **Step 2:** `app_version` is left out when the version is null or `"0"`; any other string
+  (including `"-1"`) is included. Without a client, only `sdk_name` and `sdk_version` are included
+  (from the build constants) and the other system attributes are omitted rather than set to null;
+  a warning is logged once. The attributes map is rebuilt on each evaluation, not cached per
+  attribute sequence number; the costly part, parsing the rules JSON, is cached instead (below).
+- **Step 4:** rules are parsed once when context data is installed and stored on the experiment's
+  index entry, so lookups never re-parse the JSON and an invalid string is logged once per data
+  install, naming the experiment. `RuleAction`, `evaluateRules` and the parsed-rules type are
+  package-private. Condition failures, including `StackOverflowError` from deeply nested
+  expressions, skip the rule with a warning; audience filters that fail are indeterminate.
+  An `assignmentRules` value sent as an object or array is ignored for that experiment only
+  (`AssignmentRulesDeserializer`) instead of failing the whole context.
+- **Step 5:** the signature is `resolveRule(contextExperiment, unitPinnedMissing, cacheAssigner)`.
+  `cacheAssigner` is false on the read path, which must not write the assigner caches.
+- **Step 6:** a rule-won assignment is not suppressed at all (`suppressed && rule == null`), so its
+  exposure is queued by the ordinary path; the holdouts still fire their own exposures. A rule-won
+  assignment for an experiment that is no longer running is rebuilt (to variant 0) instead of
+  being served from the cache.
+- **Step 7:** `ruleKey` is the `assignmentRules` string only. The environment is fixed for a
+  context's lifetime, so it is not part of the key. When the rule outcome keeps its variant but
+  changes whether it was resolved without its unit, the read path reports it as stale and the write
+  path updates an already-exposed assignment in place (keeping its exposure state) instead of
+  rebuilding it, so it stays pinned without a second exposure.
+- **Steps 3 and 9:** the client-aware `Context.create` overload is package-private; `ABSmartly`
+  passes its configured client. The release was folded into 1.7.0, which is still unreleased, so
+  `VERSION` was not bumped. Cross-SDK scenarios are deferred (see Step 9).
