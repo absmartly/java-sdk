@@ -125,8 +125,9 @@ Store `ruleKey` (`assignmentRules + ":" + environmentName`), `ruleVariant` and `
 The plan above is kept as written. Where the shipped code differs:
 
 - **Step 0:** `ClientConfig.setApplicationVersion` trims its value and stores null for a blank one.
-  `X-Application-Version` sends `"0"` when no version is set, and `Client.getApplicationVersion()`
-  returns that same header value. "Unset" (null or `"0"`) is decided by one predicate,
+  `X-Application-Version` sends `"0"` when no version is set, or when the version is not a whole
+  number. `Client.getApplicationVersion()` returns `"0"` when no version is set and otherwise the
+  full configured version (e.g. `"2.4.1"`), so it can differ from the header. "Unset" (null or `"0"`) is decided by one predicate,
   `ClientConfig.isApplicationVersionSet`, shared by `Client` and `Context`.
 - **Step 1:** the comparison lives in `jsonexpr/SemverComparator.compare`, not
   `ExprEvaluator.versionCompare`. It returns null only when a side is not a string, number or
@@ -137,7 +138,9 @@ The plan above is kept as written. Where the shipped code differs:
 - **Step 2:** `app_version` is left out when the version is null or `"0"`; any other string
   (including `"-1"`) is included. Without a client, only `sdk_name` and `sdk_version` are included
   (from the build constants) and the other system attributes are omitted rather than set to null;
-  a warning is logged once. The attributes map is rebuilt on each evaluation, not cached per
+  a warning is logged once per JVM. Published system attributes are stamped with the time of the
+  earliest exposure or goal in the batch, since the collector only applies attributes set at or
+  before an event, and one the user has set under the same name is not sent at all. The attributes map is rebuilt on each evaluation, not cached per
   attribute sequence number; the costly part, parsing the rules JSON, is cached instead (below).
 - **Step 4:** rules are parsed once when context data is installed and stored on the experiment's
   index entry, so lookups never re-parse the JSON and an invalid string is logged once per data
@@ -148,6 +151,8 @@ The plan above is kept as written. Where the shipped code differs:
   audience gives variant 0.
   An `assignmentRules` value sent as an object or array is ignored for that experiment only
   (`AssignmentRulesDeserializer`) instead of failing the whole context.
+  A custom `AudienceDeserializer` that throws while rules are parsed likewise only drops that
+  experiment's rules, with a warning naming it.
 - **Step 5:** the signature is `resolveRule(contextExperiment, unitPinnedMissing, cacheAssigner)`.
   `cacheAssigner` is false on the read path, which must not write the assigner caches.
 - **Step 6:** a rule-won assignment is not suppressed at all (`suppressed && rule == null`), so its

@@ -306,6 +306,8 @@ With it enabled:
   filters and assignment rule conditions. An attribute you set with the same name takes precedence.
 - Every publish also includes `sdk_name`, `sdk_version`, `application`, `environment` and `app_version` as attributes.
   `app_version` is left out when no application version is set, or it is `0`.
+  They are stamped with the time of the earliest exposure or goal in the publish, and one you have set yourself with
+  the same name is sent only as your value.
 
 The application, environment and application version come from the client. A context created without one (with the
 public `Context.create`, or through an `ABSmartly` with no client configured) includes only `sdk_name` and
@@ -339,7 +341,7 @@ pre-release is lower than its release (`1.0.0-beta < 1.0.0`).
 
 ### SDK Identification
 
-The SDK sends `X-Agent: absmartly-java-sdk/<version>` with every request, so the backend can report which SDK
+The SDK sends `X-Agent: absmartly-java-sdk/<version>` when it publishes events, so the backend can report which SDK
 versions your applications use.
 
 ### Tracking Goals
