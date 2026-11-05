@@ -21,17 +21,10 @@ public class ClientConfig {
 				.setEnvironment(properties.getProperty(prefix + "environment"))
 				.setApplication(properties.getProperty(prefix + "application"))
 				.setAPIKey(properties.getProperty(prefix + "apikey"))
-				.setApplicationVersionIfPresent(properties.getProperty(prefix + "application_version"));
+				.setApplicationVersion(properties.getProperty(prefix + "application_version"));
 	}
 
 	ClientConfig() {}
-
-	private ClientConfig setApplicationVersionIfPresent(final String applicationVersion) {
-		if (applicationVersion != null) {
-			applicationVersion_ = normalizeApplicationVersion(applicationVersion);
-		}
-		return this;
-	}
 
 	// Null, empty or whitespace-only means no version is set.
 	private static String normalizeApplicationVersion(final String applicationVersion) {
