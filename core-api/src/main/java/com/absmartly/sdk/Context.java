@@ -1937,7 +1937,13 @@ public class Context implements Closeable {
 				}
 			}
 
-			contextExperiment.assignmentRules = audienceMatcher_.parseRules(experiment.assignmentRules);
+			try {
+				contextExperiment.assignmentRules = audienceMatcher_.parseRules(experiment.assignmentRules);
+			} catch (Exception e) {
+				log.warn("Failed to parse assignmentRules for experiment '{}'; its rules are ignored: {}",
+						experiment.name, e.getMessage());
+				contextExperiment.assignmentRules = null;
+			}
 			if (contextExperiment.assignmentRules != null && contextExperiment.assignmentRules.isInvalid()) {
 				log.warn("Invalid assignmentRules JSON for experiment '{}'; its rules are ignored", experiment.name);
 			}

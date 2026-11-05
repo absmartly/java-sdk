@@ -144,6 +144,33 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.getTreatment("exp_test_ab"));
 	}
 
+	// A custom deserializer that throws on one experiment's rules only drops those rules: the context
+	// stays healthy and every other experiment resolves normally.
+	@Test
+	void throwingCustomDeserializerOnlySkipsThatExperimentsRules() {
+		final String throwing = rules(assign("US Internal Users", US, "[]", 1));
+		final DefaultAudienceDeserializer delegate = new DefaultAudienceDeserializer();
+		final AudienceDeserializer deserializer = new AudienceDeserializer() {
+			@Override
+			public Map<String, Object> deserialize(byte[] bytes, int offset, int length) {
+				if (new String(bytes, offset, length, java.nio.charset.Charset.forName("UTF-8")).equals(throwing)) {
+					throw new IllegalStateException("parser failure");
+				}
+				return delegate.deserialize(bytes, offset, length);
+			}
+		};
+		final Context context = Context.create(clock,
+				ContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), scheduler,
+				CompletableFuture.completedFuture(data(throwing)), dataProvider, eventHandler, null,
+				new DefaultVariableParser(), new AudienceMatcher(deserializer), client());
+
+		assertTrue(context.isReady());
+		assertFalse(context.isFailed());
+		context.setAttribute("country", "US");
+		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(1, context.getTreatment("exp_test_ab"));
+	}
+
 	// Rules are parsed once when the data is installed, not on every lookup after an attribute
 	// change, so an invalid string costs (and logs) once rather than on every getTreatment.
 	@Test
