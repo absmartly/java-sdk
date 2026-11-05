@@ -963,7 +963,8 @@ public class Context implements Closeable {
 														StandardCharsets.US_ASCII));
 									}
 								});
-						event.attributes = buildPublishAttributes(event.publishedAt);
+						final long systemSetAt = earliestEventAt(exposures, achievements, event.publishedAt);
+						event.attributes = buildPublishAttributes(systemSetAt);
 					} finally {
 						contextLock_.writeLock().unlock();
 					}
@@ -2015,24 +2016,50 @@ public class Context implements Closeable {
 		return attrs;
 	}
 
-	// Called with contextLock_ held.
-	private Attribute[] buildPublishAttributes(final long now) {
+	// The collector only applies attributes with setAt <= an event's time, so system attributes are stamped with the
+	// earliest event in the batch to describe every event in it.
+	private static long earliestEventAt(final Exposure[] exposures, final GoalAchievement[] achievements,
+			final long publishedAt) {
+		long earliest = publishedAt;
+		if (exposures != null) {
+			for (final Exposure exposure : exposures) {
+				earliest = Math.min(earliest, exposure.exposedAt);
+			}
+		}
+		if (achievements != null) {
+			for (final GoalAchievement achievement : achievements) {
+				earliest = Math.min(earliest, achievement.achievedAt);
+			}
+		}
+		return earliest;
+	}
+
+	// System attributes the user has set themselves are left out: the collector picks the latest setAt among
+	// duplicates, which would otherwise let a synthetic value supersede the user's. Called with contextLock_ held.
+	private Attribute[] buildPublishAttributes(final long systemSetAt) {
 		final List<Attribute> attrs = new ArrayList<Attribute>(attributes_.size() + 5);
 		if (includeSystemAttributes_) {
-			attrs.add(new Attribute("sdk_name", SdkVersion.NAME, now));
-			attrs.add(new Attribute("sdk_version", SdkVersion.VERSION, now));
-			if (applicationName_ != null) {
-				attrs.add(new Attribute("application", applicationName_, now));
+			final Set<String> userNames = new HashSet<String>();
+			for (final Attribute attr : attributes_) {
+				userNames.add(attr.name);
 			}
-			if (environmentName_ != null) {
-				attrs.add(new Attribute("environment", environmentName_, now));
-			}
+			addSystemAttribute(attrs, userNames, "sdk_name", SdkVersion.NAME, systemSetAt);
+			addSystemAttribute(attrs, userNames, "sdk_version", SdkVersion.VERSION, systemSetAt);
+			addSystemAttribute(attrs, userNames, "application", applicationName_, systemSetAt);
+			addSystemAttribute(attrs, userNames, "environment", environmentName_, systemSetAt);
 			if (ClientConfig.isApplicationVersionSet(applicationVersion_)) {
-				attrs.add(new Attribute("app_version", applicationVersion_, now));
+				addSystemAttribute(attrs, userNames, "app_version", applicationVersion_, systemSetAt);
 			}
 		}
 		attrs.addAll(attributes_);
 		return attrs.isEmpty() ? null : attrs.toArray(new Attribute[0]);
+	}
+
+	private static void addSystemAttribute(final List<Attribute> attrs, final Set<String> userNames,
+			final String name, final Object value, final long setAt) {
+		if (value != null && !userNames.contains(name)) {
+			attrs.add(new Attribute(name, value, setAt));
+		}
 	}
 
 	private static void putIfNotNull(final Map<String, Object> map, final String key, final Object value) {

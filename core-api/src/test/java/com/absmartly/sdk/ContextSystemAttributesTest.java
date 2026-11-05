@@ -132,6 +132,80 @@ class ContextSystemAttributesTest extends TestUtils {
 		}, event.attributes);
 	}
 
+	static class MovingClock extends Clock {
+		long now;
+
+		MovingClock(long now) {
+			this.now = now;
+		}
+
+		@Override
+		public long millis() {
+			return now;
+		}
+	}
+
+	// The collector only applies attributes set at or before an event, so system attributes take the time of the
+	// earliest event in the publish, not the publish time.
+	@Test
+	void publishStampsSystemAttributesWithEarliestEvent() {
+		final MovingClock movingClock = new MovingClock(100);
+		final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
+				.setIncludeSystemAttributes(true);
+		final Context context = Context.create(movingClock, config, scheduler,
+				CompletableFuture.completedFuture(audienceData), dataProvider, eventHandler, null,
+				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), client("2.4.1"));
+		context.setAttribute("age", 21);
+		movingClock.now = 250;
+		context.track("goal", null);
+		movingClock.now = 200;
+		context.getTreatment("exp_test_ab");
+		movingClock.now = 300;
+
+		final PublishEvent event = publishAndCapture(context);
+		assertEquals(300, event.publishedAt);
+		assertArrayEquals(new Attribute[]{
+				new Attribute("sdk_name", "absmartly-java-sdk", 200),
+				new Attribute("sdk_version", SdkVersion.VERSION, 200),
+				new Attribute("application", "website", 200),
+				new Attribute("environment", "production", 200),
+				new Attribute("app_version", "2.4.1", 200),
+				new Attribute("age", 21, 100),
+		}, event.attributes);
+	}
+
+	// A system attribute the user set themselves is sent only as the user's value, whether the event is earlier
+	// than the publish or happens at publish time, so the collector cannot prefer the synthetic one.
+	@Test
+	void publishSkipsSystemAttributesTheUserSet() {
+		for (final long eventAt : new long[]{200, 300}) {
+			reset(eventHandler);
+			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
+
+			final MovingClock movingClock = new MovingClock(100);
+			final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
+					.setIncludeSystemAttributes(true);
+			final Context context = Context.create(movingClock, config, scheduler,
+					CompletableFuture.completedFuture(audienceData), dataProvider, eventHandler, null,
+					new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
+					client("2.4.1"));
+			context.setAttribute("environment", "staging");
+			context.setAttribute("app_version", "9.9.9");
+			movingClock.now = eventAt;
+			context.getTreatment("exp_test_ab");
+			movingClock.now = 300;
+
+			final PublishEvent event = publishAndCapture(context);
+			assertArrayEquals(new Attribute[]{
+					new Attribute("sdk_name", "absmartly-java-sdk", eventAt),
+					new Attribute("sdk_version", SdkVersion.VERSION, eventAt),
+					new Attribute("application", "website", eventAt),
+					new Attribute("environment", "staging", 100),
+					new Attribute("app_version", "9.9.9", 100),
+			}, event.attributes);
+		}
+	}
+
 	@Test
 	void noClientWarningIsLoggedOncePerJvm() {
 		final ContextConfig config = ContextConfig.create().setIncludeSystemAttributes(true);
