@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
 
+import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.ExperimentApplication;
@@ -194,6 +195,49 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 
 		assertNotNull(data);
 		assertEquals(expected, data);
+	}
+
+	@Test
+	void deserializeAssignmentRules() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp\",\"assignmentRules\":"
+				+ "\"{\\\"rules\\\":[{\\\"type\\\":\\\"assign\\\",\\\"variant\\\":1}]}\"},"
+				+ "{\"id\":2,\"name\":\"exp2\"}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertNotNull(data);
+		assertEquals("{\"rules\":[{\"type\":\"assign\",\"variant\":1}]}", data.experiments[0].assignmentRules);
+		assertNull(data.experiments[1].assignmentRules);
+
+		final Experiment copy = new Experiment();
+		copy.id = 1;
+		copy.name = "exp";
+		assertNotEquals(copy, data.experiments[0]);
+		copy.assignmentRules = data.experiments[0].assignmentRules;
+		assertEquals(copy, data.experiments[0]);
+		assertEquals(copy.hashCode(), data.experiments[0].hashCode());
+		assertTrue(copy.toString().contains("assignmentRules='{\"rules\""));
+	}
+
+	@Test
+	void malformedAssignmentRulesSkipOnlyThatExperiment() {
+		final String json = "{\"experiments\":["
+				+ "{\"id\":1,\"name\":\"exp_object\",\"assignmentRules\":{\"rules\":[]}},"
+				+ "{\"id\":2,\"name\":\"exp_array\",\"assignmentRules\":[1,{\"a\":[2]}]},"
+				+ "{\"id\":3,\"name\":\"exp_number\",\"assignmentRules\":5},"
+				+ "{\"id\":4,\"name\":\"exp_null\",\"assignmentRules\":null},"
+				+ "{\"id\":5,\"name\":\"exp_ok\",\"unitType\":\"session_id\"}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertNotNull(data);
+		assertEquals(5, data.experiments.length);
+		assertNull(data.experiments[0].assignmentRules);
+		assertNull(data.experiments[1].assignmentRules);
+		assertEquals("5", data.experiments[2].assignmentRules);
+		assertNull(data.experiments[3].assignmentRules);
+		assertEquals("exp_ok", data.experiments[4].name);
+		assertEquals("session_id", data.experiments[4].unitType);
 	}
 
 	@Test

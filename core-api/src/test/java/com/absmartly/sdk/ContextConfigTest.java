@@ -1,7 +1,9 @@
 package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import java.util.Map;
@@ -89,5 +91,11 @@ class ContextConfigTest extends TestUtils {
 		final ContextConfig config = ContextConfig.create()
 				.setRefreshInterval(999);
 		assertEquals(999, config.getRefreshInterval());
+	}
+
+	@Test
+	void setIncludeSystemAttributes() {
+		assertFalse(ContextConfig.create().getIncludeSystemAttributes());
+		assertTrue(ContextConfig.create().setIncludeSystemAttributes(true).getIncludeSystemAttributes());
 	}
 }
