@@ -1,7 +1,10 @@
 package com.absmartly.sdk.jsonexpr;
 
-import java.util.ArrayList;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Semantic version comparison used by the semver_* operators. Mirrors the JavaScript SDK: a leading "v"/"V" and build
@@ -15,17 +18,35 @@ import java.util.List;
 public final class SemverComparator {
 	private SemverComparator() {}
 
+	// Same format as ExprEvaluator.stringConvert, but with fixed symbols: under a default locale with a comma decimal
+	// separator, 2.5 would otherwise become "2,5", a single alphanumeric core part instead of "2" and "5".
+	private static final ThreadLocal<DecimalFormat> formatter = new ThreadLocal<DecimalFormat>() {
+		@Override
+		public DecimalFormat initialValue() {
+			final DecimalFormat formatter = new DecimalFormat("#", new DecimalFormatSymbols(Locale.ROOT));
+			formatter.setMaximumFractionDigits(15);
+			formatter.setMinimumFractionDigits(0);
+			formatter.setMinimumIntegerDigits(1);
+			formatter.setGroupingUsed(false);
+			return formatter;
+		}
+	};
+
 	/**
 	 * @return -1, 0 or 1, or null when either side is not a string, number or boolean, or has an empty version core
 	 *         after removing a leading v/V and build metadata (for example "", "v", "+build" or "-beta").
 	 */
 	public static Integer compare(final Evaluator evaluator, final Object lhs, final Object rhs) {
-		final String lhsStr = evaluator.stringConvert(lhs);
-		final String rhsStr = evaluator.stringConvert(rhs);
+		final String lhsStr = stringConvert(evaluator, lhs);
+		final String rhsStr = stringConvert(evaluator, rhs);
 		if (lhsStr == null || rhsStr == null || lhsStr.isEmpty() || rhsStr.isEmpty()) {
 			return null;
 		}
 		return compare(lhsStr, rhsStr);
+	}
+
+	private static String stringConvert(final Evaluator evaluator, final Object x) {
+		return x instanceof Number ? formatter.get().format(x) : evaluator.stringConvert(x);
 	}
 
 	public static Integer compare(final String lhs, final String rhs) {
@@ -53,8 +74,8 @@ public final class SemverComparator {
 			return -1;
 		}
 
-		final List<String> lPre = split(l.preRelease, '.');
-		final List<String> rPre = split(r.preRelease, '.');
+		final List<String> lPre = split(l.preRelease);
+		final List<String> rPre = split(r.preRelease);
 		final int preLen = Math.max(lPre.size(), rPre.size());
 		for (int i = 0; i < preLen; ++i) {
 			if (i >= lPre.size()) {
@@ -103,20 +124,12 @@ public final class SemverComparator {
 			return null;
 		}
 
-		return new Version(split(core, '.'), preRelease);
+		return new Version(split(core), preRelease);
 	}
 
-	private static List<String> split(final String s, final char sep) {
-		final List<String> parts = new ArrayList<String>();
-		int start = 0;
-		for (int i = 0; i < s.length(); ++i) {
-			if (s.charAt(i) == sep) {
-				parts.add(s.substring(start, i));
-				start = i + 1;
-			}
-		}
-		parts.add(s.substring(start));
-		return parts;
+	// A negative limit keeps empty components, so "1..0" has three parts.
+	private static List<String> split(final String s) {
+		return Arrays.asList(s.split("\\.", -1));
 	}
 
 	private static boolean isNumeric(final String s) {
