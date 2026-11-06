@@ -2310,14 +2310,11 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(0, context.getTreatment("exp_holdout_rules"));
 		assertEquals(1, context.getPendingCount());
 
-		// Once a rule matches, the unit is no longer held out and the rule's variant is exposed.
 		context.setAttribute("country", "US");
 		assertEquals(1, context.getTreatment("exp_holdout_rules"));
 		assertEquals(2, context.getPendingCount());
 	}
 
-	// A rule stops matching for a held-out unit: the rebuilt assignment is suppressed (variant 0),
-	// no second experiment exposure is queued, and the holdout exposure does not fire again.
 	@Test
 	void heldOutUnitIsSuppressedAgainWhenRuleStopsMatching() {
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_rules"), 11);
@@ -2343,8 +2340,6 @@ class ContextHoldoutTest extends TestUtils {
 		return experiment;
 	}
 
-	// Variables of a held-out experiment won by a rule come from the rule's variant, and both the
-	// experiment exposure (flagged ruleOverride) and the holdout exposure are queued.
 	@Test
 	void variableValueOnHeldOutRuleWonExperiment() {
 		final Experiment experiment = withVariables(coveredBy(newExperiment(1, "exp_holdout_rules"), 11), "color");
@@ -2358,7 +2353,6 @@ class ContextHoldoutTest extends TestUtils {
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		// Variable serving fires the applicable holdouts first, then the selected experiment.
 		final PublishEvent expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_rules_suppression", 0),
 				new Exposure(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
@@ -2367,8 +2361,6 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// Two experiments share a variable key. Variable resolution walks them in id order and serves the
-	// first that is assigned, overridden or rule-won; a suppressed experiment is only a fallback.
 	@Test
 	void sharedVariableKeyPrefersRuleWonOverSuppressedExperiment() {
 		final Experiment heldOut = withVariables(coveredBy(newExperiment(1, "exp_held_out"), 11), "color");
@@ -2388,7 +2380,7 @@ class ContextHoldoutTest extends TestUtils {
 	@Test
 	void sharedVariableKeyPrefersEarlierAssignedOverLaterRuleWonExperiment() {
 		final Experiment assigned = withVariables(newExperiment(1, "exp_assigned"), "color");
-		assigned.split = new double[]{1.0, 0.0}; // always variant 0 ("control")
+		assigned.split = new double[]{1.0, 0.0};
 		final Experiment ruleWon = withVariables(newExperiment(2, "exp_rule_won"), "color");
 		ruleWon.assignmentRules = US_RULE;
 		final Context context = createReadyContext(contextDataOf(new Experiment[0], assigned, ruleWon));

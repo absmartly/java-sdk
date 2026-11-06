@@ -23,7 +23,7 @@ import com.absmartly.sdk.json.PublishEvent;
 
 class ContextAssignmentRulesTest extends TestUtils {
 	static final String EXP = "exp_test_abc";
-	static final int NORMAL_VARIANT = 2; // exp_test_abc's randomized variant for the session below
+	static final int NORMAL_VARIANT = 2;
 	static final String SESSION_ID = "e791e240fcd3df7d238cfc285f475e8152fcc0ec";
 	static final String USER_ID = "123456789";
 
@@ -122,8 +122,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 	final ContextData strictData = data(rules(assign("US Users", US, "[]", 1)),
 			"{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}", true);
 
-	// One experiment's assignmentRules sent as an object instead of a string must not fail the
-	// context: that experiment's rules are skipped and every other experiment resolves normally.
 	@Test
 	void malformedAssignmentRulesInResponseOnlySkipThatExperiment() {
 		final java.nio.charset.Charset utf8 = java.nio.charset.Charset.forName("UTF-8");
@@ -143,8 +141,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.getTreatment("exp_test_ab"));
 	}
 
-	// A custom deserializer that throws on one experiment's rules only drops those rules: the context
-	// stays healthy and every other experiment resolves normally.
 	@Test
 	void throwingCustomDeserializerOnlySkipsThatExperimentsRules() {
 		final String throwing = rules(assign("US Internal Users", US, "[]", 1));
@@ -650,8 +646,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertTrue(exposures.get(0).ruleOverride);
 	}
 
-	// Exposed branch of ruleMatches: the rule outcome changes from "split without unit" to the
-	// same variant from an assign rule. The exposed assignment is kept and never re-exposed.
 	@Test
 	void exposedSplitWithoutUnitThenAssignOnSameVariantIsNotReExposed() {
 		final Context context = createWithoutSession(
@@ -670,8 +664,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(0, exposures.get(0).variant);
 	}
 
-	// A rule-won assignment is not "assigned"; once the experiment disappears it must not keep
-	// serving the rule's variant.
 	@Test
 	void ruleVariantDroppedWhenExperimentIsRemoved() {
 		final Context context = create(rulesData);
