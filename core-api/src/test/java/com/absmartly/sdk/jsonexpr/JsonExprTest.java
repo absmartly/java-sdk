@@ -114,15 +114,12 @@ class JsonExprTest extends TestUtils {
 				@Override
 				public void run() {
 					try {
-						// eq: a number equals its own string form.
 						assertTrue(jsonExpr.evaluateBooleanExpr(
 								binaryOp("eq", varFor("version"), valueFor("2.5")), vars));
 						assertFalse(jsonExpr.evaluateBooleanExpr(
 								binaryOp("eq", varFor("version"), valueFor("2,5")), vars));
-						// in: the string form is found in a string haystack.
 						assertTrue(jsonExpr.evaluateBooleanExpr(
 								binaryOp("in", valueFor("value is 2.5 here"), varFor("version")), vars));
-						// match: the string form matches a regex.
 						assertTrue(jsonExpr.evaluateBooleanExpr(
 								binaryOp("match", varFor("version"), valueFor("^2\\.5$")), vars));
 					} catch (Throwable t) {

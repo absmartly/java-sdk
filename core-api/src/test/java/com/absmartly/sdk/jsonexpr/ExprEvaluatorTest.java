@@ -177,7 +177,6 @@ class ExprEvaluatorTest extends TestUtils {
 						assertEquals("2147483647", evaluator.stringConvert(2147483647.0));
 						assertEquals("9007199254740991", evaluator.stringConvert(9007199254740991.0));
 						assertEquals("0.900719925474099", evaluator.stringConvert(0.9007199254740991));
-						// Numeric-to-string comparison behaves exactly as on en-US.
 						assertEquals(0, evaluator.compare("2.5", 2.5));
 					} catch (Throwable t) {
 						failure.set(t);
