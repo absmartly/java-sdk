@@ -20,7 +20,9 @@ public class ExprEvaluator implements Evaluator {
 			// Fixed Locale.ROOT symbols so numeric-to-string conversion is independent of the JVM default locale: under
 			// a comma-decimal locale (for example de_DE) 2.5 would otherwise become "2,5", changing eq/in/match
 			// behaviour. Locale.ROOT uses "." for the decimal point and matches en-US, so en-US output is unchanged.
-			final DecimalFormat formatter = new DecimalFormat("#", new DecimalFormatSymbols(Locale.ROOT));
+			final DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.ROOT);
+			symbols.setNaN("NaN");
+			final DecimalFormat formatter = new DecimalFormat("#", symbols);
 			formatter.setMaximumFractionDigits(15);
 			formatter.setMinimumFractionDigits(0);
 			formatter.setMinimumIntegerDigits(1);
