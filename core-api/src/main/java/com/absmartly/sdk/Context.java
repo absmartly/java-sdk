@@ -1131,7 +1131,8 @@ public class Context implements Closeable {
 		final boolean unitPinnedMissing = assignment.ruleMissingUnit && exposed;
 		final RuleResolution rule = resolveRule(experiment, unitPinnedMissing, false);
 		final Integer ruleVariant = rule != null ? rule.variant : null;
-		if (!Objects.equals(ruleVariant, assignment.ruleVariant)) {
+		final Integer cachedRuleVariant = assignment.ruleOverride ? (Integer) assignment.variant : null;
+		if (!Objects.equals(ruleVariant, cachedRuleVariant)) {
 			return false;
 		}
 
@@ -1156,7 +1157,6 @@ public class Context implements Closeable {
 			return null;
 		}
 		previous.ruleKey = fresh.ruleKey;
-		previous.ruleVariant = fresh.ruleVariant;
 		previous.ruleMissingUnit = fresh.ruleMissingUnit;
 		previous.attrsSeq = fresh.attrsSeq;
 		return previous;
@@ -1253,11 +1253,9 @@ public class Context implements Closeable {
 		// backend can exclude it from analysis.
 		boolean ruleOverride;
 		// The assignment rules JSON string this Assignment was resolved against (the environment is
-		// fixed for the context's lifetime, so it is not part of it), and the variant they resolved
-		// to (null when no rule applied), used by ruleMatches to detect staleness.
+		// fixed for the context's lifetime, so it is not part of it), used by ruleMatches to detect
+		// staleness.
 		String ruleKey;
-		Integer ruleVariant;
-		// A split rule matched while the unit was missing, so the full-on variant was used.
 		boolean ruleMissingUnit;
 		// Held out by a union of applicable holdouts: no exposure for this experiment, control
 		// values only. `holdouts` is the resolved applicable list (by id+iteration identity, see
@@ -1456,7 +1454,6 @@ public class Context implements Closeable {
 					final RuleResolution rule = resolveRule(experiment, false, true);
 					if (rule != null) {
 						assignment.ruleOverride = true;
-						assignment.ruleVariant = rule.variant;
 						assignment.ruleMissingUnit = rule.missingUnit;
 					}
 
