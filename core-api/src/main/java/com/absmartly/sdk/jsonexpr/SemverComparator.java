@@ -39,7 +39,7 @@ public final class SemverComparator {
 	public static Integer compare(final Evaluator evaluator, final Object lhs, final Object rhs) {
 		final String lhsStr = stringConvert(evaluator, lhs);
 		final String rhsStr = stringConvert(evaluator, rhs);
-		if (lhsStr == null || rhsStr == null || lhsStr.isEmpty() || rhsStr.isEmpty()) {
+		if (lhsStr == null || rhsStr == null) {
 			return null;
 		}
 		return compare(lhsStr, rhsStr);

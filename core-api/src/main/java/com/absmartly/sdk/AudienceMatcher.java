@@ -130,10 +130,6 @@ public class AudienceMatcher {
 		return null;
 	}
 
-	/**
-	 * Assignment rules parsed once from their JSON string. {@link #isInvalid()} is true when the string is not valid
-	 * JSON; a valid document without a {@code rules} list has no rules.
-	 */
 	static final class ParsedRules {
 		ParsedRules(final List<?> rules) {
 			rules_ = rules;
@@ -175,9 +171,6 @@ public class AudienceMatcher {
 	}
 
 	/**
-	 * Evaluates parsed assignment rules in order and returns the action of the first rule that matches, or null when
-	 * none does (or the rules are null or invalid).
-	 *
 	 * A rule is skipped when it is not an object, its type is unknown, an "assign" rule has a non-integer variant, a
 	 * "split" rule has invalid percentages, its environments are present but not a list, its non-empty environments
 	 * list does not contain {@code environmentName} (a null environment name never matches a non-empty list), its
