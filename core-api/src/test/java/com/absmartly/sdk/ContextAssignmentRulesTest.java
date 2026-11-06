@@ -537,7 +537,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.getPendingCount());
 	}
 
-
 	// With these seeds the unit hashes to ~0.748 with the experiment seed, so "70/10/20" lands on variant 1,
 	// while normal assignment gives variant 2.
 	@Test
