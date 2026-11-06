@@ -26,7 +26,6 @@ public class ClientConfig {
 
 	ClientConfig() {}
 
-	// Null, empty or whitespace-only means no version is set.
 	private static String normalizeApplicationVersion(final String applicationVersion) {
 		if (applicationVersion == null) {
 			return null;

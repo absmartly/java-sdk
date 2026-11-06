@@ -211,7 +211,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		final ContextConfig config = ContextConfig.create().setIncludeSystemAttributes(true);
 		createContext(config, null, audienceData);
 		assertTrue(Context.noClientWarningLogged());
-		// Further contexts without a client reuse the same guard rather than logging again.
 		createContext(config, null, audienceData);
 		assertTrue(Context.noClientWarningLogged());
 	}

@@ -2308,7 +2308,7 @@ class ContextHoldoutTest extends TestUtils {
 		context.setAttribute("country", "GB");
 
 		assertEquals(0, context.getTreatment("exp_holdout_rules"));
-		assertEquals(1, context.getPendingCount()); // the holdout exposure only
+		assertEquals(1, context.getPendingCount());
 
 		// Once a rule matches, the unit is no longer held out and the rule's variant is exposed.
 		context.setAttribute("country", "US");
@@ -2327,7 +2327,7 @@ class ContextHoldoutTest extends TestUtils {
 		context.setAttribute("country", "US");
 
 		assertEquals(1, context.getTreatment("exp_holdout_rules"));
-		assertEquals(2, context.getPendingCount()); // experiment (ruleOverride) + holdout
+		assertEquals(2, context.getPendingCount());
 
 		context.setAttribute("country", "GB");
 		assertEquals(0, context.getTreatment("exp_holdout_rules"));
@@ -2379,10 +2379,10 @@ class ContextHoldoutTest extends TestUtils {
 				ruleWon));
 
 		context.setAttribute("country", "GB");
-		assertEquals("control", context.peekVariableValue("color", "default")); // suppressed fallback
+		assertEquals("control", context.peekVariableValue("color", "default"));
 
 		context.setAttribute("country", "US");
-		assertEquals("treatment", context.peekVariableValue("color", "default")); // rule-won experiment 2
+		assertEquals("treatment", context.peekVariableValue("color", "default"));
 	}
 
 	@Test

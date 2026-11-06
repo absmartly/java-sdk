@@ -21,7 +21,6 @@ import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.Exposure;
 import com.absmartly.sdk.json.PublishEvent;
 
-// Ported from the JavaScript SDK's "rules evaluation" context tests (src/__tests__/context.test.js).
 class ContextAssignmentRulesTest extends TestUtils {
 	static final String EXP = "exp_test_abc";
 	static final int NORMAL_VARIANT = 2; // exp_test_abc's randomized variant for the session below
@@ -538,7 +537,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.getPendingCount());
 	}
 
-	// --- split rules ---
 
 	// With these seeds the unit hashes to ~0.748 with the experiment seed, so "70/10/20" lands on variant 1,
 	// while normal assignment gives variant 2.
