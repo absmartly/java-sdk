@@ -3,7 +3,9 @@ package com.absmartly.sdk.jsonexpr;
 import static java.util.Collections.EMPTY_MAP;
 
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -15,7 +17,12 @@ public class ExprEvaluator implements Evaluator {
 	final static ThreadLocal<DecimalFormat> formatter = new ThreadLocal<DecimalFormat>() {
 		@Override
 		public DecimalFormat initialValue() {
-			final DecimalFormat formatter = new DecimalFormat("#");
+			// Fixed Locale.ROOT symbols so numeric-to-string conversion is independent of the JVM default locale: under
+			// a comma-decimal locale (for example de_DE) 2.5 would otherwise become "2,5", changing eq/in/match
+			// behaviour. Locale.ROOT uses "." for the decimal point and matches en-US, so en-US output is unchanged.
+			final DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.ROOT);
+			symbols.setNaN("NaN");
+			final DecimalFormat formatter = new DecimalFormat("#", symbols);
 			formatter.setMaximumFractionDigits(15);
 			formatter.setMinimumFractionDigits(0);
 			formatter.setMinimumIntegerDigits(1);
