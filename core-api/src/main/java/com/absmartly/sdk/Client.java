@@ -16,6 +16,7 @@ import javax.annotation.Nonnull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
@@ -80,8 +81,16 @@ public class Client implements Closeable {
 		headers_.put("X-API-Key", apiKey);
 		headers_.put("X-Application", application);
 		headers_.put("X-Environment", environment);
-		headers_.put("X-Application-Version", Long.toString(0));
-		headers_.put("X-Agent", "absmartly-java-sdk");
+		final String configuredVersion = config.getApplicationVersion();
+		final String applicationVersion = (configuredVersion != null) ? configuredVersion : "0";
+		// The collector parses X-Application-Version as a whole number and rejects the request otherwise, so a
+		// non-numeric version such as "2.4.1" is sent as "0". The full version is still used for app_version.
+		headers_.put("X-Application-Version", applicationVersionHeader(applicationVersion));
+		headers_.put("X-Agent", SdkVersion.AGENT);
+
+		application_ = application;
+		applicationVersion_ = applicationVersion;
+		environment_ = environment;
 
 		query_ = new HashMap<String, String>(2);
 		query_.put("application", application);
@@ -171,12 +180,59 @@ public class Client implements Closeable {
 		return publishFuture;
 	}
 
+	public String getApplication() {
+		return application_;
+	}
+
+	static String applicationVersionHeader(final String applicationVersion) {
+		if (applicationVersion.length() > 18) {
+			return "0";
+		}
+		for (int i = 0; i < applicationVersion.length(); ++i) {
+			final char c = applicationVersion.charAt(i);
+			if (c < '0' || c > '9') {
+				return "0";
+			}
+		}
+		return applicationVersion;
+	}
+
+	/**
+	 * The configured application version, or "0" when none is set. The X-Application-Version header carries this value
+	 * only when it is a whole number; otherwise the header is "0".
+	 */
+	public String getApplicationVersion() {
+		return applicationVersion_;
+	}
+
+	public String getEnvironment() {
+		return environment_;
+	}
+
+	/** The SDK name without version, e.g. "absmartly-java-sdk". */
+	public String getAgentName() {
+		return SdkVersion.NAME;
+	}
+
+	/** The SDK version, e.g. "1.7.0". */
+	public String getAgentVersion() {
+		return SdkVersion.VERSION;
+	}
+
+	/** The value sent as the X-Agent header: "&lt;name&gt;/&lt;version&gt;", e.g. "absmartly-java-sdk/1.7.0". */
+	public String getAgent() {
+		return SdkVersion.AGENT;
+	}
+
 	@Override
 	public void close() throws IOException {
 		httpClient_.close();
 	}
 
 	private final String url_;
+	private final String application_;
+	private final String applicationVersion_;
+	private final String environment_;
 	private final Map<String, String> query_;
 	private final Map<String, String> headers_;
 	private final HTTPClient httpClient_;

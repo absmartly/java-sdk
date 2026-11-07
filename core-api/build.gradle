@@ -35,6 +35,7 @@ def jacocoExcludes = [
 	"com/absmartly/sdk/json/**/*",
 	"com/absmartly/sdk/deprecated/**/*",
 	"com/absmartly/sdk/java/**/*",
+	"com/absmartly/sdk/internal/SdkVersion*",
 ]
 
 jacocoTestReport {
@@ -85,3 +86,31 @@ test {
 }
 
 publishToSonatype.dependsOn check
+
+
+// Generates SdkVersion from the root project's VERSION so the X-Agent header, the sdk_version
+// system attribute and the published artifact share one source of truth.
+def generatedVersionDir = layout.buildDirectory.dir("generated/sources/sdkVersion/java")
+
+def generateSdkVersion = tasks.register("generateSdkVersion") {
+	def version = rootProject.ext.VERSION
+	def outputDir = generatedVersionDir
+	inputs.property("version", version)
+	outputs.dir(outputDir)
+	doLast {
+		def file = outputDir.get().file("com/absmartly/sdk/internal/SdkVersion.java").asFile
+		file.parentFile.mkdirs()
+		file.text = """package com.absmartly.sdk.internal;
+
+public final class SdkVersion {
+	public static final String NAME = "absmartly-java-sdk";
+	public static final String VERSION = "${version}";
+	public static final String AGENT = NAME + "/" + VERSION;
+
+	private SdkVersion() {}
+}
+"""
+	}
+}
+
+sourceSets.main.java.srcDir(generateSdkVersion)

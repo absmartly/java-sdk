@@ -167,6 +167,24 @@ public class ContextConfig {
 		return this.refreshInterval_;
 	}
 
+	/**
+	 * When enabled, the context exposes application, environment and app_version as variables to audience and
+	 * assignment-rule conditions (user attributes with the same name take precedence), and prepends sdk_name,
+	 * sdk_version, application, environment and app_version to the attributes of every publish. Disabled by
+	 * default.
+	 *
+	 * The application, environment and application version come from the configured client; a context without one
+	 * includes only sdk_name and sdk_version. app_version is left out when no application version is set or it is "0".
+	 */
+	public ContextConfig setIncludeSystemAttributes(boolean includeSystemAttributes) {
+		this.includeSystemAttributes_ = includeSystemAttributes;
+		return this;
+	}
+
+	public boolean getIncludeSystemAttributes() {
+		return this.includeSystemAttributes_;
+	}
+
 	private Map<String, Object> units_;
 	private Map<String, Object> attributes_;
 	private Map<String, Integer> overrides_;
@@ -176,4 +194,5 @@ public class ContextConfig {
 
 	private long publishDelay_ = 100;
 	private long refreshInterval_ = 0;
+	private boolean includeSystemAttributes_ = false;
 }

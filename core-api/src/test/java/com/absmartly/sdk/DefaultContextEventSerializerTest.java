@@ -54,7 +54,7 @@ class DefaultContextEventSerializerTest extends TestUtils {
 		final byte[] bytes = ser.serialize(event);
 
 		assertEquals(
-				"{\"hashed\":true,\"units\":[{\"type\":\"session_id\",\"uid\":\"pAE3a1i5Drs5mKRNq56adA\"},{\"type\":\"user_id\",\"uid\":\"JfnnlDI7RTiF9RgfG2JNCw\"}],\"publishedAt\":123456789,\"exposures\":[{\"id\":1,\"name\":\"exp_test_ab\",\"unit\":\"session_id\",\"variant\":1,\"exposedAt\":123470000,\"assigned\":true,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,\"audienceMismatch\":true}],\"goals\":[{\"name\":\"goal1\",\"achievedAt\":123456000,\"properties\":{\"amount\":6,\"nested\":{\"value\":5},\"nested_arr\":{\"nested\":[1,2,\"test\"]},\"tries\":1,\"value\":5.0}},{\"name\":\"goal2\",\"achievedAt\":123456789}],\"attributes\":[{\"name\":\"attr1\",\"value\":\"value1\",\"setAt\":123456000},{\"name\":\"attr2\",\"value\":\"value2\",\"setAt\":123456789},{\"name\":\"attr2\",\"setAt\":123450000},{\"name\":\"attr3\",\"value\":{\"nested\":{\"value\":5}},\"setAt\":123470000},{\"name\":\"attr4\",\"value\":{\"nested\":[1,2,\"test\"]},\"setAt\":123480000}]}",
+				"{\"hashed\":true,\"units\":[{\"type\":\"session_id\",\"uid\":\"pAE3a1i5Drs5mKRNq56adA\"},{\"type\":\"user_id\",\"uid\":\"JfnnlDI7RTiF9RgfG2JNCw\"}],\"publishedAt\":123456789,\"exposures\":[{\"id\":1,\"name\":\"exp_test_ab\",\"unit\":\"session_id\",\"variant\":1,\"exposedAt\":123470000,\"assigned\":true,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,\"audienceMismatch\":true,\"ruleOverride\":false}],\"goals\":[{\"name\":\"goal1\",\"achievedAt\":123456000,\"properties\":{\"amount\":6,\"nested\":{\"value\":5},\"nested_arr\":{\"nested\":[1,2,\"test\"]},\"tries\":1,\"value\":5.0}},{\"name\":\"goal2\",\"achievedAt\":123456789}],\"attributes\":[{\"name\":\"attr1\",\"value\":\"value1\",\"setAt\":123456000},{\"name\":\"attr2\",\"value\":\"value2\",\"setAt\":123456789},{\"name\":\"attr2\",\"setAt\":123450000},{\"name\":\"attr3\",\"value\":{\"nested\":{\"value\":5}},\"setAt\":123470000},{\"name\":\"attr4\",\"value\":{\"nested\":[1,2,\"test\"]},\"setAt\":123480000}]}",
 				new String(bytes, StandardCharsets.UTF_8));
 	}
 
@@ -69,5 +69,26 @@ class DefaultContextEventSerializerTest extends TestUtils {
 			final byte[] bytes = ser.serialize(event);
 			assertNull(bytes);
 		});
+	}
+
+	@Test
+	void serializeRuleOverride() {
+		final PublishEvent event = new PublishEvent();
+		event.hashed = true;
+		event.publishedAt = 1L;
+		event.exposures = new Exposure[]{
+				new Exposure(1, "exp", "session_id", 2, 3L, false, true, false, false, false, false, true),
+		};
+
+		final String json = new String(new DefaultContextEventSerializer().serialize(event), StandardCharsets.UTF_8);
+		assertTrue(json.contains("\"ruleOverride\":true"), json);
+
+		final Exposure legacy = new Exposure(1, "exp", "session_id", 2, 3L, false, true, false, false, false, false);
+		final Exposure withRule = new Exposure(1, "exp", "session_id", 2, 3L, false, true, false, false, false, false,
+				true);
+		assertFalse(legacy.ruleOverride);
+		assertNotEquals(legacy, withRule);
+		assertNotEquals(legacy.hashCode(), withRule.hashCode());
+		assertTrue(withRule.toString().contains("ruleOverride=true"));
 	}
 }

@@ -4,6 +4,7 @@ spotless {
 	// the rootProject and lib projects don't have any java
 	if (project != rootProject) {
 		java {
+			target "src/**/*.java"
 			importOrder "java", "javax", "org", "com", "com.absmartly"
 			eclipse().configFile rootProject.file("gradle/spotless.eclipseformat.xml")
 			trimTrailingWhitespace()

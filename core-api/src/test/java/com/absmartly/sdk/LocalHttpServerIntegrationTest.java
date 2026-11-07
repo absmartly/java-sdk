@@ -21,6 +21,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import com.absmartly.sdk.internal.SdkVersion;
+
 /**
  * Hermetic end-to-end integration test that drives the public SDK API against a real local
  * HTTP server (JDK built-in {@link HttpServer}) on an ephemeral port. This exercises the
@@ -183,8 +185,7 @@ class LocalHttpServerIntegrationTest {
 			assertEquals(application, put.headers.get("x-application"));
 			assertEquals(environment, put.headers.get("x-environment"));
 			assertEquals("0", put.headers.get("x-application-version"));
-			assertNotNull(put.headers.get("x-agent"), "X-Agent must be present");
-			assertFalse(put.headers.get("x-agent").isEmpty(), "X-Agent must be non-empty");
+			assertEquals("absmartly-java-sdk/" + SdkVersion.VERSION, put.headers.get("x-agent"));
 			assertTrue(put.headers.containsKey("content-type"), "Content-Type must be present");
 			assertTrue(put.headers.get("content-type").contains("application/json"),
 					"Content-Type must be application/json, was: " + put.headers.get("content-type"));

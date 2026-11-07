@@ -89,6 +89,7 @@ public class ABSmartly implements Closeable {
 		variableParser_ = config.getVariableParser();
 		audienceDeserializer_ = config.getAudienceDeserializer();
 		scheduler_ = config.getScheduler();
+		configClient_ = config.getClient();
 		ownsScheduler_ = scheduler_ == null;
 
 		if ((contextDataProvider_ == null) || (contextEventHandler_ == null)) {
@@ -123,14 +124,14 @@ public class ABSmartly implements Closeable {
 		checkNotClosed();
 		return Context.create(Clock.systemUTC(), config, scheduler_, contextDataProvider_.getContextData(),
 				contextDataProvider_, contextEventHandler_, contextEventLogger_, variableParser_,
-				new AudienceMatcher(audienceDeserializer_));
+				new AudienceMatcher(audienceDeserializer_), configClient_);
 	}
 
 	public Context createContextWith(@Nonnull ContextConfig config, ContextData data) {
 		checkNotClosed();
 		return Context.create(Clock.systemUTC(), config, scheduler_, CompletableFuture.completedFuture(data),
 				contextDataProvider_, contextEventHandler_, contextEventLogger_, variableParser_,
-				new AudienceMatcher(audienceDeserializer_));
+				new AudienceMatcher(audienceDeserializer_), configClient_);
 	}
 
 	public CompletableFuture<ContextData> getContextData() {
@@ -173,6 +174,9 @@ public class ABSmartly implements Closeable {
 
 	private volatile boolean closed_;
 	private Client client_;
+	// The configured client even when custom data provider and event handler make it unused for I/O. Read for the
+	// environment and system attributes only; never closed unless it is also client_.
+	private final Client configClient_;
 	private ContextDataProvider contextDataProvider_;
 	private ContextEventHandler contextEventHandler_;
 	private ContextEventLogger contextEventLogger_;
