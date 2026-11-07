@@ -4,6 +4,7 @@ import java.util.Properties;
 import java.util.concurrent.Executor;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 public class ClientConfig {
 	public static ClientConfig create() {
@@ -19,10 +20,27 @@ public class ClientConfig {
 				.setEndpoint(properties.getProperty(prefix + "endpoint"))
 				.setEnvironment(properties.getProperty(prefix + "environment"))
 				.setApplication(properties.getProperty(prefix + "application"))
-				.setAPIKey(properties.getProperty(prefix + "apikey"));
+				.setAPIKey(properties.getProperty(prefix + "apikey"))
+				.setApplicationVersion(properties.getProperty(prefix + "application_version"));
 	}
 
 	ClientConfig() {}
+
+	private static String normalizeApplicationVersion(final String applicationVersion) {
+		if (applicationVersion == null) {
+			return null;
+		}
+		final String trimmed = applicationVersion.trim();
+		return trimmed.isEmpty() ? null : trimmed;
+	}
+
+	/**
+	 * Whether an application version counts as set: not null and not "0". "0" is what the X-Application-Version header
+	 * carries when no version is configured, so it is treated as unset for the app_version system attribute.
+	 */
+	static boolean isApplicationVersionSet(final String applicationVersion) {
+		return applicationVersion != null && !applicationVersion.trim().isEmpty() && !"0".equals(applicationVersion);
+	}
 
 	public String getEndpoint() {
 		return endpoint_;
@@ -60,6 +78,30 @@ public class ClientConfig {
 		return this;
 	}
 
+	public String getApplicationVersion() {
+		return applicationVersion_;
+	}
+
+	/**
+	 * Sets the application version, sent as the X-Application-Version header when it is a whole number (the collector
+	 * rejects anything else, so other versions are sent as "0") and, when system attributes are enabled, in full as the
+	 * app_version attribute, for example a semantic version such as "2.4.1". Surrounding whitespace is removed;
+	 * a null, empty or whitespace-only value means no version is set, which is sent as "0". A version of "0" is
+	 * treated as unset, so app_version is then left out.
+	 */
+	public ClientConfig setApplicationVersion(@Nullable final String applicationVersion) {
+		applicationVersion_ = normalizeApplicationVersion(applicationVersion);
+		return this;
+	}
+
+	/**
+	 * Sets a numeric application version. 0 means no version is set: it is sent as "0" and app_version is left out.
+	 */
+	public ClientConfig setApplicationVersion(final long applicationVersion) {
+		applicationVersion_ = Long.toString(applicationVersion);
+		return this;
+	}
+
 	public ContextDataDeserializer getContextDataDeserializer() {
 		return deserializer_;
 	}
@@ -91,6 +133,7 @@ public class ClientConfig {
 	private String apiKey_;
 	private String environment_;
 	private String application_;
+	private String applicationVersion_;
 	private ContextDataDeserializer deserializer_;
 	private ContextEventSerializer serializer_;
 	private Executor executor_;

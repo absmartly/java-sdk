@@ -9,7 +9,7 @@ public class JsonExpr {
 	private static final Map<String, Operator> operators;
 
 	static {
-		operators = new HashMap<String, Operator>(16);
+		operators = new HashMap<String, Operator>(32);
 
 		operators.put("and", new AndCombinator());
 
@@ -36,6 +36,16 @@ public class JsonExpr {
 		operators.put("lt", new LessThanOperator());
 
 		operators.put("lte", new LessThanOrEqualOperator());
+
+		operators.put("semver_eq", new SemverEqualsOperator());
+
+		operators.put("semver_gt", new SemverGreaterThanOperator());
+
+		operators.put("semver_gte", new SemverGreaterThanOrEqualOperator());
+
+		operators.put("semver_lt", new SemverLessThanOperator());
+
+		operators.put("semver_lte", new SemverLessThanOrEqualOperator());
 	}
 
 	public boolean evaluateBooleanExpr(Object expr, Map<String, Object> vars) {

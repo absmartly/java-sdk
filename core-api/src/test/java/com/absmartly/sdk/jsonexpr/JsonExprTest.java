@@ -102,6 +102,22 @@ class JsonExprTest extends TestUtils {
 	}
 
 	@Test
+	void testSemverOperators() {
+		final Map<String, Object> vars = mapOf("app_version", "2.4.1-beta.2");
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_gte", varFor("app_version"), valueFor("2.4.0")),
+				vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_lt", varFor("app_version"), valueFor("2.4.1")),
+				vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_gt", varFor("app_version"), valueFor("2.4.1-beta.1")),
+				vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_lte", varFor("app_version"),
+				valueFor("v2.4.1-beta.2+sha")), vars));
+		assertTrue(jsonExpr.evaluateBooleanExpr(binaryOp("semver_eq", varFor("app_version"), valueFor("2.4.1-beta.2")),
+				vars));
+		assertFalse(jsonExpr.evaluateBooleanExpr(binaryOp("semver_eq", varFor("missing"), valueFor("2.4.1")), vars));
+	}
+
+	@Test
 	void testNumericOperandIsLocaleIndependent() throws InterruptedException {
 		final Map<String, Object> vars = mapOf("version", 2.5);
 		final AtomicReference<Throwable> failure = new AtomicReference<Throwable>();
@@ -122,6 +138,39 @@ class JsonExprTest extends TestUtils {
 								binaryOp("in", valueFor("value is 2.5 here"), varFor("version")), vars));
 						assertTrue(jsonExpr.evaluateBooleanExpr(
 								binaryOp("match", varFor("version"), valueFor("^2\\.5$")), vars));
+					} catch (Throwable t) {
+						failure.set(t);
+					}
+				}
+			});
+			thread.start();
+			thread.join();
+		} finally {
+			Locale.setDefault(previous);
+		}
+		if (failure.get() != null) {
+			throw new AssertionError(failure.get());
+		}
+	}
+
+	@Test
+	void testSemverNumericOperandIsLocaleIndependent() throws InterruptedException {
+		final Map<String, Object> vars = mapOf("version", 2.5);
+		final AtomicReference<Throwable> failure = new AtomicReference<Throwable>();
+		final Locale previous = Locale.getDefault();
+		Locale.setDefault(Locale.GERMANY);
+		try {
+			// A new thread, so the evaluator's thread-local number formats are created under the German locale.
+			final Thread thread = new Thread(new Runnable() {
+				@Override
+				public void run() {
+					try {
+						assertTrue(jsonExpr.evaluateBooleanExpr(
+								binaryOp("semver_eq", varFor("version"), valueFor("2.5.0")), vars));
+						assertFalse(jsonExpr.evaluateBooleanExpr(
+								binaryOp("semver_gt", varFor("version"), valueFor("2.5.0")), vars));
+						assertTrue(jsonExpr.evaluateBooleanExpr(
+								binaryOp("semver_lt", varFor("version"), valueFor("2.10")), vars));
 					} catch (Throwable t) {
 						failure.set(t);
 					}

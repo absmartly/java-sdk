@@ -14,6 +14,7 @@ import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
@@ -91,7 +92,7 @@ class ClientTest extends TestUtils {
 					"X-Application", "website",
 					"X-Environment", "dev",
 					"X-Application-Version", "0",
-					"X-Agent", "absmartly-java-sdk");
+					"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 
 			when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
 					.thenReturn(getByteResponse(dataBytes));
@@ -247,7 +248,7 @@ class ClientTest extends TestUtils {
 				"X-Application", "website",
 				"X-Environment", "dev",
 				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk");
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 
 		final PublishEvent event = new PublishEvent();
 		final byte[] bytes = new byte[]{0};
@@ -281,7 +282,7 @@ class ClientTest extends TestUtils {
 				"X-Application", "website",
 				"X-Environment", "dev",
 				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk");
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 
 		final PublishEvent event = new PublishEvent();
 		final byte[] bytes = new byte[]{0};
@@ -317,7 +318,7 @@ class ClientTest extends TestUtils {
 				"X-Application", "website",
 				"X-Environment", "dev",
 				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk");
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 
 		final PublishEvent event = new PublishEvent();
 		final byte[] bytes = new byte[]{0};
@@ -335,5 +336,117 @@ class ClientTest extends TestUtils {
 		verify(ser, Mockito.timeout(5000).times(1)).serialize(event);
 		verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null, expectedHeaders,
 				bytes);
+	}
+
+	@Test
+	void publishSendsVersionedAgentAndApplicationVersion() {
+		final HTTPClient httpClient = mock(HTTPClient.class);
+		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
+		final Client client = Client.create(ClientConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setApplicationVersion("2.4.1")
+				.setEnvironment("dev")
+				.setContextEventSerializer(ser), httpClient);
+
+		final Map<String, String> expectedHeaders = mapOf(
+				"X-API-Key", "test-api-key",
+				"X-Application", "website",
+				"X-Environment", "dev",
+				"X-Application-Version", "0",
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
+
+		final PublishEvent event = new PublishEvent();
+		final byte[] bytes = new byte[]{0};
+
+		when(ser.serialize(event)).thenReturn(bytes);
+		when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, bytes))
+				.thenReturn(getByteResponse(new byte[]{0}));
+
+		client.publish(event).join();
+
+		verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null, expectedHeaders,
+				bytes);
+	}
+
+	@Test
+	void agentAndApplicationGetters() {
+		final Client client = Client.create(ClientConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setApplicationVersion(1004)
+				.setEnvironment("dev"), mock(HTTPClient.class));
+
+		assertEquals("absmartly-java-sdk", client.getAgentName());
+		assertEquals(SdkVersion.VERSION, client.getAgentVersion());
+		assertEquals("absmartly-java-sdk/" + SdkVersion.VERSION, client.getAgent());
+		assertTrue(client.getAgentVersion().matches("\\d+\\.\\d+\\.\\d+.*"));
+		assertEquals("website", client.getApplication());
+		assertEquals("1004", client.getApplicationVersion());
+		assertEquals("dev", client.getEnvironment());
+	}
+
+	@Test
+	void emptyApplicationVersionSendsZero() {
+		final HTTPClient httpClient = mock(HTTPClient.class);
+		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
+		final Client client = Client.create(ClientConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setApplicationVersion("")
+				.setEnvironment("dev")
+				.setContextEventSerializer(ser), httpClient);
+
+		final PublishEvent event = new PublishEvent();
+		final byte[] bytes = new byte[]{0};
+		when(ser.serialize(event)).thenReturn(bytes);
+		when(httpClient.put(any(), any(), any(), any())).thenReturn(getByteResponse(new byte[]{0}));
+
+		client.publish(event).join();
+
+		final org.mockito.ArgumentCaptor<Map<String, String>> headers = org.mockito.ArgumentCaptor.forClass(Map.class);
+		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), headers.capture(), any());
+		assertEquals("0", headers.getValue().get("X-Application-Version"));
+		assertEquals("0", client.getApplicationVersion());
+	}
+
+	@Test
+	void applicationVersionHeaderIsSentOnlyWhenNumeric() {
+		// The collector parses X-Application-Version as a Long and rejects the request otherwise.
+		assertEquals("1004", Client.applicationVersionHeader("1004"));
+		assertEquals("0", Client.applicationVersionHeader("0"));
+		assertEquals("0", Client.applicationVersionHeader("2.4.1"));
+		assertEquals("0", Client.applicationVersionHeader("1.0"));
+		assertEquals("0", Client.applicationVersionHeader("abc"));
+		assertEquals("0", Client.applicationVersionHeader("-1"));
+		assertEquals("0", Client.applicationVersionHeader("99999999999999999999"));
+		assertEquals("999999999999999999", Client.applicationVersionHeader("999999999999999999"));
+	}
+
+	@Test
+	void semverApplicationVersionKeepsFullValueButSendsZeroHeader() {
+		final HTTPClient httpClient = mock(HTTPClient.class);
+		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
+		final Client client = Client.create(ClientConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setApplicationVersion("2.4.1")
+				.setEnvironment("dev")
+				.setContextEventSerializer(ser), httpClient);
+
+		final PublishEvent event = new PublishEvent();
+		when(ser.serialize(event)).thenReturn(new byte[]{0});
+		when(httpClient.put(any(), any(), any(), any())).thenReturn(getByteResponse(new byte[]{0}));
+
+		client.publish(event).join();
+
+		final org.mockito.ArgumentCaptor<Map<String, String>> headers = org.mockito.ArgumentCaptor.forClass(Map.class);
+		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), headers.capture(), any());
+		assertEquals("0", headers.getValue().get("X-Application-Version"));
+		assertEquals("2.4.1", client.getApplicationVersion());
 	}
 }
