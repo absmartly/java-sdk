@@ -1767,6 +1767,10 @@ public class Context implements Closeable {
 	// period and a switchback exposure's exposedAt all agree.
 	private Assignment getAssignment(final String experimentName, final long now) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		// The cached slot the read path found stale (null on a miss). The write path does not
+		// recheck that same object: a concurrent install is always a different object, while a
+		// refresh between the two locks can only leave the rejected one staler.
+		final Assignment rejected;
 		try {
 			readLock.lock();
 
@@ -1780,6 +1784,7 @@ public class Context implements Closeable {
 							overrides_.get(experimentName), experiment)) {
 				return assignment;
 			}
+			rejected = assignment;
 		} finally {
 			readLock.unlock();
 		}
@@ -1802,7 +1807,7 @@ public class Context implements Closeable {
 			// Recheck: a concurrent caller may have installed this key (e.g. the first call in a
 			// new switchback period) between the two locks; replacing it would reset its exposure.
 			final Assignment cached = assignmentCache_.get(cacheKey);
-			if ((cached != null) && isAssignmentCurrent(cached, custom, override, experiment)) {
+			if ((cached != null) && (cached != rejected) && isAssignmentCurrent(cached, custom, override, experiment)) {
 				return cached;
 			}
 

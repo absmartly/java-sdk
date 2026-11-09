@@ -1141,6 +1141,48 @@ class ContextSwitchbackTest {
 		assertEquals(4, context.getPendingCount());
 	}
 
+	// Counts assignment-rule evaluations.
+	static final class CountingAudienceMatcher extends AudienceMatcher {
+		final AtomicInteger ruleEvaluations = new AtomicInteger();
+
+		CountingAudienceMatcher() {
+			super(new DefaultAudienceDeserializer());
+		}
+
+		@Override
+		RuleAction evaluateRules(ParsedRules parsed, String environmentName, Map<String, Object> attributes,
+				String experimentName) {
+			ruleEvaluations.incrementAndGet();
+			return super.evaluateRules(parsed, environmentName, attributes, experimentName);
+		}
+	}
+
+	static final String ASSIGN_VARIANT_1_TO_US = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],"
+			+ "\"conditions\":{\"and\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"US\"}]}]},"
+			+ "\"variant\":1}]}";
+
+	// A unit experiment whose rule outcome changes after setAttribute: the read path evaluates the
+	// rules and rejects the slot, the write path does not re-evaluate that same slot, and the rebuild
+	// evaluates them once more. Two evaluations, not three.
+	@Test
+	void staleRuleTransitionEvaluatesTheRulesTwice() {
+		final Experiment unit = switchback(2, HOUR);
+		unit.randomizationType = "unit";
+		unit.assignmentRules = ASSIGN_VARIANT_1_TO_US;
+		final CountingAudienceMatcher matcher = new CountingAudienceMatcher();
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID), dataOf(unit), matcher);
+		context.peekTreatment("exp_sb");
+		assertEquals(1, matcher.ruleEvaluations.get());
+
+		context.setAttribute("country", "US");
+		matcher.ruleEvaluations.set(0);
+		assertEquals(1, context.peekTreatment("exp_sb"));
+		assertEquals(2, matcher.ruleEvaluations.get());
+		// Current again: no further evaluation.
+		assertEquals(1, context.peekTreatment("exp_sb"));
+		assertEquals(2, matcher.ruleEvaluations.get());
+	}
+
 	// An override on a switchback with no serving unit is exposed under the declared unitType when the
 	// cluster map is missing or unreadable (the legacy path's unit), never under null or a cluster
 	// map type.
