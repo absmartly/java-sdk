@@ -1,5 +1,7 @@
 package com.absmartly.sdk;
 
+import static com.absmartly.sdk.ContextSwitchbackClusterRuleTest.attrs;
+import static com.absmartly.sdk.ContextSwitchbackTest.clusters;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,8 +31,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.absmartly.sdk.ContextSwitchbackClusterRuleTest.ExposureCapture;
+import com.absmartly.sdk.ContextSwitchbackTest.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
-import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.ExperimentApplication;
@@ -59,34 +62,6 @@ class SwitchbackServerParityTest {
 	static final String USER = "user_id";
 
 	static final ObjectMapper MAPPER = new ObjectMapper();
-
-	static final class FixedClock extends Clock {
-		long now = ANCHOR;
-
-		@Override
-		public long millis() {
-			return now;
-		}
-	}
-
-	static final class ExposureCapture implements ContextEventLogger {
-		final List<Exposure> exposures = new ArrayList<Exposure>();
-
-		@Override
-		public void handleEvent(Context context, EventType type, Object data) {
-			if (type == EventType.Exposure) {
-				exposures.add((Exposure) data);
-			}
-		}
-	}
-
-	static Map<String, String> clusters(String... entries) {
-		final Map<String, String> map = new LinkedHashMap<String, String>();
-		for (int i = 0; i < entries.length; i += 2) {
-			map.put(entries[i], entries[i + 1]);
-		}
-		return map;
-	}
 
 	static Experiment experiment(long seed, int armCount, Map<String, String> clusters, String[] values) {
 		final Experiment experiment = new Experiment();
@@ -125,7 +100,7 @@ class SwitchbackServerParityTest {
 
 	// Serves PERIODS periods with getTreatment, one call per period.
 	static Served serve(Experiment experiment, Map<String, ?> units, Map<String, Object> attributes) {
-		final FixedClock clock = new FixedClock();
+		final MutableClock clock = new MutableClock(ANCHOR);
 		final ExposureCapture capture = new ExposureCapture();
 		final ContextConfig config = ContextConfig.create();
 		config.setUnits(units);
@@ -175,14 +150,6 @@ class SwitchbackServerParityTest {
 			assertEquals(0, served.variants.get(p).intValue(), message);
 		}
 		assertTrue(served.exposures.isEmpty(), message + ": " + served.exposures);
-	}
-
-	static Map<String, Object> attrs(Object... entries) {
-		final Map<String, Object> map = new LinkedHashMap<String, Object>();
-		for (int i = 0; i < entries.length; i += 2) {
-			map.put((String) entries[i], entries[i + 1]);
-		}
-		return map;
 	}
 
 	static final Map<String, String> TWO_SOURCES = clusters(STORE, "store_city", DEVICE, "geo/city");
@@ -258,7 +225,7 @@ class SwitchbackServerParityTest {
 
 	@Test
 	void sameTypeSecondUidIsRejected() {
-		final Context context = Context.create(new FixedClock(), ContextConfig.create(),
+		final Context context = Context.create(new MutableClock(ANCHOR), ContextConfig.create(),
 				mock(ScheduledExecutorService.class), CompletableFuture.completedFuture(new ContextData()),
 				mock(ContextDataProvider.class), mock(ContextEventHandler.class), null, new DefaultVariableParser(),
 				new AudienceMatcher(new DefaultAudienceDeserializer()));
@@ -363,7 +330,7 @@ class SwitchbackServerParityTest {
 			config.setEventLogger(capture);
 			final ContextData data = new ContextData();
 			data.experiments = new Experiment[]{switchback, twin};
-			final FixedClock clock = new FixedClock();
+			final MutableClock clock = new MutableClock(ANCHOR);
 			final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
 					CompletableFuture.completedFuture(data), mock(ContextDataProvider.class),
 					mock(ContextEventHandler.class), null, new DefaultVariableParser(),
@@ -419,7 +386,7 @@ class SwitchbackServerParityTest {
 		assertEligible(serve(experiment(clusters(STORE, "cluster")), TestUtils.mapOf(STORE, "s1"),
 				attrs(" cluster ", "Porto")), STORE, "Porto", "trimmed name");
 
-		final FixedClock clock = new FixedClock();
+		final MutableClock clock = new MutableClock(ANCHOR);
 		final ExposureCapture capture = new ExposureCapture();
 		final ContextConfig config = ContextConfig.create();
 		config.setUnits(TestUtils.mapOf(STORE, "s1"));
