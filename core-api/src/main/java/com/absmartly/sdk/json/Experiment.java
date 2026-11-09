@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import com.absmartly.sdk.java.util.Objects;
 
@@ -26,6 +27,13 @@ public class Experiment {
 	public boolean audienceStrict;
 	public String audience;
 	public CustomFieldValue[] customFieldValues;
+
+	// JSON string of custom assignment rules ({"rules": [...]}). Null or empty when the experiment has none. Holdouts
+	// are resolved first; a matching rule then takes precedence over holdout suppression, the audience, traffic and
+	// custom assignments, while the holdouts still record their own exposures. An object or array sent in place of
+	// the string is ignored (null) rather than failing the whole context.
+	@JsonDeserialize(using = AssignmentRulesDeserializer.class)
+	public String assignmentRules;
 
 	// Set only for entries served in the top-level `holdouts` array; null for ordinary experiments.
 	public String holdoutType;
@@ -94,6 +102,8 @@ public class Experiment {
 			return false;
 		if (!Arrays.equals(customFieldValues, that.customFieldValues))
 			return false;
+		if (assignmentRules != null ? !assignmentRules.equals(that.assignmentRules) : that.assignmentRules != null)
+			return false;
 		if (holdoutType != null ? !holdoutType.equals(that.holdoutType) : that.holdoutType != null)
 			return false;
 		if (!Arrays.equals(holdoutIds, that.holdoutIds))
@@ -143,6 +153,7 @@ public class Experiment {
 		result = 31 * result + (audienceStrict ? 1 : 0);
 		result = 31 * result + (audience != null ? audience.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(customFieldValues);
+		result = 31 * result + (assignmentRules != null ? assignmentRules.hashCode() : 0);
 		result = 31 * result + (holdoutType != null ? holdoutType.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(holdoutIds);
 		result = 31 * result + hash(randomizationType);
@@ -178,6 +189,7 @@ public class Experiment {
 				", audienceStrict=" + audienceStrict +
 				", audience='" + audience + '\'' +
 				", customFieldValues=" + Arrays.toString(customFieldValues) +
+				", assignmentRules='" + assignmentRules + '\'' +
 				", holdoutType='" + holdoutType + '\'' +
 				", holdoutIds=" + Arrays.toString(holdoutIds) +
 				", randomizationType='" + randomizationType + '\'' +

@@ -602,11 +602,11 @@ class ContextSwitchbackTest {
 				+ "{\"id\":1,\"name\":\"exp_sb\",\"unit\":\"store_id\",\"variant\":" + EXPECTED_2_ARMS[0]
 				+ ",\"exposedAt\":" + (ANCHOR + 5)
 				+ ",\"assigned\":true,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,"
-				+ "\"audienceMismatch\":false},"
+				+ "\"audienceMismatch\":false,\"ruleOverride\":false},"
 				+ "{\"id\":1,\"name\":\"exp_sb\",\"unit\":\"store_id\",\"variant\":" + EXPECTED_2_ARMS[1]
 				+ ",\"exposedAt\":" + (ANCHOR + HOUR + 7)
 				+ ",\"assigned\":true,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,"
-				+ "\"audienceMismatch\":false}"
+				+ "\"audienceMismatch\":false,\"ruleOverride\":false}"
 				+ "]}", json);
 		assertNotEquals(EXPECTED_2_ARMS[0], EXPECTED_2_ARMS[1]);
 	}

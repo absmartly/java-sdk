@@ -29,6 +29,7 @@ import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.SwitchbackAttributePath;
 import com.absmartly.sdk.internal.SwitchbackBuckets;
+import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
@@ -47,21 +48,56 @@ public class Context implements Closeable {
 	private static final long HOUR_MS = 3600000L;
 	private static final int SWITCHBACK_RETAINED_PERIODS = 2;
 	private static final Logger log = LoggerFactory.getLogger(Context.class);
+	// Logged once per JVM: server-side code typically creates a context per request.
+	private static final AtomicBoolean noClientWarningLogged_ = new AtomicBoolean(false);
 
+	static boolean noClientWarningLogged() {
+		return noClientWarningLogged_.get();
+	}
+
+	/**
+	 * Creates a context with no client. Equivalent to the client-aware overload with a null client: the environment
+	 * is unknown, so assignment rules scoped to environments never match, and system attributes (when enabled) carry
+	 * only sdk_name and sdk_version.
+	 */
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
 			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
 			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
 			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher) {
 		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
-				variableParser, audienceMatcher);
+				variableParser, audienceMatcher, null);
+	}
+
+	/**
+	 * @param client
+	 *            the client whose configuration supplies the environment that assignment rules are scoped to, and the
+	 *            application and application version used as system attributes. It need not be the source of the
+	 *            context's data. May be null; see the overload without a client.
+	 */
+	static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
+			@Nonnull final ScheduledExecutorService scheduler,
+			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
+			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
+			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher,
+			@Nullable final Client client) {
+		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
+				variableParser, audienceMatcher, client);
 	}
 
 	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
 			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
 			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,
-			AudienceMatcher audienceMatcher) {
+			AudienceMatcher audienceMatcher, Client client) {
 		clock_ = clock;
+		includeSystemAttributes_ = config.getIncludeSystemAttributes();
+		environmentName_ = client != null ? client.getEnvironment() : null;
+		applicationName_ = client != null ? client.getApplication() : null;
+		applicationVersion_ = client != null ? client.getApplicationVersion() : null;
+		if (includeSystemAttributes_ && client == null && noClientWarningLogged_.compareAndSet(false, true)) {
+			log.warn("System attributes are enabled but the context has no client: only sdk_name and sdk_version "
+					+ "are included, and environment-scoped assignment rules never match");
+		}
 		publishDelay_ = config.getPublishDelay();
 		refreshInterval_ = config.getRefreshInterval();
 		eventHandler_ = eventHandler;
@@ -416,6 +452,14 @@ public class Context implements Closeable {
 		final Iterator<Assignment> it = assignmentCache_.values().iterator();
 		while (it.hasNext()) {
 			final Assignment assignment = it.next();
+			if (assignment.ruleOverride && assignment.ruleMissingUnit && unitType.equals(assignment.unitType)) {
+				// A split rule resolved without its unit gave the full-on variant; with the unit now
+				// available it must be re-randomized, but only while that variant is still unseen.
+				if (assignment.exposureState.compareAndSet(ASSIGNMENT_UNEXPOSED, ASSIGNMENT_RETIRED)) {
+					it.remove();
+				}
+				continue;
+			}
 			final Assignment[] holdoutAssignments = assignment.holdoutAssignments;
 			if ((holdoutAssignments != null) && unitType.equals(assignment.unitType)) {
 				for (final Assignment holdoutAssignment : holdoutAssignments) {
@@ -612,6 +656,7 @@ public class Context implements Closeable {
 		exposure.fullOn = assignment.fullOn;
 		exposure.custom = assignment.custom;
 		exposure.audienceMismatch = assignment.audienceMismatch;
+		exposure.ruleOverride = assignment.ruleOverride;
 
 		try {
 			eventLock_.lock();
@@ -933,7 +978,8 @@ public class Context implements Closeable {
 														StandardCharsets.US_ASCII));
 									}
 								});
-						event.attributes = attributes_.isEmpty() ? null : attributes_.toArray(new Attribute[0]);
+						final long systemSetAt = earliestEventAt(exposures, achievements, event.publishedAt);
+						event.attributes = buildPublishAttributes(systemSetAt);
 					} finally {
 						contextLock_.writeLock().unlock();
 					}
@@ -1270,6 +1316,10 @@ public class Context implements Closeable {
 	}
 
 	private boolean audienceMatches(final Experiment experiment, final Assignment assignment) {
+		// A rule-won assignment never consulted the audience, so an audience change cannot make it stale.
+		if (assignment.ruleOverride) {
+			return true;
+		}
 		if (experiment.audience != null && experiment.audience.length() > 0) {
 			if (attrsSeq_.get() > assignment.attrsSeq) {
 				final Map<String, Object> attrs = buildAttributesMap();
@@ -1283,6 +1333,112 @@ public class Context implements Closeable {
 			}
 		}
 		return true;
+	}
+
+	// Called with the read lock held, so it only reads: the cached Assignment is never updated here,
+	// and a changed rule outcome is reported as stale for the write path to rebuild. Re-resolves the
+	// rules only when they changed (a refresh) or an attribute was set since the assignment was built.
+	private boolean ruleMatches(final ContextExperiment experiment, final Assignment assignment) {
+		final boolean rulesChanged = !Objects.equals(experiment.data.assignmentRules, assignment.ruleKey);
+		if (!rulesChanged && attrsSeq_.get() <= assignment.attrsSeq) {
+			return true;
+		}
+
+		// An exposed split resolved without its unit keeps resolving as if the unit were still
+		// missing, so a unit set afterwards cannot switch the variant the user already saw.
+		final boolean exposed = assignment.exposureState.get() != ASSIGNMENT_UNEXPOSED;
+		final boolean unitPinnedMissing = assignment.ruleMissingUnit && exposed;
+		final RuleResolution rule = resolveRule(experiment, unitPinnedMissing, false);
+		final Integer ruleVariant = rule != null ? rule.variant : null;
+		final Integer cachedRuleVariant = assignment.ruleOverride ? (Integer) assignment.variant : null;
+		if (!Objects.equals(ruleVariant, cachedRuleVariant)) {
+			return false;
+		}
+
+		// Same variant, but now resolved by a split without its unit (or no longer so). The read path
+		// must not mutate, so this is reported as stale: the write path rebuilds an unexposed
+		// assignment (letting setUnit evict and re-randomize it later) and updates an exposed one in
+		// place (see reuseExposedRuleAssignment), so it is pinned without being exposed again.
+		final boolean missingUnit = rule != null && rule.missingUnit;
+		return missingUnit == assignment.ruleMissingUnit;
+	}
+
+	// Called with the write lock held. When the freshly resolved assignment is a rule win with the
+	// same variant as an already-exposed cached one for the same experiment run, the cached object
+	// is kept and only its rule bookkeeping is refreshed: creating a new Assignment would reset its
+	// exposure state and publish the same decision a second time, and keeping the old flags would
+	// leave a split resolved without its unit unpinned.
+	private Assignment reuseExposedRuleAssignment(final ContextExperiment experiment, final Assignment previous,
+			final Assignment fresh) {
+		if (previous == null || experiment == null || !fresh.ruleOverride || !previous.ruleOverride
+				|| previous.overridden || previous.variant != fresh.variant
+				|| previous.exposureState.get() != ASSIGNMENT_EXPOSED || !experimentMatches(experiment, previous)) {
+			return null;
+		}
+		previous.ruleKey = fresh.ruleKey;
+		previous.ruleMissingUnit = fresh.ruleMissingUnit;
+		previous.attrsSeq = fresh.attrsSeq;
+		return previous;
+	}
+
+	private static final class RuleResolution {
+		RuleResolution(int variant, boolean missingUnit) {
+			this.variant = variant;
+			this.missingUnit = missingUnit;
+		}
+
+		final int variant;
+		final boolean missingUnit;
+	}
+
+	// Resolves the experiment's assignment rules to a variant, or null when no rule applies. A fixed
+	// variant out of range or a split whose length differs from the variant count is ignored. A split
+	// with no unit to randomize over gives the full-on variant and is flagged missingUnit.
+	// Called with contextLock_ held. cacheAssigner is false on the read path, where the hashed-unit and
+	// assigner caches must not be written (computeIfAbsentRW would try to upgrade to the write lock).
+	private RuleResolution resolveRule(final ContextExperiment contextExperiment, final boolean unitPinnedMissing,
+			final boolean cacheAssigner) {
+		if (contextExperiment.assignmentRules == null) {
+			return null;
+		}
+
+		final Experiment experiment = contextExperiment.data;
+		final AudienceMatcher.RuleAction action = audienceMatcher_.evaluateRules(contextExperiment.assignmentRules,
+				environmentName_, buildAttributesMap(), experiment.name);
+		if (action == null) {
+			return null;
+		}
+
+		final int variantCount = experiment.variants != null ? experiment.variants.length : 0;
+		if (!action.isSplit()) {
+			final int variant = action.getVariant();
+			return (variant >= 0 && variant < variantCount) ? new RuleResolution(variant, false) : null;
+		}
+
+		final double[] split = action.getSplit();
+		if (split.length != variantCount) {
+			return null;
+		}
+
+		final String unitType = experiment.unitType;
+		final Object uid = (unitType != null && !unitPinnedMissing) ? units_.get(unitType) : null;
+		if (uid == null) {
+			return new RuleResolution(experiment.fullOnVariant, true);
+		}
+
+		final VariantAssigner assigner;
+		if (cacheAssigner) {
+			assigner = getVariantAssigner(unitType, getUnitHash(unitType, uid));
+		} else {
+			final VariantAssigner cached = assigners_.get(unitType);
+			if (cached != null) {
+				assigner = cached;
+			} else {
+				final byte[] cachedHash = hashedUnits_.get(unitType);
+				assigner = new VariantAssigner(cachedHash != null ? cachedHash : Hashing.hashUnit(uid));
+			}
+		}
+		return new RuleResolution(assigner.assign(split, experiment.seedHi, experiment.seedLo), false);
 	}
 
 	private static class Assignment {
@@ -1311,6 +1467,15 @@ public class Context implements Closeable {
 		Integer customAssignment;
 
 		boolean audienceMismatch;
+		// The variant was set by a matching custom assignment rule. Takes precedence over holdout
+		// suppression, the audience, traffic and custom assignments; the exposure is flagged so the
+		// backend can exclude it from analysis.
+		boolean ruleOverride;
+		// The assignment rules JSON string this Assignment was resolved against (the environment is
+		// fixed for the context's lifetime, so it is not part of it), used by ruleMatches to detect
+		// staleness.
+		String ruleKey;
+		boolean ruleMissingUnit;
 		// Held out by a union of applicable holdouts: no exposure for this experiment, control
 		// values only. `holdouts` is the resolved applicable list (by id+iteration identity, see
 		// holdoutSetMatches), used to invalidate this cached assignment when coverage changes.
@@ -1418,10 +1583,13 @@ public class Context implements Closeable {
 					&& ((experiment != null) ? switchbackConfigMatches(experiment.data, assignment)
 							: !assignment.switchback);
 		} else if (experiment == null) {
-			// previously not-running experiment
-			return !assignment.assigned;
-		} else if (Objects.equals(custom, assignment.customAssignment)) {
-			return experimentMatches(experiment, assignment) && audienceMatches(experiment.data, assignment);
+			// previously not-running experiment. A rule-won assignment is not "assigned" either, but its
+			// variant came from the experiment's rules, so it must be rebuilt once the experiment is gone.
+			return !assignment.assigned && !assignment.ruleOverride;
+		} else if (assignment.ruleOverride || Objects.equals(custom, assignment.customAssignment)) {
+			// A matching rule wins over a custom assignment, so a custom change is not staleness.
+			return experimentMatches(experiment, assignment) && ruleMatches(experiment, assignment)
+					&& audienceMatches(experiment.data, assignment);
 		}
 		return false;
 	}
@@ -1506,16 +1674,6 @@ public class Context implements Closeable {
 					// aliasing is safe.
 					assignment.holdouts = experiment.holdouts;
 
-					if (experiment.data.audience != null && experiment.data.audience.length() > 0) {
-						final Map<String, Object> attrs = buildAttributesMap();
-
-						final AudienceMatcher.Result match = audienceMatcher_
-								.evaluate(experiment.data.audience, attrs);
-						if (match != null) {
-							assignment.audienceMismatch = !match.get();
-						}
-					}
-
 					boolean suppressed = false;
 					if (experiment.holdouts != null && experiment.holdouts.length > 0) {
 						// Union across every applicable holdout: any one of them holding this
@@ -1542,9 +1700,33 @@ public class Context implements Closeable {
 						}
 						assignment.holdoutAssignments = holdoutAssignments;
 					}
-					assignment.suppressed = suppressed;
+					// Rules are resolved after the holdouts so the holdout decisions above stay pinned and
+					// still fire their own exposures. ruleKey is recorded for every assignment, including
+					// those with no matching rule, so ruleMatches only re-resolves after a refresh changes
+					// the rules or an attribute is set.
+					assignment.ruleKey = experiment.data.assignmentRules;
+					final RuleResolution rule = resolveRule(experiment, false, true);
+					if (rule != null) {
+						assignment.ruleOverride = true;
+						assignment.ruleMissingUnit = rule.missingUnit;
+					}
 
-					if (suppressed) {
+					if (rule == null && experiment.data.audience != null && experiment.data.audience.length() > 0) {
+						final AudienceMatcher.Result match = audienceMatcher_
+								.evaluate(experiment.data.audience, buildAttributesMap());
+						if (match != null) {
+							assignment.audienceMismatch = !match.get();
+						}
+					}
+
+					// A matching rule is an explicit, author-specified assignment, like an override: it
+					// wins over holdout suppression (the unit is not treated as held out, though the
+					// holdouts above still fire), the audience, traffic and custom assignments.
+					assignment.suppressed = suppressed && rule == null;
+
+					if (rule != null) {
+						assignment.variant = rule.variant;
+					} else if (suppressed) {
 						// A held-out unit is not a participant in this experiment: assigned stays
 						// false so it never wins variable-key resolution against a genuinely
 						// assigned experiment and never fires this experiment's own exposure.
@@ -1624,6 +1806,11 @@ public class Context implements Closeable {
 				assignment.variables = experiment.variables.get(assignment.variant);
 			}
 
+			final Assignment reused = reuseExposedRuleAssignment(experiment, cached, assignment);
+			if (reused != null) {
+				return reused;
+			}
+
 			assignmentCache_.put(cacheKey, assignment);
 			if ((experiment != null) && isSwitchback(experiment.data)) {
 				retainSwitchbackPeriod(experimentName, experiment, periodIndex);
@@ -1683,7 +1870,7 @@ public class Context implements Closeable {
 						failure = holdoutFailure;
 					}
 				}
-				if (assignment.assigned || assignment.overridden) {
+				if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
 					if (failure != null) {
 						throw failure;
 					}
@@ -1888,6 +2075,9 @@ public class Context implements Closeable {
 
 	private static class ContextExperiment {
 		Experiment data;
+		// data.assignmentRules parsed once when the data is installed (null when there are none), so
+		// lookups never re-parse the JSON and an invalid string is logged once per refresh.
+		AudienceMatcher.ParsedRules assignmentRules;
 		Experiment[] holdouts;
 		List<Map<String, Object>> variables;
 		Map<String, ContextCustomFieldValue> customFieldValues;
@@ -2036,6 +2226,17 @@ public class Context implements Closeable {
 				}
 			}
 
+			try {
+				contextExperiment.assignmentRules = audienceMatcher_.parseRules(experiment.assignmentRules);
+			} catch (Exception e) {
+				log.warn("Failed to parse assignmentRules for experiment '{}'; its rules are ignored: {}",
+						experiment.name, e.getMessage());
+				contextExperiment.assignmentRules = null;
+			}
+			if (contextExperiment.assignmentRules != null && contextExperiment.assignmentRules.isInvalid()) {
+				log.warn("Invalid assignmentRules JSON for experiment '{}'; its rules are ignored", experiment.name);
+			}
+
 			index.put(experiment.name, contextExperiment);
 		}
 
@@ -2096,15 +2297,80 @@ public class Context implements Closeable {
 		}
 	}
 
+	// Variables available to audience filters and assignment-rule conditions. System attributes come first so
+	// that a user attribute of the same name overrides them. Called with contextLock_ held.
 	private Map<String, Object> buildAttributesMap() {
-		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size());
+		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size() + 3);
+		if (includeSystemAttributes_) {
+			putIfNotNull(attrs, "application", applicationName_);
+			putIfNotNull(attrs, "environment", environmentName_);
+			if (ClientConfig.isApplicationVersionSet(applicationVersion_)) {
+				attrs.put("app_version", applicationVersion_);
+			}
+		}
 		for (final Attribute attr : attributes_) {
 			attrs.put(attr.name, attr.value);
 		}
 		return attrs;
 	}
 
+	// The collector only applies attributes with setAt <= an event's time, so system attributes are stamped with the
+	// earliest event in the batch to describe every event in it.
+	private static long earliestEventAt(final Exposure[] exposures, final GoalAchievement[] achievements,
+			final long publishedAt) {
+		long earliest = publishedAt;
+		if (exposures != null) {
+			for (final Exposure exposure : exposures) {
+				earliest = Math.min(earliest, exposure.exposedAt);
+			}
+		}
+		if (achievements != null) {
+			for (final GoalAchievement achievement : achievements) {
+				earliest = Math.min(earliest, achievement.achievedAt);
+			}
+		}
+		return earliest;
+	}
+
+	// System attributes the user has set themselves are left out: the collector picks the latest setAt among
+	// duplicates, which would otherwise let a synthetic value supersede the user's. Called with contextLock_ held.
+	private Attribute[] buildPublishAttributes(final long systemSetAt) {
+		final List<Attribute> attrs = new ArrayList<Attribute>(attributes_.size() + 5);
+		if (includeSystemAttributes_) {
+			final Set<String> userNames = new HashSet<String>();
+			for (final Attribute attr : attributes_) {
+				userNames.add(attr.name);
+			}
+			addSystemAttribute(attrs, userNames, "sdk_name", SdkVersion.NAME, systemSetAt);
+			addSystemAttribute(attrs, userNames, "sdk_version", SdkVersion.VERSION, systemSetAt);
+			addSystemAttribute(attrs, userNames, "application", applicationName_, systemSetAt);
+			addSystemAttribute(attrs, userNames, "environment", environmentName_, systemSetAt);
+			if (ClientConfig.isApplicationVersionSet(applicationVersion_)) {
+				addSystemAttribute(attrs, userNames, "app_version", applicationVersion_, systemSetAt);
+			}
+		}
+		attrs.addAll(attributes_);
+		return attrs.isEmpty() ? null : attrs.toArray(new Attribute[0]);
+	}
+
+	private static void addSystemAttribute(final List<Attribute> attrs, final Set<String> userNames,
+			final String name, final Object value, final long setAt) {
+		if (value != null && !userNames.contains(name)) {
+			attrs.add(new Attribute(name, value, setAt));
+		}
+	}
+
+	private static void putIfNotNull(final Map<String, Object> map, final String key, final Object value) {
+		if (value != null) {
+			map.put(key, value);
+		}
+	}
+
 	private final Clock clock_;
+	private final boolean includeSystemAttributes_;
+	private final String environmentName_;
+	private final String applicationName_;
+	private final String applicationVersion_;
 	private final long publishDelay_;
 	private final long refreshInterval_;
 	private final ContextEventHandler eventHandler_;
