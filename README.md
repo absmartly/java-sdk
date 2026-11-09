@@ -382,6 +382,8 @@ context.setAttribute("store", Collections.singletonMap("region", "lisbon"));
 int treatment = context.getTreatment("exp_switchback_pricing");
 ```
 
+The order of an experiment's `switchbackClusters` map is part of its meaning (the first linked unit with a value serves), so `Experiment.equals` and `hashCode` are order-sensitive on that field: experiments whose maps hold the same entries in a different order are not equal.
+
 See [SWITCHBACK.md](SWITCHBACK.md) for the serving rules, the exposure deduplication bound, the minimum SDK version and how older SDKs behave.
 
 ### Custom Event Logger

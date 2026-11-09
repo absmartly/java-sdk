@@ -23,8 +23,8 @@ every experiment a unit experiment for this SDK.
 | Field | Meaning |
 | --- | --- |
 | `randomizationType` | `"unit"` or `"switchback"`. Absent means `"unit"`. |
-| `switchbackClusters` | Object mapping a unit type name to an attribute path, in the order served (unit type id ascending). The order is significant and is preserved. |
-| `switchbackClusterValues` | Allowed cluster values. Null or empty allows every value. |
+| `switchbackClusters` | Object mapping a unit type name to an attribute path, in the order served (unit type id ascending). The order is significant and is preserved, so `Experiment.equals` and `hashCode` compare it: two experiments whose maps hold the same entries in a different order are not equal. |
+| `switchbackClusterValues` | Allowed cluster values. Null or empty (`[]`) allows every value, as in the Collector: its Registry builds the filter only for a non-empty list, because Prisma stores "every value" as `'{}'` (`Registry.java:449-455`). |
 | `switchbackStartAt` | Grid start (anchor), epoch milliseconds. Must be hour aligned and in `[0, 10000-01-01T00:00:00Z)`; see *Anchor*. Null before the experiment starts. |
 | `switchbackPeriodMs` | Period length in milliseconds. |
 | `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs` | Analysis-only windows. The SDK carries them but does not use them. |
@@ -65,8 +65,9 @@ For a switchback experiment, at `now` (one reading of the context's `Clock`, tak
    `assignSwitchback(clusterKey, periodIndex, seed, split.length)`, with
    `seed = (seedHi << 32) | (seedLo & 0xffffffff)`. The cluster key is the raw value. It is not
    hashed and it is not the unit uid. The draw is pinned by
-   `core-api/src/test/resources/switchback/golden-vectors.json`, a byte-identical copy of the
-   platform's fixture.
+   `core-api/src/test/resources/switchback/golden-vectors.json`, a byte-identical copy of absmartly/abs
+   `lib/utils/src/test/resources/switchback/golden-vectors.json` at 9bd2b5ca35 (git blob
+   `b314abeb9e97`).
 
 ### Precedence
 
@@ -78,8 +79,8 @@ This is the Collector's `ContextAPI.assignExperiment` order for a switchback wit
 | 2. Assignment rules | The first matching rule's variant. A `split` rule randomizes over the serving unit's hash | Recorded, `ruleOverride=true`, `assigned=false` (as for unit experiments) |
 | 3. Audience, strict mismatch | Variant 0 | Recorded, `audienceMismatch=true` (as for unit experiments) |
 | 4. Full-on | `fullOnVariant` | Recorded, `fullOn` |
-| 5. Traffic miss (hash of the serving unit) | Variant 0, not eligible | **Recorded** under the serving unit, `eligible=false` |
-| 6. Pre-start, or unservable schedule | Variant 0, not eligible | None |
+| 5. Pre-start, or unservable schedule | Variant 0, not eligible | None (an SDK choice, see *SDK choice: no exposure before the anchor*) |
+| 6. Traffic miss (hash of the serving unit) | Variant 0, not eligible | **Recorded** under the serving unit, `eligible=false` |
 | 7. Custom assignment (`setCustomAssignment`) | The custom variant | Recorded, `custom` |
 | 8. Schedule draw | `assignSwitchback(clusterKey, periodIndex, seed, arms)` | Recorded |
 
@@ -120,14 +121,20 @@ Paths follow the Collector's `SwitchbackAttributePath`:
 - A segment quoted with `'` or `"` is a literal key (`'a/b'` reads the key `a/b`).
 - An unquoted integer segment (`items/0/city`) indexes a list. An index must be non-negative and
   sit between two key segments.
-- A `.` anywhere in the path, quoted or not, is malformed (the Collector treats `geo.city`,
-  `'geo.city'` and `"geo.city"` alike as unreadable). Dotted paths are not a nesting syntax.
+- A `.` anywhere in the path, quoted or not, is malformed: the Collector's
+  `SwitchbackAttributePath.java:40` rejects any parsed segment key that contains `.`, so `geo.city`,
+  `'geo.city'` and `"geo.city"` are alike unreadable. Dotted paths are not a nesting syntax.
 - An unterminated quote is malformed.
 
-The paths are pinned by `core-api/src/test/resources/switchback/attribute-path-cases.json`, shared
-with the platform. The first segment names an attribute set with `setAttribute`. Deeper segments read
+The paths are pinned by `core-api/src/test/resources/switchback/attribute-path-cases.json`, a
+byte-identical copy of absmartly/abs `collector/src/test/resources/switchback/attribute-path-cases.json`
+at 9bd2b5ca35 (git blob `7b1d3fed5985`). The first segment names an attribute set with `setAttribute`. Deeper segments read
 its value as the Collector reads its JSON encoding. Among attributes with that name set at or before
 the call's clock reading, the one with the latest `setAt` wins, and on a tie the one set last.
+
+Only attributes set on the context are read. The system attributes the SDK adds when publishing
+(`application`, `environment`, `app_version`) are not visible to cluster paths, so a path rooted at
+one of them finds no value and the cluster is ineligible.
 
 The serving unit and cluster key are read once per period slot. A `setAttribute` later in the same
 period does not move the unit to another cluster, even when an audience change re-resolves the slot.
@@ -170,6 +177,16 @@ eviction.
   variant. Deduplication on re-entry is a bounded-cache best effort, not a guarantee against
   mixed-variant records for a period.
 - Pre-start and unservable resolutions share one slot per experiment and expose nothing.
+
+### SDK choice: no exposure before the anchor or for an unservable schedule
+
+When the cluster is eligible but the draw cannot run (before `switchbackStartAt`, or with an
+unservable schedule), the Collector's `assignExperiment` returns the same wire shape as a traffic
+miss: variant 0, `eligible=false`. Its publish path records whatever the client sends. This SDK
+deliberately sends nothing in that case. A pre-anchor exposure has no period, so analysis cannot
+place it on the schedule. The choice carries over from the approved Phase 1B design. The check runs
+before traffic, so a pre-anchor traffic miss is silent too. A traffic miss inside a period is still
+recorded.
 
 ### Refresh and epochs
 

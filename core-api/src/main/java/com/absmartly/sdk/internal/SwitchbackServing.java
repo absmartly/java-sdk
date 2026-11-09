@@ -99,7 +99,8 @@ public final class SwitchbackServing {
 		return new SwitchbackServing(ABSENT, null, null);
 	}
 
-	// A null or empty allow-list admits every value.
+	// A null or empty allow-list admits every value: the Collector's Registry builds the filter set
+	// only for a non-empty list, because Prisma stores "every value" as '{}' (Registry.java:449-455).
 	static boolean allowed(final String[] allowedValues, final String key) {
 		if ((allowedValues == null) || (allowedValues.length == 0)) {
 			return true;

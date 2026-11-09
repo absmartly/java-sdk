@@ -437,10 +437,12 @@ class SwitchbackServerParityTest {
 		assertTrue(capture.exposures.get(0).eligible);
 	}
 
-	// Shared fixtures are byte-identical copies of absmartly/abs lib/utils/src/test/resources/switchback
-	// (git blobs b314abeb9e97 and 7b1d3fed5985).
+	// The shared fixtures match the Collector's blobs at absmartly/abs 9bd2b5ca35:
+	// lib/utils/src/test/resources/switchback/golden-vectors.json (git blob b314abeb9e97) and
+	// collector/src/test/resources/switchback/attribute-path-cases.json (git blob 7b1d3fed5985). The
+	// hashes below pin these copies to those blobs.
 	@Test
-	void sharedFixturesAreByteIdentical() throws IOException, NoSuchAlgorithmException {
+	void sharedFixturesMatchCollectorBlobs() throws IOException, NoSuchAlgorithmException {
 		assertEquals("66dda4bafddaa119b030beafff8dc56f5750a8387919ffbe0842c93525ef32b6",
 				sha256(readResource("switchback/golden-vectors.json")));
 		assertEquals("2ee7eb0053997b48b8992980ffe11fe3accb2db01471aa9a617420e1609c6518",

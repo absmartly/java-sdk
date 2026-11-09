@@ -15,8 +15,8 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-// Fixture copied byte-for-byte from absmartly/abs
-// lib/analytics/src/test/resources/switchback/golden-vectors.json (git blob b314abeb9e97).
+// Fixture copied byte-for-byte from absmartly/abs 9bd2b5ca35
+// lib/utils/src/test/resources/switchback/golden-vectors.json (git blob b314abeb9e97).
 class SwitchbackAssignerGoldenVectorsTest {
 	private static JsonNode loadVectors() throws IOException {
 		final InputStream in = SwitchbackAssignerGoldenVectorsTest.class.getClassLoader()

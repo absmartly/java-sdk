@@ -19,8 +19,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.absmartly.sdk.TestUtils;
 
-// Fixture copied byte-for-byte from absmartly/abs
-// lib/utils/src/test/resources/switchback/attribute-path-cases.json (git blob 7b1d3fed5985).
+// Fixture copied byte-for-byte from absmartly/abs 9bd2b5ca35
+// collector/src/test/resources/switchback/attribute-path-cases.json (git blob 7b1d3fed5985).
 class SwitchbackAttributePathTest {
 	static JsonNode loadCases() throws IOException {
 		final InputStream in = SwitchbackAttributePathTest.class.getClassLoader()
