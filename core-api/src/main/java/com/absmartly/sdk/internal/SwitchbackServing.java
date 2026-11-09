@@ -12,9 +12,10 @@ import java.util.Map;
 // - Otherwise each linked unit with a uid, in source order and then unit order, reads the attribute
 //   at its source's path, normalised by SwitchbackClusterKeys. The first unit yielding a value is
 //   the serving unit and the value is the cluster key; units yielding no value are skipped.
-// - INELIGIBLE, served under the first linked unit: the configuration is unservable, no unit yields
-//   a value, two units yield different values, or an allow-list is set and lacks the key.
+// - INELIGIBLE, served under the first linked unit: no unit yields a value, two units yield
+//   different values, or an allow-list is set and lacks the key.
 // - ELIGIBLE otherwise.
+// - A missing, empty or unreadable cluster map takes the Collector's legacy path instead (legacy).
 public final class SwitchbackServing {
 	public static final int ABSENT = 0;
 	public static final int INELIGIBLE = 1;
@@ -91,6 +92,20 @@ public final class SwitchbackServing {
 			return new SwitchbackServing(INELIGIBLE, first, null);
 		}
 		return new SwitchbackServing(ELIGIBLE, serving, key);
+	}
+
+	// The Collector's compatibility path for a missing, empty or unreadable cluster map: the
+	// experiment's declared unitType only identifies an ineligible control response (never an
+	// assignment or a cluster); without a unit of that type the experiment does not apply.
+	public static SwitchbackServing legacy(final String unitType, final List<? extends Unit> units) {
+		if (unitType != null) {
+			for (final Unit unit : units) {
+				if ((unit.uid() != null) && unitType.equals(unit.type())) {
+					return new SwitchbackServing(INELIGIBLE, unit, null);
+				}
+			}
+		}
+		return new SwitchbackServing(ABSENT, null, null);
 	}
 
 	// A null or empty allow-list admits every value.

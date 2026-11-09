@@ -57,16 +57,15 @@ class SwitchbackAttributePathTest {
 		final Map<String, Object> attributes = TestUtils.mapOf("geo", TestUtils.mapOf("0", "zero", "a/b", "slash"));
 		assertEquals("zero", SwitchbackAttributePath.parseSupported("geo/'0'").resolve(attributes));
 		assertEquals("slash", SwitchbackAttributePath.parseSupported("geo/\"a/b\"").resolve(attributes));
-		assertEquals("dotted", SwitchbackAttributePath.parseSupported("'a.b'")
-				.resolve(TestUtils.mapOf("a.b", "dotted")));
 	}
 
 	// Malformed paths are unsupported, which makes the experiment unservable: an unterminated quote
-	// anywhere, or an unquoted segment containing '.' (no dotted nesting; '/' nests).
+	// anywhere, or a '.' anywhere, quoted or not (the Collector's
+	// missingOrUnreadableClusterConfigurationReturnsOnlyLegacyIneligibleControl; '/' nests).
 	@Test
 	void rejectsMalformedPaths() {
 		for (final String path : new String[]{"geo/'0", "'geo", "\"geo/city", "geo/\"", "geo.city", "geo/a.b",
-				"a./b", ".", "items/0.5/city"}) {
+				"a./b", ".", "items/0.5/city", "'geo.city'", "\"geo.city\"", "geo/'a.b'"}) {
 			assertNull(SwitchbackAttributePath.parseSupported(path), path);
 		}
 	}

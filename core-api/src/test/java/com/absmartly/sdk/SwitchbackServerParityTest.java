@@ -315,20 +315,18 @@ class SwitchbackServerParityTest {
 				attrs("store_city", 42, "geo", TestUtils.mapOf("city", "042"))), "42 vs 042 disagree");
 	}
 
-	// A malformed path (unterminated quote, literal dotted segment) makes the whole experiment
+	// A malformed path (unterminated quote, a '.' anywhere, quoted or not) makes the whole experiment
 	// unservable: ineligible control for any linked unit, even when another source is valid.
 	@Test
 	void malformedPathsAreUnservable() {
 		final Map<String, Object> attributes = attrs("store_city", "Lisboa", "geo", TestUtils.mapOf("city", "Porto"),
 				"geo.city", "Faro");
-		for (final String path : new String[]{"'geo/city", "\"geo", "geo/'city", "geo.city", "geo/a.b"}) {
+		for (final String path : new String[]{"'geo/city", "\"geo", "geo/'city", "geo.city", "geo/a.b", "'geo.city'",
+				"\"geo.city\""}) {
 			assertSilentControl(serve(experiment(clusters(STORE, "store_city", DEVICE, path)), twoUnits(),
 					attributes), path);
 			assertSilentControl(serve(experiment(clusters(DEVICE, path)), twoUnits(), attributes), path + " alone");
 		}
-		// Quoted segments are literal keys, so a quoted dotted key is a valid path.
-		assertEligible(serve(experiment(clusters(STORE, "'geo.city'")), twoUnits(), attributes), STORE, "Faro",
-				"quoted dotted key");
 	}
 
 	// No context unit of any linked type: the experiment does not apply; unitType is never used.

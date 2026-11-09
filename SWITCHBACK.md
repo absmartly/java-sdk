@@ -25,14 +25,16 @@ every experiment a unit experiment for this SDK.
 | `randomizationType` | `"unit"` or `"switchback"`. Absent means `"unit"`. |
 | `switchbackClusters` | Object mapping a unit type name to an attribute path, in the order served (unit type id ascending). The order is significant and is preserved. |
 | `switchbackClusterValues` | Allowed cluster values. Null or empty allows every value. |
-| `switchbackStartAt` | Grid start, epoch milliseconds (hour aligned). Null before the experiment starts. |
+| `switchbackStartAt` | Grid start (anchor), epoch milliseconds. Must be hour aligned and in `[0, 10000-01-01T00:00:00Z)`; see *Anchor*. Null before the experiment starts. |
 | `switchbackPeriodMs` | Period length in milliseconds. |
 | `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs` | Analysis-only windows. The SDK carries them but does not use them. |
 | `switchbackDesignType`, `switchbackEstimand` | Design metadata. |
 
 Unknown fields are ignored, including the earlier `switchbackClusterUnitType`,
 `switchbackClusterCount` and `switchbackClusterAttribute`. A switchback's `unitType` is never used to
-assign it.
+assign it or to pick its cluster. Its only use is the Collector's legacy path for a missing, empty or
+unreadable `switchbackClusters`: a context unit of that type then gets an ineligible control (variant
+0, no exposure). Without such a unit the experiment does not apply.
 
 ### Serving
 
@@ -50,13 +52,15 @@ For a switchback experiment, at `now` (one reading of the context's `Clock`, tak
 3. **Serving unit.** The first unit that gives a value is the *serving unit*, and its value is the
    *cluster key*. Units that give no value are skipped. If a later unit gives a different value, the
    units disagree.
-4. **Ineligible.** The experiment is an ineligible control (variant 0, not eligible) **that records
-   no exposure** when no unit gives a value, when units disagree, or when `switchbackClusterValues`
-   is set and does not contain the cluster key. The same happens before `switchbackStartAt` and for
-   a configuration the Collector cannot serve: `switchbackClusters` missing or empty,
-   `switchbackStartAt` or `switchbackPeriodMs` missing, a period of 0 or less, a malformed or
-   unsupported path, or fewer than two variants. The SDK never falls back to unit assignment.
-5. **Eligible.** `periodIndex = floorDiv(now - switchbackStartAt, switchbackPeriodMs)` and the
+4. **Ineligible cluster.** The experiment is an ineligible control (variant 0, not eligible)
+   **that records no exposure** when no unit gives a value, when units disagree, or when
+   `switchbackClusterValues` is set and does not contain the cluster key. A missing, empty,
+   malformed or unsupported `switchbackClusters` takes the legacy path above. Only an override
+   still applies. No assignment rule, audience or full-on is evaluated. The SDK never falls back to
+   unit assignment.
+5. **Eligible cluster.** The precedence below applies. Only its last step, the schedule draw, needs
+   a servable schedule and `now >= switchbackStartAt`. The draw is
+   `periodIndex = floorDiv(now - switchbackStartAt, switchbackPeriodMs)` and the
    variant is the balanced-block draw
    `assignSwitchback(clusterKey, periodIndex, seed, split.length)`, with
    `seed = (seedHi << 32) | (seedLo & 0xffffffff)`. The cluster key is the raw value. It is not
@@ -64,20 +68,60 @@ For a switchback experiment, at `now` (one reading of the context's `Clock`, tak
    `core-api/src/test/resources/switchback/golden-vectors.json`, a byte-identical copy of the
    platform's fixture.
 
-Precedence: override (served and exposed as for unit experiments), then audience, full-on, traffic eligibility, custom assignment and the
-switchback draw. **Holdouts never apply to a switchback**, and assignment rules are ignored. Traffic
-eligibility uses the serving unit's traffic hash, so it is sticky per serving unit across periods.
-Custom assignments apply only to traffic-eligible units with a cluster key.
+### Precedence
+
+This is the Collector's `ContextAPI.assignExperiment` order for a switchback with an eligible cluster:
+
+| Step | Result | Exposure |
+| --- | --- | --- |
+| 1. Override (`setOverride`) | The override variant, even without a cluster | Recorded, `overridden` |
+| 2. Assignment rules | The first matching rule's variant. A `split` rule randomizes over the serving unit's hash | Recorded, `ruleOverride=true`, `assigned=false` (as for unit experiments) |
+| 3. Audience, strict mismatch | Variant 0 | Recorded, `audienceMismatch=true` (as for unit experiments) |
+| 4. Full-on | `fullOnVariant` | Recorded, `fullOn` |
+| 5. Traffic miss (hash of the serving unit) | Variant 0, not eligible | **Recorded** under the serving unit, `eligible=false` |
+| 6. Pre-start, or unservable schedule | Variant 0, not eligible | None |
+| 7. Custom assignment (`setCustomAssignment`) | The custom variant | Recorded, `custom` |
+| 8. Schedule draw | `assignSwitchback(clusterKey, periodIndex, seed, arms)` | Recorded |
+
+- **Holdouts never apply to a switchback.**
+- Assignment rules apply as the Collector applies them. Rules are evaluated first, before the
+  anchor and with an unservable schedule too, so a matching rule assigns its variant even then
+  (Collector `assignmentRuleOverridesTheSchedule`). An unservable schedule only replaces the draw:
+  full-on and rules still apply (`unservableOnlyReplacesTheVariantDrawNotFullOnOrRules`). Rules are
+  never evaluated for an ineligible cluster.
+- The handling of a traffic miss is confirmed against the Collector source. Its `assignExperiment`
+  marks the assignment ineligible, and its publish path suppresses an exposure only when the cluster
+  key is null. So a traffic miss on an eligible cluster records an ineligible exposure under the
+  serving unit, unlike an ineligible cluster, which records nothing.
+- The handling of an audience-strict mismatch is confirmed against the Collector source: variant 0,
+  with the exposure recorded and flagged `audienceMismatch`, the same as for unit experiments.
+- Traffic eligibility uses the serving unit's traffic hash, never the experiment's `unitType`. It is
+  sticky per serving unit across periods.
+
+### Anchor
+
+`switchbackStartAt` is used as served. It is never rounded. The backend freezes hour-aligned
+anchors, and the Collector's Registry treats anything else as unservable. The schedule is therefore
+**unservable**, and the draw gives an ineligible control with no exposure in every period, when any
+of these holds:
+
+- `switchbackStartAt` is null, negative, at or after `10000-01-01T00:00:00Z`
+  (253402300800000 ms), or not a multiple of one hour;
+- `switchbackPeriodMs` is null or 0 or less;
+- `split` has fewer than two arms.
+
+Rules, audience and full-on still apply (see *Precedence*).
 
 ### Attribute paths
 
 Paths follow the Collector's `SwitchbackAttributePath`:
 
 - `/` separates segments.
-- A segment quoted with `'` or `"` is a literal key (`'a.b'` reads the key `a.b`).
+- A segment quoted with `'` or `"` is a literal key (`'a/b'` reads the key `a/b`).
 - An unquoted integer segment (`items/0/city`) indexes a list. An index must be non-negative and
   sit between two key segments.
-- An unquoted segment containing `.` is malformed. Dotted paths are not a nesting syntax.
+- A `.` anywhere in the path, quoted or not, is malformed (the Collector treats `geo.city`,
+  `'geo.city'` and `"geo.city"` alike as unreadable). Dotted paths are not a nesting syntax.
 - An unterminated quote is malformed.
 
 The paths are pinned by `core-api/src/test/resources/switchback/attribute-path-cases.json`, shared
@@ -93,7 +137,9 @@ The next period reads the attributes again.
 
 - The exposure unit is the serving unit's type. The published unit is its uid, hashed the usual way.
   The SDK records one exposure per experiment and period, as described below.
-- An ineligible or not-applying switchback records nothing.
+- An ineligible cluster, a pre-start or unservable draw, and a not-applying switchback record
+  nothing. A traffic miss and an audience-strict mismatch on an eligible cluster are recorded (see
+  *Precedence*).
 - The exposure and publish payloads have no switchback fields. Attributes are still published with
   their timestamps, because the Collector resolves the cluster again at `exposedAt` from the
   published attributes.

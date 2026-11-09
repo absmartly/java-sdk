@@ -134,8 +134,12 @@ public final class SwitchbackAttributePath {
 		return current;
 	}
 
-	// Null when the path is malformed.
+	// Null when the path is malformed. A '.' anywhere, quoted or not, is unreadable: the Collector
+	// treats "geo.city", "'geo.city'" and "\"geo.city\"" alike as unreadable cluster paths.
 	private static SwitchbackAttributePath parse(final String path) {
+		if (path.indexOf('.') >= 0) {
+			return null;
+		}
 		final List<String> keys = new ArrayList<String>();
 		final List<Integer> indices = new ArrayList<Integer>();
 		int i = 0;

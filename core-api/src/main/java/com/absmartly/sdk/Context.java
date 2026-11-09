@@ -46,6 +46,10 @@ public class Context implements Closeable {
 	private static final char SWITCHBACK_KEY_SEPARATOR = '\u001f';
 	private static final long NO_SWITCHBACK_PERIOD = Long.MIN_VALUE;
 	private static final int SWITCHBACK_RETAINED_PERIODS = 2;
+	// The Collector's switchback anchor bounds (Registry): an anchor must be hour aligned and in
+	// [0, 10000-01-01T00:00:00Z).
+	private static final long SWITCHBACK_ANCHOR_ALIGNMENT_MS = 3600000L;
+	private static final long SWITCHBACK_MAX_ANCHOR_MS = 253402300800000L;
 	private static final Logger log = LoggerFactory.getLogger(Context.class);
 	// Logged once per JVM: server-side code typically creates a context per request.
 	private static final AtomicBoolean noClientWarningLogged_ = new AtomicBoolean(false);
@@ -1091,14 +1095,23 @@ public class Context implements Closeable {
 		// A switchback serves under the unit its clusters select, never under unitType, so its unit
 		// identity is the cluster map compared by switchbackConfigMatches.
 		return experiment.data.id == assignment.id &&
-				(isSwitchback(experiment.data) || (experiment.data.unitType != null
-						&& experiment.data.unitType.equals(assignment.unitType)))
+				(isSwitchback(experiment.data) ? legacySwitchbackUnitMatches(experiment, assignment)
+						: (experiment.data.unitType != null
+								&& experiment.data.unitType.equals(assignment.unitType)))
 				&&
 				experiment.data.iteration == assignment.iteration &&
 				experiment.data.fullOnVariant == assignment.fullOnVariant &&
 				Arrays.equals(experiment.data.trafficSplit, assignment.trafficSplit) &&
 				holdoutSetMatches(experiment.holdouts, assignment.holdouts) &&
 				switchbackConfigMatches(experiment.data, assignment);
+	}
+
+	// unitType is read only by the legacy path of an unreadable cluster map, so only then is it
+	// part of a switchback's identity.
+	private static boolean legacySwitchbackUnitMatches(final ContextExperiment experiment,
+			final Assignment assignment) {
+		return (experiment.switchbackSourcePaths != null)
+				|| Objects.equals(experiment.data.unitType, assignment.switchbackDeclaredUnitType);
 	}
 
 	// Grid identity: a change to any of these re-maps periods or clusters to variants. Carryover and
@@ -1124,6 +1137,7 @@ public class Context implements Closeable {
 			assignment.switchbackStartAt = experiment.switchbackStartAt;
 			assignment.switchbackPeriodMs = experiment.switchbackPeriodMs;
 			assignment.switchbackDesignType = experiment.switchbackDesignType;
+			assignment.switchbackDeclaredUnitType = experiment.unitType;
 		}
 	}
 
@@ -1135,27 +1149,36 @@ public class Context implements Closeable {
 		return ((long) experiment.seedHi << 32) | (experiment.seedLo & 0xffffffffL);
 	}
 
-	// periodIndex = floorDiv(now - switchbackStartAt, switchbackPeriodMs), as the Collector computes
-	// it. Returns NO_SWITCHBACK_PERIOD before the start and for a configuration the Collector cannot
-	// serve: missing start or period, a period <= 0, fewer than two arms, or a cluster map that is
-	// missing, empty or has an unsupported attribute path.
-	private static long switchbackPeriodIndex(final ContextExperiment contextExperiment, final long nowMs) {
-		final Experiment experiment = contextExperiment.data;
+	// Whether the Collector's Registry can serve this switchback's schedule: a start that is set,
+	// hour aligned and in [0, 10000-01-01) (it is used as served, never rounded), a period > 0 and
+	// at least two arms. An unservable schedule only replaces the draw: assignment rules and full-on
+	// still apply.
+	static boolean switchbackScheduleServable(final Experiment experiment) {
 		final Long startAt = experiment.switchbackStartAt;
 		final Long periodMs = experiment.switchbackPeriodMs;
-		if ((startAt == null) || (periodMs == null) || (periodMs <= 0)) {
+		if ((startAt == null) || (startAt < 0) || (startAt >= SWITCHBACK_MAX_ANCHOR_MS)
+				|| ((startAt % SWITCHBACK_ANCHOR_ALIGNMENT_MS) != 0)) {
+			return false;
+		}
+		if ((periodMs == null) || (periodMs <= 0)) {
+			return false;
+		}
+		return (experiment.split != null) && (experiment.split.length >= 2);
+	}
+
+	// periodIndex = floorDiv(now - switchbackStartAt, switchbackPeriodMs), as the Collector computes
+	// it. Returns NO_SWITCHBACK_PERIOD before the start, for an unservable schedule (see
+	// switchbackScheduleServable) and for a cluster map with an unsupported attribute path.
+	private static long switchbackPeriodIndex(final ContextExperiment contextExperiment, final long nowMs) {
+		final Experiment experiment = contextExperiment.data;
+		if (!switchbackScheduleServable(experiment) || (contextExperiment.switchbackSourcePaths == null)) {
 			return NO_SWITCHBACK_PERIOD;
 		}
-		if ((experiment.split == null) || (experiment.split.length < 2)) {
-			return NO_SWITCHBACK_PERIOD;
-		}
-		if (contextExperiment.switchbackSourcePaths == null) {
-			return NO_SWITCHBACK_PERIOD;
-		}
+		final long startAt = experiment.switchbackStartAt;
 		if (nowMs < startAt) {
 			return NO_SWITCHBACK_PERIOD;
 		}
-		return SwitchbackAssigner.floorDiv(nowMs - startAt, periodMs);
+		return SwitchbackAssigner.floorDiv(nowMs - startAt, experiment.switchbackPeriodMs);
 	}
 
 	// Also NO_SWITCHBACK_PERIOD for absent and unit experiments.
@@ -1186,17 +1209,20 @@ public class Context implements Closeable {
 		}
 	}
 
-	// Port of the Collector's ContextAPI.switchbackServing at `now` (see SwitchbackServing). A
-	// period index of NO_SWITCHBACK_PERIOD (unservable or pre-start) reads no attribute: any linked
-	// unit is then served ineligible. Caller holds the contextLock_ write lock.
-	private SwitchbackServing resolveSwitchbackServing(final ContextExperiment experiment, final long periodIndex,
-			final long now) {
+	// Port of the Collector's ContextAPI.switchbackServing at `now` (see SwitchbackServing). The
+	// cluster is resolved whether or not the schedule can be drawn now (pre-start or an unservable
+	// schedule), as the Collector does, so assignment rules and full-on still see the serving unit.
+	// A missing, empty or unreadable cluster map takes the Collector's legacy path: an ineligible
+	// control under a unit of the declared unitType, if set. Caller holds the contextLock_ write lock.
+	private SwitchbackServing resolveSwitchbackServing(final ContextExperiment experiment, final long now) {
 		final List<ContextUnit> units = new ArrayList<ContextUnit>(units_.size());
 		for (final Map.Entry<String, Object> unit : units_.entrySet()) {
 			units.add(new ContextUnit(unit.getKey(), unit.getValue()));
 		}
-		return SwitchbackServing.resolve(experiment.switchbackSourceTypes,
-				(periodIndex == NO_SWITCHBACK_PERIOD) ? null : experiment.switchbackSourcePaths,
+		if (experiment.switchbackSourcePaths == null) {
+			return SwitchbackServing.legacy(experiment.data.unitType, units);
+		}
+		return SwitchbackServing.resolve(experiment.switchbackSourceTypes, experiment.switchbackSourcePaths,
 				experiment.data.switchbackClusterValues, units, new SwitchbackServing.AttributeReader() {
 					@Override
 					public Object read(final SwitchbackAttributePath path) {
@@ -1247,7 +1273,9 @@ public class Context implements Closeable {
 				&& Arrays.equals(a.data.switchbackClusterValues, b.data.switchbackClusterValues)
 				&& Objects.equals(a.data.switchbackStartAt, b.data.switchbackStartAt)
 				&& Objects.equals(a.data.switchbackPeriodMs, b.data.switchbackPeriodMs)
-				&& Objects.equals(a.data.switchbackDesignType, b.data.switchbackDesignType);
+				&& Objects.equals(a.data.switchbackDesignType, b.data.switchbackDesignType)
+				&& (((a.switchbackSourcePaths != null) && (b.switchbackSourcePaths != null))
+						|| Objects.equals(a.data.unitType, b.data.unitType));
 	}
 
 	// Lifecycle of one switchback experiment's cache slots: the bare-name slot (pre-anchor or an
@@ -1361,6 +1389,12 @@ public class Context implements Closeable {
 	// and a changed rule outcome is reported as stale for the write path to rebuild. Re-resolves the
 	// rules only when they changed (a refresh) or an attribute was set since the assignment was built.
 	private boolean ruleMatches(final ContextExperiment experiment, final Assignment assignment) {
+		// A switchback that did not resolve an eligible cluster never consulted its rules (the
+		// Collector evaluates them only for a cluster key), so a rule change cannot make it stale.
+		if (assignment.switchback && ((assignment.switchbackServing == null)
+				|| (assignment.switchbackServing.status != SwitchbackServing.ELIGIBLE))) {
+			return true;
+		}
 		final boolean rulesChanged = !Objects.equals(experiment.data.assignmentRules, assignment.ruleKey);
 		if (!rulesChanged && attrsSeq_.get() <= assignment.attrsSeq) {
 			return true;
@@ -1370,7 +1404,8 @@ public class Context implements Closeable {
 		// missing, so a unit set afterwards cannot switch the variant the user already saw.
 		final boolean exposed = assignment.exposureState.get() != ASSIGNMENT_UNEXPOSED;
 		final boolean unitPinnedMissing = assignment.ruleMissingUnit && exposed;
-		final RuleResolution rule = resolveRule(experiment, unitPinnedMissing, false);
+		final RuleResolution rule = resolveRule(experiment, ruleUnitType(experiment, assignment), unitPinnedMissing,
+				false);
 		final Integer ruleVariant = rule != null ? rule.variant : null;
 		final Integer cachedRuleVariant = assignment.ruleOverride ? (Integer) assignment.variant : null;
 		if (!Objects.equals(ruleVariant, cachedRuleVariant)) {
@@ -1413,13 +1448,19 @@ public class Context implements Closeable {
 		final boolean missingUnit;
 	}
 
+	// The unit a split rule randomizes over: the experiment's unitType, or for a switchback the
+	// serving unit this assignment resolved (the Collector resets its assigner to the serving unit).
+	private static String ruleUnitType(final ContextExperiment experiment, final Assignment assignment) {
+		return isSwitchback(experiment.data) ? assignment.unitType : experiment.data.unitType;
+	}
+
 	// Resolves the experiment's assignment rules to a variant, or null when no rule applies. A fixed
 	// variant out of range or a split whose length differs from the variant count is ignored. A split
 	// with no unit to randomize over gives the full-on variant and is flagged missingUnit.
 	// Called with contextLock_ held. cacheAssigner is false on the read path, where the hashed-unit and
 	// assigner caches must not be written (computeIfAbsentRW would try to upgrade to the write lock).
-	private RuleResolution resolveRule(final ContextExperiment contextExperiment, final boolean unitPinnedMissing,
-			final boolean cacheAssigner) {
+	private RuleResolution resolveRule(final ContextExperiment contextExperiment, final String unitType,
+			final boolean unitPinnedMissing, final boolean cacheAssigner) {
 		if (contextExperiment.assignmentRules == null) {
 			return null;
 		}
@@ -1442,7 +1483,6 @@ public class Context implements Closeable {
 			return null;
 		}
 
-		final String unitType = experiment.unitType;
 		final Object uid = (unitType != null && !unitPinnedMissing) ? units_.get(unitType) : null;
 		if (uid == null) {
 			return new RuleResolution(experiment.fullOnVariant, true);
@@ -1522,6 +1562,8 @@ public class Context implements Closeable {
 		Long switchbackStartAt;
 		Long switchbackPeriodMs;
 		String switchbackDesignType;
+		// The payload's unitType, used only by the legacy path of an unreadable cluster map.
+		String switchbackDeclaredUnitType;
 		// The serving resolution read for this slot (cluster key and serving unit); read once per
 		// slot. Null until read, and never kept when no linked unit was set.
 		SwitchbackServing switchbackServing;
@@ -1620,18 +1662,21 @@ public class Context implements Closeable {
 	// The slot's serving resolution: reused when this slot already read it (unless no linked unit was
 	// set then), otherwise read now. Caller holds the contextLock_ write lock.
 	private SwitchbackServing switchbackServing(final ContextExperiment experiment, final SwitchbackServing cached,
-			final long periodIndex, final long now) {
+			final long now) {
 		if ((cached != null) && (cached.status != SwitchbackServing.ABSENT)) {
 			return cached;
 		}
-		return resolveSwitchbackServing(experiment, periodIndex, now);
+		return resolveSwitchbackServing(experiment, now);
 	}
 
 	// Port of the Collector's switchback branch of ContextAPI (R33): the serving resolution decides
-	// whether the experiment applies and under which unit; then audience, full-on, traffic (sticky
-	// on the serving unit's hash), custom assignment and the switchback draw over the raw cluster
-	// key. Holdouts and assignment rules never apply to a switchback. Caller holds the contextLock_
-	// write lock.
+	// whether the experiment applies and under which unit. For an eligible cluster the Collector's
+	// assignExperiment order follows: assignment rules (a split rule randomizes over the serving
+	// unit), audience, full-on, traffic (sticky on the serving unit's hash), then custom assignment
+	// and the switchback draw over the raw cluster key. Holdouts never apply to a switchback. Only
+	// the draw needs a current period: pre-start or with an unservable schedule the result is an
+	// ineligible control that records nothing, while rules, audience and full-on are unaffected.
+	// Caller holds the contextLock_ write lock.
 	private void resolveSwitchbackAssignment(final Assignment assignment, final ContextExperiment experiment,
 			final SwitchbackServing cachedServing, final Integer custom, final long periodIndex, final long now) {
 		final Experiment data = experiment.data;
@@ -1643,7 +1688,7 @@ public class Context implements Closeable {
 		assignment.fullOnVariant = data.fullOnVariant;
 		assignment.attrsSeq = attrsSeq_.get();
 
-		final SwitchbackServing serving = switchbackServing(experiment, cachedServing, periodIndex, now);
+		final SwitchbackServing serving = switchbackServing(experiment, cachedServing, now);
 		assignment.switchbackServing = serving;
 		assignment.variant = 0;
 		if (serving.status == SwitchbackServing.ABSENT) {
@@ -1664,6 +1709,16 @@ public class Context implements Closeable {
 			return;
 		}
 
+		final RuleResolution rule = resolveRule(experiment, unitType, false, true);
+		if (rule != null) {
+			// Recorded like a unit experiment's rule win: ruleOverride set, not "assigned".
+			assignment.assigned = false;
+			assignment.ruleOverride = true;
+			assignment.ruleMissingUnit = rule.missingUnit;
+			assignment.variant = rule.variant;
+			return;
+		}
+
 		if ((data.audience != null) && (data.audience.length() > 0)) {
 			final AudienceMatcher.Result match = audienceMatcher_.evaluate(data.audience, buildAttributesMap());
 			if (match != null) {
@@ -1678,10 +1733,17 @@ public class Context implements Closeable {
 			assignment.fullOn = true;
 			return;
 		}
+		if (periodIndex == NO_SWITCHBACK_PERIOD) {
+			// Pre-start or an unservable schedule: no draw, so control and no exposure.
+			assignment.eligible = false;
+			assignment.switchbackSilent = true;
+			return;
+		}
 
 		final byte[] unitHash = getUnitHash(unitType, serving.unit.uid());
 		final VariantAssigner assigner = getVariantAssigner(unitType, unitHash);
 		if (assigner.assign(data.trafficSplit, data.trafficSeedHi, data.trafficSeedLo) != 1) {
+			// A traffic miss on an eligible cluster is recorded, as for a unit experiment.
 			assignment.eligible = false;
 			return;
 		}
@@ -1749,7 +1811,7 @@ public class Context implements Closeable {
 				if ((experiment != null) && isSwitchback(experiment.data)) {
 					assignment.id = experiment.data.id;
 					pinSwitchbackConfig(assignment, experiment.data);
-					final SwitchbackServing serving = switchbackServing(experiment, cachedServing, periodIndex, now);
+					final SwitchbackServing serving = switchbackServing(experiment, cachedServing, now);
 					assignment.switchbackServing = serving;
 					assignment.unitType = (serving.unit != null) ? serving.unit.type()
 							: experiment.switchbackSourceTypes != null ? experiment.switchbackSourceTypes[0] : null;
@@ -1811,7 +1873,7 @@ public class Context implements Closeable {
 					// those with no matching rule, so ruleMatches only re-resolves after a refresh changes
 					// the rules or an attribute is set.
 					assignment.ruleKey = experiment.data.assignmentRules;
-					final RuleResolution rule = resolveRule(experiment, false, true);
+					final RuleResolution rule = resolveRule(experiment, unitType, false, true);
 					if (rule != null) {
 						assignment.ruleOverride = true;
 						assignment.ruleMissingUnit = rule.missingUnit;
@@ -2226,8 +2288,7 @@ public class Context implements Closeable {
 			contextExperiment.data = experiment;
 			contextExperiment.holdouts = resolveApplicableHoldouts(experiment, holdoutsById);
 			if (isSwitchback(experiment)) {
-				// Holdouts and assignment rules never apply to a switchback (see
-				// resolveSwitchbackAssignment).
+				// Holdouts never apply to a switchback (see resolveSwitchbackAssignment).
 				contextExperiment.holdouts = null;
 				contextExperiment.switchbackSourceTypes = SwitchbackServing.sourceTypes(experiment.switchbackClusters);
 				contextExperiment.switchbackSourcePaths = SwitchbackServing.sourcePaths(experiment.switchbackClusters);
@@ -2319,9 +2380,6 @@ public class Context implements Closeable {
 			}
 			if (contextExperiment.assignmentRules != null && contextExperiment.assignmentRules.isInvalid()) {
 				log.warn("Invalid assignmentRules JSON for experiment '{}'; its rules are ignored", experiment.name);
-			}
-			if (isSwitchback(experiment)) {
-				contextExperiment.assignmentRules = null;
 			}
 
 			index.put(experiment.name, contextExperiment);

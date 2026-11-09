@@ -286,32 +286,76 @@ class ContextSwitchbackTest {
 		assertEquals(EXPECTED_2_ARMS[4], context.peekTreatment("exp_sb"));
 	}
 
-	// The Collector uses switchbackStartAt as the anchor as served (the backend stores it hour
-	// aligned); before it the experiment is an ineligible control that records no exposure.
+	// The Collector serves switchbackStartAt as the anchor without rounding it (the backend freezes
+	// hour-aligned anchors); before it the experiment is an ineligible control that records no
+	// exposure. An anchor that is not hour aligned is unservable (Registry), never served as-is
+	// and never rounded: ineligible control in every period, no exposure.
 	@Test
-	void unalignedStartIsUsedAsServedAndPreAnchorIsIneligible() {
-		final Experiment experiment = switchback(2, HOUR);
+	void unalignedStartIsUnservableAndPreAnchorIsIneligible() {
+		final Experiment aligned = switchback(1, "exp_aligned", 2, HOUR);
+		aligned.switchbackStartAt = ANCHOR + HOUR;
+		final Experiment unaligned = switchback(2, "exp_unaligned", 2, HOUR);
 		final long start = ANCHOR + 1_234_567L;
-		experiment.switchbackStartAt = start;
-		final Context context = createContext(dataOf(experiment));
+		unaligned.switchbackStartAt = start;
+		final Context context = createContext(dataOf(aligned, unaligned));
 
-		clock.now = ANCHOR;
-		assertEquals(0, context.getTreatment("exp_sb"));
-		clock.now = start - 1;
-		assertEquals(0, context.getTreatment("exp_sb"));
+		for (final long now : new long[]{ANCHOR, start - 1, start, ANCHOR + HOUR - 1}) {
+			clock.now = now;
+			assertEquals(0, context.getTreatment("exp_aligned"));
+			assertEquals(0, context.getTreatment("exp_unaligned"));
+		}
 		assertEquals(0, context.getPendingCount());
-		clock.now = start;
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		clock.now = start + HOUR - 1;
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		clock.now = start + HOUR;
-		assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"));
+		for (int i = 1; i < 4; ++i) {
+			clock.now = ANCHOR + i * HOUR;
+			assertEquals(EXPECTED_2_ARMS[i - 1], context.getTreatment("exp_aligned"));
+			assertEquals(0, context.getTreatment("exp_unaligned"));
+			clock.now = start + i * HOUR;
+			assertEquals(0, context.getTreatment("exp_unaligned"));
+		}
 
-		final Exposure[] exposures = publishExposures(context);
 		assertArrayEquals(new Exposure[]{
-				exposure(1, "exp_sb", EXPECTED_2_ARMS[0], start, true, true),
-				exposure(1, "exp_sb", EXPECTED_2_ARMS[1], start + HOUR, true, true),
-		}, exposures);
+				exposure(1, "exp_aligned", EXPECTED_2_ARMS[0], ANCHOR + HOUR, true, true),
+				exposure(1, "exp_aligned", EXPECTED_2_ARMS[1], ANCHOR + 2 * HOUR, true, true),
+				exposure(1, "exp_aligned", EXPECTED_2_ARMS[2], ANCHOR + 3 * HOUR, true, true),
+		}, publishExposures(context));
+	}
+
+	// Collector ContextAPISwitchbackTest.anchorNotOnAnHourBoundaryIsUnservableOnGetAndPost, plus the
+	// Registry's other anchor bounds: startAt < 0 or >= 10000-01-01T00:00:00Z. Unservable means an
+	// ineligible control on resolution ("GET") and no exposure on publish ("POST").
+	@Test
+	void anchorNotOnAnHourBoundaryIsUnservableOnGetAndPost() {
+		final long maxAnchor = 253_402_300_800_000L;
+		final long[] unservable = {ANCHOR + 1, ANCHOR - 1, ANCHOR + 30 * 60_000L, ANCHOR + HOUR - 1, -HOUR, -1,
+				maxAnchor, maxAnchor + HOUR, Long.MAX_VALUE - (Long.MAX_VALUE % HOUR)};
+		for (final long startAt : unservable) {
+			reset(eventHandler);
+			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
+			final Experiment experiment = switchback(2, HOUR);
+			experiment.switchbackStartAt = startAt;
+			// The cluster attribute is set at context creation, before every resolution below.
+			clock.now = 0;
+			final Context context = createContext(dataOf(experiment));
+			for (final long now : new long[]{0, ANCHOR, ANCHOR + 2 * HOUR + 1, startAt, startAt + HOUR,
+					maxAnchor + DAY}) {
+				clock.now = now;
+				assertEquals(0, context.getTreatment("exp_sb"), "startAt " + startAt + " now " + now);
+				assertEquals(0, context.getVariableValue("sb.arm", -1));
+			}
+			assertEquals(0, context.getPendingCount(), "startAt " + startAt);
+			context.publish();
+			verify(eventHandler, times(0)).publish(any(), any());
+		}
+
+		// In-range hour-aligned anchors, including 0 and the last hour before the bound, serve.
+		for (final long startAt : new long[]{0, ANCHOR, maxAnchor - HOUR}) {
+			final Experiment experiment = switchback(2, HOUR);
+			experiment.switchbackStartAt = startAt;
+			clock.now = startAt + HOUR;
+			final Context context = createContext(dataOf(experiment));
+			assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"), "startAt " + startAt);
+			assertEquals(1, context.getPendingCount());
+		}
 	}
 
 	@Test
@@ -614,13 +658,134 @@ class ContextSwitchbackTest {
 		}, publishExposures(context));
 	}
 
-	// Assignment rules are not part of the switchback contract and are ignored.
+	static final String ASSIGN_VARIANT_1 = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":1}]}";
+
+	// A rule win is published exactly like a unit experiment's: ruleOverride set, assigned false.
+	static Exposure ruleExposure(String name, int variant, long exposedAt) {
+		return new Exposure(1, name, UNIT_TYPE, variant, exposedAt, false, true, false, false, false, false, true);
+	}
+
+	// Collector ContextAPISwitchbackTest.assignmentRuleOverridesTheSchedule: the Collector evaluates
+	// assignment rules first for every experiment, switchbacks included, so a matching rule assigns
+	// its variant even before the anchor, with ruleOverride set and the exposure recorded.
 	@Test
-	void assignmentRulesNeverApplyToASwitchback() {
+	void assignmentRuleOverridesTheSchedule() {
 		final Experiment experiment = switchback(2, HOUR);
-		experiment.assignmentRules = "{\"rules\":[{\"type\":\"assign\",\"variant\":1}]}";
+		experiment.assignmentRules = ASSIGN_VARIANT_1;
+		for (int u = 0; u < 10; ++u) {
+			reset(eventHandler);
+			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
+			clock.now = ANCHOR - 1;
+			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, "user-" + u), dataOf(experiment));
+			assertEquals(1, context.getTreatment("exp_sb"));
+			assertEquals(1, context.getVariableValue("sb.arm", -1));
+			// The rule also beats every period's schedule draw.
+			for (int i = 0; i < 4; ++i) {
+				clock.now = ANCHOR + i * HOUR;
+				assertEquals(1, context.getTreatment("exp_sb"));
+			}
+			final Exposure[] exposures = publishExposures(context);
+			assertEquals(5, exposures.length);
+			assertEquals(ruleExposure("exp_sb", 1, ANCHOR - 1), exposures[0]);
+			for (int i = 0; i < 4; ++i) {
+				assertEquals(ruleExposure("exp_sb", 1, ANCHOR + i * HOUR), exposures[i + 1]);
+			}
+		}
+	}
+
+	// Collector ContextAPISwitchbackTest.unservableOnlyReplacesTheVariantDrawNotFullOnOrRules: an
+	// unservable schedule (no anchor; a bad period; here also an unaligned anchor) only replaces the
+	// schedule draw, so full-on and a matching assignment rule still apply and are recorded.
+	@Test
+	void unservableOnlyReplacesTheVariantDrawNotFullOnOrRules() {
+		final Experiment fullOn = switchback(1, "sb_full_on", 2, HOUR);
+		fullOn.switchbackStartAt = null;
+		fullOn.fullOnVariant = 1;
+		final Experiment rules = switchback(2, "sb_rules", 2, HOUR);
+		rules.switchbackPeriodMs = 0L;
+		rules.assignmentRules = ASSIGN_VARIANT_1;
+		final Experiment unalignedRules = switchback(3, "sb_unaligned_rules", 2, HOUR);
+		unalignedRules.switchbackStartAt = ANCHOR + 1;
+		unalignedRules.assignmentRules = ASSIGN_VARIANT_1;
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, "15"),
+				dataOf(fullOn, rules, unalignedRules));
+
+		assertEquals(1, context.getTreatment("sb_full_on"));
+		assertEquals(1, context.getTreatment("sb_rules"));
+		assertEquals(1, context.getTreatment("sb_unaligned_rules"));
+		final Exposure[] exposures = publishExposures(context);
+		assertEquals(3, exposures.length);
+		assertEquals(new Exposure(1, "sb_full_on", UNIT_TYPE, 1, ANCHOR, true, true, false, true, false, false,
+				false), exposures[0]);
+		assertEquals(new Exposure(2, "sb_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false, false,
+				true), exposures[1]);
+		assertEquals(new Exposure(3, "sb_unaligned_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false,
+				false, true), exposures[2]);
+	}
+
+	// Rules are evaluated only for an eligible cluster: an ineligible cluster stays a silent control
+	// even when a rule would match (the Collector returns before assignExperiment).
+	@Test
+	void assignmentRulesDoNotApplyToAnIneligibleCluster() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.assignmentRules = ASSIGN_VARIANT_1;
+		experiment.switchbackClusterValues = new String[]{"other-store"};
 		final Context context = createContext(dataOf(experiment));
-		assertArrayEquals(Arrays.copyOf(EXPECTED_2_ARMS, 4), peekSchedule(context, "exp_sb", HOUR, 4));
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(0, context.getPendingCount());
+	}
+
+	// A split rule randomizes over the serving unit (the Collector resets its assigner to the serving
+	// unit's hash), not over the payload's unitType.
+	@Test
+	void splitRuleRandomizesOverTheServingUnit() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.unitType = "user_id";
+		experiment.assignmentRules = "{\"rules\":[{\"type\":\"split\",\"environments\":[],"
+				+ "\"percentages\":\"50/50\"}]}";
+		int ones = 0;
+		for (int u = 0; u < 32; ++u) {
+			final String uid = "store-" + u;
+			final int expected = new com.absmartly.sdk.internal.VariantAssigner(Hashing.hashUnit(uid))
+					.assign(new double[]{0.5, 0.5}, SEED_HI, SEED_LO);
+			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, uid, "user_id", "fixed-user"),
+					dataOf(experiment));
+			assertEquals(expected, context.getTreatment("exp_sb"), uid);
+			ones += expected;
+		}
+		assertTrue((ones > 0) && (ones < 32));
+	}
+
+	// Audience-strict mismatch: control, recorded with audienceMismatch, as for a unit experiment
+	// (the Collector's assignExperiment; publish only suppresses a null cluster key).
+	@Test
+	void audienceStrictMismatchIsRecordedAsControl() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.audience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
+		experiment.audienceStrict = true;
+		final Context context = createContext(dataOf(experiment));
+		clock.now = ANCHOR + HOUR;
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, 0, ANCHOR + HOUR, true, true, false,
+				false, false, true, false)}, publishExposures(context));
+	}
+
+	// A traffic miss on an eligible cluster is recorded: eligible=false, variant 0, under the serving
+	// unit (the Collector's assignExperiment marks it ineligible and publish still emits it; publish
+	// only suppresses a null cluster key). An ineligible cluster, by contrast, records nothing.
+	@Test
+	void trafficMissOnAnEligibleClusterPublishesAnIneligibleExposure() {
+		final Experiment miss = switchback(1, "exp_miss", 2, HOUR);
+		miss.trafficSplit = new double[]{1.0, 0.0};
+		final Experiment ineligibleCluster = switchback(2, "exp_cluster_ineligible", 2, HOUR);
+		ineligibleCluster.trafficSplit = new double[]{1.0, 0.0};
+		ineligibleCluster.switchbackClusterValues = new String[]{"other-store"};
+		final Context context = createContext(dataOf(miss, ineligibleCluster));
+		clock.now = ANCHOR + 2 * HOUR + 3;
+		assertEquals(0, context.getTreatment("exp_miss"));
+		assertEquals(0, context.getTreatment("exp_cluster_ineligible"));
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_miss", 0, ANCHOR + 2 * HOUR + 3, true, false)},
+				publishExposures(context));
 	}
 
 	@Test

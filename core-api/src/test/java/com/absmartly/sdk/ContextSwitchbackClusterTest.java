@@ -321,9 +321,11 @@ class ContextSwitchbackClusterTest {
 		}
 	}
 
-	// A missing or empty cluster map links no unit type, so the experiment never applies.
+	// A missing or empty cluster map takes the Collector's legacy path: a unit of the declared
+	// unitType only identifies an ineligible control (variant 0's config, no exposure); without one
+	// the experiment does not apply.
 	@Test
-	void missingOrEmptyClusterMapNeverApplies() {
+	void missingOrEmptyClusterMapIsOnlyALegacyIneligibleControl() {
 		final Experiment none = attributeSwitchback("city");
 		none.switchbackClusters = null;
 		final Experiment empty = attributeSwitchback("city");
@@ -332,8 +334,14 @@ class ContextSwitchbackClusterTest {
 			final Context context = createContext(dataOf(experiment));
 			context.setAttribute("city", "Lisboa");
 			assertEquals(0, context.getTreatment("exp_sb"));
-			assertEquals(-1, context.getVariableValue("sb.arm", -1));
+			assertEquals(0, context.getVariableValue("sb.arm", -1));
 			assertEquals(0, context.getPendingCount());
+
+			final Context other = createContext(TestUtils.mapOf("user_id", "u1"), dataOf(experiment));
+			other.setAttribute("city", "Lisboa");
+			assertEquals(0, other.getTreatment("exp_sb"));
+			assertEquals(-1, other.getVariableValue("sb.arm", -1));
+			assertEquals(0, other.getPendingCount());
 		}
 	}
 
