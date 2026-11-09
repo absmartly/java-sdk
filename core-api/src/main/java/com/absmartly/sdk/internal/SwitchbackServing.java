@@ -44,33 +44,24 @@ public final class SwitchbackServing {
 		this.clusterKey = clusterKey;
 	}
 
-	// sourceTypes and sourcePaths are the switchbackClusters entries in declared order. A null
-	// sourcePaths marks an unservable configuration (missing grid, malformed path, ...), which still
-	// declares its linked types. units lists the context units in insertion order.
+	// sourceTypes and sourcePaths are the non-null results of sourceTypes() and sourcePaths() for a
+	// readable cluster map; an unreadable map takes legacy() instead. The declared source order alone
+	// decides which unit serves: units is in no meaningful order (the context keeps its units in a
+	// map), and the source loop is the outer one.
 	public static SwitchbackServing resolve(final String[] sourceTypes, final SwitchbackAttributePath[] sourcePaths,
 			final String[] allowedValues, final List<? extends Unit> units, final AttributeReader reader) {
-		if (sourceTypes == null) {
-			return new SwitchbackServing(ABSENT, null, null);
-		}
-
 		Unit first = null;
 		Unit serving = null;
 		String key = null;
 		boolean disagreement = false;
 		for (int s = 0; s < sourceTypes.length; ++s) {
 			final String type = sourceTypes[s];
-			if (type == null) {
-				continue;
-			}
 			for (final Unit unit : units) {
 				if ((unit.uid() == null) || !type.equals(unit.type())) {
 					continue;
 				}
 				if (first == null) {
 					first = unit;
-				}
-				if (sourcePaths == null) {
-					continue;
 				}
 				final String value = SwitchbackClusterKeys.normalize(reader.read(sourcePaths[s]));
 				if (value == null) {
@@ -121,8 +112,8 @@ public final class SwitchbackServing {
 		return false;
 	}
 
-	// Splits a switchbackClusters map into its ordered types and parsed paths. Returns null paths
-	// when any path is not a supported attribute path.
+	// The linked unit types of a switchbackClusters map, in declared order; null for a missing or
+	// empty map.
 	public static String[] sourceTypes(final Map<String, String> clusters) {
 		if ((clusters == null) || clusters.isEmpty()) {
 			return null;
@@ -135,6 +126,8 @@ public final class SwitchbackServing {
 		return types;
 	}
 
+	// The parsed paths of a switchbackClusters map, parallel to sourceTypes(); null for a missing or
+	// empty map, a null unit type, or any path that is not a supported attribute path.
 	public static SwitchbackAttributePath[] sourcePaths(final Map<String, String> clusters) {
 		if ((clusters == null) || clusters.isEmpty()) {
 			return null;

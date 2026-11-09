@@ -1092,8 +1092,8 @@ public class Context implements Closeable {
 	}
 
 	private boolean experimentMatches(final ContextExperiment experiment, final Assignment assignment) {
-		// A switchback serves under the unit its clusters select, never under unitType, so its unit
-		// identity is the cluster map compared by switchbackConfigMatches.
+		// A switchback serves under the unit its clusters select, so its unit identity is the cluster
+		// map compared by switchbackConfigMatches; unitType counts only on the legacy path.
 		return experiment.data.id == assignment.id &&
 				(isSwitchback(experiment.data) ? legacySwitchbackUnitMatches(experiment, assignment)
 						: (experiment.data.unitType != null
@@ -1167,26 +1167,18 @@ public class Context implements Closeable {
 	}
 
 	// periodIndex = floorDiv(now - switchbackStartAt, switchbackPeriodMs), as the Collector computes
-	// it. Returns NO_SWITCHBACK_PERIOD before the start, for an unservable schedule (see
-	// switchbackScheduleServable) and for a cluster map with an unsupported attribute path.
-	private static long switchbackPeriodIndex(final ContextExperiment contextExperiment, final long nowMs) {
-		final Experiment experiment = contextExperiment.data;
-		if (!switchbackScheduleServable(experiment) || (contextExperiment.switchbackSourcePaths == null)) {
+	// it. NO_SWITCHBACK_PERIOD for absent and unit experiments, before the start, for an unservable
+	// schedule (see switchbackScheduleServable) and for a cluster map taking the legacy path.
+	private static long currentSwitchbackPeriod(final ContextExperiment experiment, final long nowMs) {
+		if ((experiment == null) || !isSwitchback(experiment.data) || !switchbackScheduleServable(experiment.data)
+				|| (experiment.switchbackSourcePaths == null)) {
 			return NO_SWITCHBACK_PERIOD;
 		}
-		final long startAt = experiment.switchbackStartAt;
+		final long startAt = experiment.data.switchbackStartAt;
 		if (nowMs < startAt) {
 			return NO_SWITCHBACK_PERIOD;
 		}
-		return SwitchbackAssigner.floorDiv(nowMs - startAt, experiment.switchbackPeriodMs);
-	}
-
-	// Also NO_SWITCHBACK_PERIOD for absent and unit experiments.
-	private static long currentSwitchbackPeriod(final ContextExperiment experiment, final long nowMs) {
-		if ((experiment == null) || !isSwitchback(experiment.data)) {
-			return NO_SWITCHBACK_PERIOD;
-		}
-		return switchbackPeriodIndex(experiment, nowMs);
+		return SwitchbackAssigner.floorDiv(nowMs - startAt, experiment.data.switchbackPeriodMs);
 	}
 
 	private static final class ContextUnit implements SwitchbackServing.Unit {
@@ -1267,9 +1259,9 @@ public class Context implements Closeable {
 	}
 
 	// Switchback identity: id, iteration, the ordered cluster map, the cluster value allow-list,
-	// startAt, periodMs and design, i.e. every input to the period grid and the cluster key. Seed,
-	// split, unitType (unused by switchbacks) and analysis-only fields are excluded. Absent and unit
-	// experiments have no identity.
+	// startAt, periodMs and design, i.e. every input to the period grid and the cluster key, plus
+	// unitType when either side takes the legacy path. Seed, split and analysis-only fields are
+	// excluded. Absent and unit experiments have no identity.
 	private static boolean sameSwitchbackIdentity(final ContextExperiment a, final ContextExperiment b) {
 		final boolean aSwitchback = (a != null) && isSwitchback(a.data);
 		final boolean bSwitchback = (b != null) && isSwitchback(b.data);
@@ -2238,7 +2230,7 @@ public class Context implements Closeable {
 		// switchback identity is unchanged, otherwise a fresh value. Unused for unit experiments.
 		long switchbackGeneration;
 		// switchbackClusters split in declared order: the linked unit types, and their parsed paths.
-		// Paths are null when the configuration is unservable (see switchbackPeriodIndex).
+		// Paths are null when the map is missing, empty or unreadable: the legacy path.
 		String[] switchbackSourceTypes;
 		SwitchbackAttributePath[] switchbackSourcePaths;
 	}

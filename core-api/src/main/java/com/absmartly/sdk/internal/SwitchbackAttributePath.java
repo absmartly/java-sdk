@@ -17,8 +17,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 // SwitchbackAttributePath: "/" separates segments, a segment wrapped in ' or " is a literal key,
 // and an unquoted segment that Guava Ints.tryParse accepts (ASCII digits, optional leading '-')
 // indexes a List and nothing else. Every other segment reads a Map key. A path is malformed, and
-// its experiment unservable, when a quote is left unterminated or an unquoted segment contains a
-// '.' (dotted paths are not a nesting syntax; nesting is written with '/').
+// its experiment unservable, when a quote is left unterminated or any segment key, quoted or not,
+// contains a '.' (dotted paths are not a nesting syntax; nesting is written with '/').
 public final class SwitchbackAttributePath {
 	private static final Logger log = LoggerFactory.getLogger(SwitchbackAttributePath.class);
 	private static final ObjectMapper JSON = new ObjectMapper();
@@ -134,8 +134,9 @@ public final class SwitchbackAttributePath {
 		return current;
 	}
 
-	// Null when the path is malformed. A '.' anywhere, quoted or not, is unreadable: the Collector
-	// treats "geo.city", "'geo.city'" and "\"geo.city\"" alike as unreadable cluster paths.
+	// Null when the path is malformed. A '.' anywhere, quoted or not, is unreadable: the Collector's
+	// SwitchbackAttributePath.java:40 rejects any parsed segment key containing '.', so "geo.city",
+	// "'geo.city'" and "\"geo.city\"" are alike unreadable cluster paths.
 	private static SwitchbackAttributePath parse(final String path) {
 		if (path.indexOf('.') >= 0) {
 			return null;
@@ -162,9 +163,6 @@ public final class SwitchbackAttributePath {
 				final int end = path.indexOf('/', i);
 				final int stop = (end < 0) ? path.length() : end;
 				final String key = path.substring(i, stop);
-				if (key.indexOf('.') >= 0) {
-					return null;
-				}
 				keys.add(key);
 				indices.add(tryParseInt(key));
 				i = stop;
