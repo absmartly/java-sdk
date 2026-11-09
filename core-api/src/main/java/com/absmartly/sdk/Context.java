@@ -1093,10 +1093,12 @@ public class Context implements Closeable {
 
 	private boolean experimentMatches(final ContextExperiment experiment, final Assignment assignment) {
 		// A switchback serves under the unit its clusters select, so its unit identity is the cluster
-		// map compared by switchbackConfigMatches; unitType counts only on the legacy path.
+		// map compared by switchbackConfigMatches. On the legacy path a unitType change is part of
+		// sameSwitchbackIdentity, so it starts a new generation and the stale epoch's slots are
+		// dropped before they get here.
 		return experiment.data.id == assignment.id &&
-				(isSwitchback(experiment.data) ? legacySwitchbackUnitMatches(experiment, assignment)
-						: (experiment.data.unitType != null
+				(isSwitchback(experiment.data)
+						|| (experiment.data.unitType != null
 								&& experiment.data.unitType.equals(assignment.unitType)))
 				&&
 				experiment.data.iteration == assignment.iteration &&
@@ -1104,14 +1106,6 @@ public class Context implements Closeable {
 				Arrays.equals(experiment.data.trafficSplit, assignment.trafficSplit) &&
 				holdoutSetMatches(experiment.holdouts, assignment.holdouts) &&
 				switchbackConfigMatches(experiment.data, assignment);
-	}
-
-	// unitType is read only by the legacy path of an unreadable cluster map, so only then is it
-	// part of a switchback's identity.
-	private static boolean legacySwitchbackUnitMatches(final ContextExperiment experiment,
-			final Assignment assignment) {
-		return (experiment.switchbackSourcePaths != null)
-				|| Objects.equals(experiment.data.unitType, assignment.switchbackDeclaredUnitType);
 	}
 
 	// Grid identity: a change to any of these re-maps periods or clusters to variants. Carryover and
