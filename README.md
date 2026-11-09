@@ -374,7 +374,15 @@ context.close();
 
 ### Switchback Experiments
 
-Switchback experiments need no code changes: `getTreatment`, `peekTreatment` and the variable methods return the variant for the current time period, and the SDK emits one exposure per period while time moves forward. See [SWITCHBACK.md](SWITCHBACK.md) for the assignment rules, the exposure deduplication bound, the minimum SDK version and how older SDKs behave.
+Switchback experiments need no new API: `getTreatment`, `peekTreatment` and the variable methods return the variant for the current time period, and the SDK emits one exposure per period while time moves forward. A switchback is clustered by attribute: the experiment links one or more unit types to an attribute path, so set those units and attributes on the context. The first linked unit whose attribute holds a value serves the experiment, and that value is its cluster. Units of the experiment's linked types that disagree on the value, carry a value outside the experiment's allowed values, or carry no value at all get the control variant and record no exposure. Holdouts do not apply to switchbacks.
+
+```java
+context.setUnit("store_id", "store-0042");
+context.setAttribute("store", Collections.singletonMap("region", "lisbon"));
+int treatment = context.getTreatment("exp_switchback_pricing");
+```
+
+See [SWITCHBACK.md](SWITCHBACK.md) for the serving rules, the exposure deduplication bound, the minimum SDK version and how older SDKs behave.
 
 ### Custom Event Logger
 

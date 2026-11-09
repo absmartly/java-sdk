@@ -5,20 +5,24 @@ import static com.absmartly.sdk.ContextSwitchbackTest.HOUR;
 import static com.absmartly.sdk.ContextSwitchbackTest.SEED_HI;
 import static com.absmartly.sdk.ContextSwitchbackTest.SEED_LO;
 import static com.absmartly.sdk.ContextSwitchbackTest.UID;
-import static com.absmartly.sdk.ContextSwitchbackTest.UID_HASH;
 import static com.absmartly.sdk.ContextSwitchbackTest.UNIT_TYPE;
 import static com.absmartly.sdk.ContextSwitchbackTest.dataOf;
 import static com.absmartly.sdk.ContextSwitchbackTest.switchback;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java8.util.concurrent.CompletableFuture;
@@ -30,7 +34,6 @@ import org.mockito.Mockito;
 
 import com.absmartly.sdk.ContextSwitchbackTest.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
-import com.absmartly.sdk.internal.SwitchbackBuckets;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
@@ -38,7 +41,7 @@ import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.Exposure;
 import com.absmartly.sdk.json.PublishEvent;
 
-// Cluster bucket selection inside Context. Variants are derived from SwitchbackBuckets and
+// Cluster key selection inside Context. Variants are derived from the raw key and
 // SwitchbackAssigner, both pinned by the platform golden vectors.
 class ContextSwitchbackClusterTest {
 	static final long SEED = ((long) SEED_HI << 32) | (SEED_LO & 0xffffffffL);
@@ -85,22 +88,22 @@ class ContextSwitchbackClusterTest {
 		return publishEvent(context).exposures;
 	}
 
-	static Experiment attributeSwitchback(String path, int count) {
+	static Experiment attributeSwitchback(String path) {
 		final Experiment experiment = switchback(ARMS, HOUR);
-		experiment.switchbackClusterAttribute = path;
-		experiment.switchbackClusterCount = count;
+		experiment.switchbackClusters = ContextSwitchbackTest.clusters(UNIT_TYPE, path);
 		return experiment;
 	}
 
-	static int expected(String key, int count, long periodIndex) {
-		final int bucket = SwitchbackBuckets.bucketOf(SEED_HI, SEED_LO, key, count);
-		return SwitchbackAssigner.assign(String.valueOf(bucket), periodIndex, SEED, ARMS);
+	// The Collector's draw: the raw cluster key, unhashed. SwitchbackAssigner is pinned by
+	// switchback/golden-vectors.json.
+	static int expected(String key, long periodIndex) {
+		return SwitchbackAssigner.assign(key, periodIndex, SEED, ARMS);
 	}
 
-	static int[] expectedSchedule(String key, int count) {
+	static int[] expectedSchedule(String key) {
 		final int[] result = new int[12];
 		for (int i = 0; i < result.length; ++i) {
-			result[i] = expected(key, count, i);
+			result[i] = expected(key, i);
 		}
 		return result;
 	}
@@ -119,62 +122,60 @@ class ContextSwitchbackClusterTest {
 				audienceMismatch);
 	}
 
+	// The unit uid is never the cluster key: with no cluster value the unit is ineligible.
 	@Test
-	void unitSourceHashesThePublishedUnitHashForEveryCount() {
-		for (final int count : new int[]{10, 50, 100}) {
-			final Experiment experiment = switchback(ARMS, HOUR);
-			experiment.switchbackClusterCount = count;
-			assertArrayEquals(expectedSchedule(UID_HASH, count), peekSchedule(createContext(dataOf(experiment))));
+	void unitUidIsNeverTheClusterKey() {
+		final Context context = createContext(dataOf(attributeSwitchback("city")));
+		for (int i = 0; i < 3; ++i) {
+			clock.now = ANCHOR + i * HOUR;
+			assertEquals(0, context.getTreatment("exp_sb"));
 		}
+		assertEquals(0, context.getPendingCount());
 	}
 
-	// A numeric UID is clustered by its canonical string (Hashing.unitToString, JavaScript toFixed(0)),
-	// the form ordinary assignment hashes and publish sends, so it shares the schedule, bucket and
-	// exposures of that string.
+	// A numeric UID serves and publishes under its canonical string (Hashing.unitToString,
+	// JavaScript toFixed(0)), exactly as the same string UID does; the cluster key is the attribute.
 	@Test
 	void numericUnitUidClustersLikeItsCanonicalString() {
 		final Object[][] cases = {{123456789L, "123456789"}, {123456789.0, "123456789"},
 				{9007199254740993L, "9007199254740992"}, {125.75, "126"}};
-		for (final int count : new int[]{10, 100}) {
-			final Experiment experiment = switchback(ARMS, HOUR);
-			experiment.switchbackClusterCount = count;
-			for (final Object[] pair : cases) {
-				final Context numeric = createContext(TestUtils.mapOf(UNIT_TYPE, pair[0]), dataOf(experiment));
-				final PublishEvent numericEvent = exposeAndPublish(numeric);
-				final int[] numericSchedule = peekSchedule(numeric);
-				final Context text = createContext(TestUtils.mapOf(UNIT_TYPE, pair[1]), dataOf(experiment));
-				final PublishEvent textEvent = exposeAndPublish(text);
+		for (final Object[] pair : cases) {
+			final Context numeric = createContext(TestUtils.mapOf(UNIT_TYPE, pair[0]),
+					dataOf(attributeSwitchback("city")));
+			clock.now = ANCHOR;
+			numeric.setAttribute("city", "Lisboa");
+			final PublishEvent numericEvent = exposeAndPublish(numeric);
+			final int[] numericSchedule = peekSchedule(numeric);
+			final Context text = createContext(TestUtils.mapOf(UNIT_TYPE, pair[1]),
+					dataOf(attributeSwitchback("city")));
+			clock.now = ANCHOR;
+			text.setAttribute("city", "Lisboa");
+			final PublishEvent textEvent = exposeAndPublish(text);
 
-				final String unitHash = new String(Hashing.hashUnit((String) pair[1]), StandardCharsets.US_ASCII);
-				assertArrayEquals(expectedSchedule(unitHash, count), numericSchedule);
-				assertArrayEquals(peekSchedule(text), numericSchedule);
-				assertArrayEquals(textEvent.units, numericEvent.units);
-				assertArrayEquals(textEvent.exposures, numericEvent.exposures);
-				assertEquals(unitHash, numericEvent.units[0].uid);
-			}
+			final String unitHash = new String(Hashing.hashUnit((String) pair[1]), StandardCharsets.US_ASCII);
+			assertArrayEquals(expectedSchedule("Lisboa"), numericSchedule);
+			assertArrayEquals(peekSchedule(text), numericSchedule);
+			assertArrayEquals(textEvent.units, numericEvent.units);
+			assertArrayEquals(textEvent.exposures, numericEvent.exposures);
+			assertEquals(unitHash, numericEvent.units[0].uid);
 		}
 	}
 
-	// Independent reference (Python hashlib MD5 and murmur3 over the platform formulas) for numeric
-	// UIDs: the unit hash, its bucket and periods 0..11 of that bucket with 3 arms.
+	// Independent reference (Python MD5/base64url) for the published hash of numeric UIDs, and the
+	// raw-key schedule of "123456789" as a numeric attribute value (murmur3 reference).
 	@Test
 	void numericUnitUidMatchesTheIndependentReference() {
-		final Object[][] cases = {
-				{123456789L, "JfnnlDI7RTiF9RgfG2JNCw", 10, 0, new int[]{2, 0, 1, 2, 1, 0, 0, 1, 2, 1, 0, 2}},
-				{123456789L, "JfnnlDI7RTiF9RgfG2JNCw", 100, 10, new int[]{0, 2, 1, 2, 1, 0, 0, 2, 1, 1, 0, 2}},
-				{9007199254740993L, "OngwCmjeKhIQyeNybDy4eg", 10, 7, new int[]{1, 2, 0, 0, 1, 2, 2, 1, 0, 0, 2, 1}},
-				{9007199254740993L, "OngwCmjeKhIQyeNybDy4eg", 100, 37,
-						new int[]{0, 2, 1, 2, 0, 1, 2, 1, 0, 1, 2, 0}}};
+		final Object[][] cases = {{123456789L, "JfnnlDI7RTiF9RgfG2JNCw"},
+				{9007199254740993L, "OngwCmjeKhIQyeNybDy4eg"}};
+		final int[] schedule = {0, 2, 1, 0, 1, 2, 0, 1, 2, 2, 1, 0};
 		for (final Object[] golden : cases) {
-			final Experiment experiment = switchback(ARMS, HOUR);
-			experiment.switchbackClusterCount = (Integer) golden[2];
-			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, golden[0]), dataOf(experiment));
-			final int[] schedule = (int[]) golden[4];
+			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, golden[0]),
+					dataOf(attributeSwitchback("region")));
+			clock.now = ANCHOR;
+			context.setAttribute("region", 123456789);
 			final PublishEvent event = exposeAndPublish(context);
 
 			assertEquals(golden[1], event.units[0].uid);
-			assertEquals(golden[3], SwitchbackBuckets.bucketOf(SEED_HI, SEED_LO, event.units[0].uid,
-					(Integer) golden[2]));
 			assertArrayEquals(new Exposure[]{exposure(schedule[0], ANCHOR, true, false)}, event.exposures);
 			assertArrayEquals(schedule, peekSchedule(context));
 		}
@@ -186,88 +187,89 @@ class ContextSwitchbackClusterTest {
 		return publishEvent(context);
 	}
 
+	// Periods 0..11 of the raw key "Lisboa", from the independent murmur3 reference.
 	@Test
-	void attributeSourceHashesTheResolvedAttributeForEveryCount() {
-		for (final int count : new int[]{10, 50, 100}) {
-			clock.now = ANCHOR;
-			final Context context = createContext(dataOf(attributeSwitchback("city", count)));
-			context.setAttribute("city", "Lisboa");
-			assertArrayEquals(expectedSchedule("Lisboa", count), peekSchedule(context));
-		}
+	void attributeSourceServesTheRawAttributeValue() {
+		clock.now = ANCHOR;
+		final Context context = createContext(dataOf(attributeSwitchback("city")));
+		context.setAttribute("city", "Lisboa");
+		assertArrayEquals(new int[]{0, 2, 1, 2, 1, 0, 1, 0, 2, 0, 1, 2}, peekSchedule(context));
+		assertArrayEquals(expectedSchedule("Lisboa"), peekSchedule(context));
 	}
 
 	@Test
 	void unitsSharingAnAttributeValueShareTheSchedule() {
-		final Context lisboa = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context lisboa = createContext(dataOf(attributeSwitchback("city")));
 		lisboa.setAttribute("city", "Lisboa");
-		final Context porto = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context porto = createContext(dataOf(attributeSwitchback("city")));
 		porto.setAttribute("city", "Porto");
 		final Context otherLisboa = createContext(TestUtils.mapOf(UNIT_TYPE, "another-store"),
-				dataOf(attributeSwitchback("city", 100)));
+				dataOf(attributeSwitchback("city")));
 		otherLisboa.setAttribute("city", "Lisboa");
 
-		assertArrayEquals(expectedSchedule("Lisboa", 100), peekSchedule(lisboa));
-		assertArrayEquals(expectedSchedule("Lisboa", 100), peekSchedule(otherLisboa));
-		assertArrayEquals(expectedSchedule("Porto", 100), peekSchedule(porto));
-		assertNotEquals(SwitchbackBuckets.bucketOf(SEED_HI, SEED_LO, "Lisboa", 100),
-				SwitchbackBuckets.bucketOf(SEED_HI, SEED_LO, "Porto", 100));
+		assertArrayEquals(expectedSchedule("Lisboa"), peekSchedule(lisboa));
+		assertArrayEquals(expectedSchedule("Lisboa"), peekSchedule(otherLisboa));
+		assertArrayEquals(expectedSchedule("Porto"), peekSchedule(porto));
+		assertFalse(Arrays.equals(expectedSchedule("Lisboa"), expectedSchedule("Porto")));
 	}
 
 	@Test
 	void nestedAndArrayPathsAndIntegerValuesResolve() {
 		clock.now = ANCHOR;
-		final Context nested = createContext(dataOf(attributeSwitchback("geo/city", 50)));
+		final Context nested = createContext(dataOf(attributeSwitchback("geo/city")));
 		nested.setAttribute("geo", TestUtils.mapOf("city", "Porto"));
-		assertArrayEquals(expectedSchedule("Porto", 50), peekSchedule(nested));
+		assertArrayEquals(expectedSchedule("Porto"), peekSchedule(nested));
 
 		clock.now = ANCHOR;
-		final Context array = createContext(dataOf(attributeSwitchback("items/1/city", 50)));
+		final Context array = createContext(dataOf(attributeSwitchback("items/1/city")));
 		array.setAttribute("items", TestUtils.listOf(TestUtils.mapOf("city", "Lisbon"),
 				TestUtils.mapOf("city", "Faro")));
-		assertArrayEquals(expectedSchedule("Faro", 50), peekSchedule(array));
+		assertArrayEquals(expectedSchedule("Faro"), peekSchedule(array));
 
 		clock.now = ANCHOR;
-		final Context integer = createContext(dataOf(attributeSwitchback("region", 10)));
+		final Context integer = createContext(dataOf(attributeSwitchback("region")));
 		integer.setAttribute("region", 42L);
-		assertArrayEquals(expectedSchedule("42", 10), peekSchedule(integer));
+		assertArrayEquals(expectedSchedule("42"), peekSchedule(integer));
 
 		// Values are read through their JSON encoding, as the Collector decodes them: an integral
 		// BigDecimal becomes an integer, a Character a string, and a Float a non-integral double.
 		clock.now = ANCHOR;
-		final Context decimal = createContext(dataOf(attributeSwitchback("geo/city", 50)));
+		final Context decimal = createContext(dataOf(attributeSwitchback("geo/city")));
 		decimal.setAttribute("geo", TestUtils.mapOf("city", new BigDecimal("42")));
-		assertArrayEquals(expectedSchedule("42", 50), peekSchedule(decimal));
+		assertArrayEquals(expectedSchedule("42"), peekSchedule(decimal));
 
 		clock.now = ANCHOR;
-		final Context character = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context character = createContext(dataOf(attributeSwitchback("city")));
 		character.setAttribute("city", 'c');
-		assertArrayEquals(expectedSchedule("c", 100), peekSchedule(character));
+		assertArrayEquals(expectedSchedule("c"), peekSchedule(character));
 
 		clock.now = ANCHOR + 10;
-		final Context floating = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context floating = createContext(dataOf(attributeSwitchback("city")));
 		floating.setAttribute("city", 2.0f);
 		assertEquals(0, floating.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false)}, publishExposures(floating));
+		assertEquals(0, floating.getPendingCount());
 	}
 
-	// Attribute values the Collector cannot bucket serve variant 0, not eligible, and never throw.
+	// Attribute values that yield no cluster key serve variant 0, not eligible, record no exposure
+	// and never throw.
 	@Test
-	void unbucketableAttributeValuesAreIneligible() {
+	void valuesWithoutAClusterKeyAreIneligible() {
 		final Object[] values = {null, "", true, 1.5, 2.0, TestUtils.mapOf("a", "b"), TestUtils.listOf("x")};
 		for (final Object value : values) {
-			final Context context = createContext(dataOf(attributeSwitchback("city", 10)));
+			final Context context = createContext(dataOf(attributeSwitchback("city")));
 			context.setAttribute("city", value);
 			clock.now = ANCHOR + 10;
 			assertEquals(0, context.getTreatment("exp_sb"), String.valueOf(value));
 			// Variant 0's own config, like any ineligible assignment.
 			assertEquals(0, context.getVariableValue("sb.arm", -1), String.valueOf(value));
+			assertEquals(0, context.getPendingCount(), String.valueOf(value));
 		}
 
-		final Context missing = createContext(dataOf(attributeSwitchback("geo/city", 10)));
+		final Context missing = createContext(dataOf(attributeSwitchback("geo/city")));
 		missing.setAttribute("geo", TestUtils.mapOf("country", "PT"));
 		clock.now = ANCHOR + 10;
 		assertEquals(0, missing.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false)}, publishExposures(missing));
+		assertEquals(0, missing.getPendingCount());
 	}
 
 	// A value with no JSON encoding has no cluster key.
@@ -277,18 +279,36 @@ class ContextSwitchbackClusterTest {
 		cyclic.put("self", cyclic);
 		final Object[] values = {cyclic, new Object()};
 		for (final Object value : values) {
-			final Context context = createContext(dataOf(attributeSwitchback("geo/city", 10)));
+			final Context context = createContext(dataOf(attributeSwitchback("geo/city")));
 			context.setAttribute("geo", value);
 			assertEquals(0, context.getTreatment("exp_sb"));
+			assertEquals(0, context.getPendingCount());
 		}
 	}
 
+	// Unservable configurations serve an ineligible control to linked units, never a unit-assignment
+	// draw, and record nothing.
 	@Test
-	void unsupportedPathsAndDisallowedCountsAreIneligible() {
-		final Experiment[] experiments = {attributeSwitchback("items/0", 10), attributeSwitchback("items/-1/city", 10),
-				attributeSwitchback("", 10), attributeSwitchback("city", 1000), attributeSwitchback("city", 20),
-				attributeSwitchback("city", 0), switchback(ARMS, HOUR)};
-		experiments[experiments.length - 1].switchbackClusterCount = null;
+	void unservableConfigurationsAreIneligible() {
+		final List<Experiment> experiments = new ArrayList<Experiment>();
+		for (final String path : new String[]{"items/0", "items/-1/city", "", "geo.city", "'city", "\"city"}) {
+			experiments.add(attributeSwitchback(path));
+		}
+		final Experiment noPeriod = attributeSwitchback("city");
+		noPeriod.switchbackPeriodMs = null;
+		experiments.add(noPeriod);
+		final Experiment zeroPeriod = attributeSwitchback("city");
+		zeroPeriod.switchbackPeriodMs = 0L;
+		experiments.add(zeroPeriod);
+		final Experiment negativePeriod = attributeSwitchback("city");
+		negativePeriod.switchbackPeriodMs = -HOUR;
+		experiments.add(negativePeriod);
+		final Experiment oneArm = attributeSwitchback("city");
+		oneArm.split = new double[]{1.0};
+		experiments.add(oneArm);
+		final Experiment pathlessLink = attributeSwitchback("city");
+		pathlessLink.switchbackClusters = ContextSwitchbackTest.clusters(UNIT_TYPE, null);
+		experiments.add(pathlessLink);
 		for (final Experiment experiment : experiments) {
 			final Context context = createContext(dataOf(experiment));
 			context.setAttribute("city", "Lisboa");
@@ -297,14 +317,30 @@ class ContextSwitchbackClusterTest {
 				clock.now = ANCHOR + i * HOUR;
 				assertEquals(0, context.getTreatment("exp_sb"), experiment.toString());
 			}
-			assertEquals(1, context.getPendingCount(), experiment.toString());
+			assertEquals(0, context.getPendingCount(), experiment.toString());
+		}
+	}
+
+	// A missing or empty cluster map links no unit type, so the experiment never applies.
+	@Test
+	void missingOrEmptyClusterMapNeverApplies() {
+		final Experiment none = attributeSwitchback("city");
+		none.switchbackClusters = null;
+		final Experiment empty = attributeSwitchback("city");
+		empty.switchbackClusters = new HashMap<String, String>();
+		for (final Experiment experiment : new Experiment[]{none, empty}) {
+			final Context context = createContext(dataOf(experiment));
+			context.setAttribute("city", "Lisboa");
+			assertEquals(0, context.getTreatment("exp_sb"));
+			assertEquals(-1, context.getVariableValue("sb.arm", -1));
+			assertEquals(0, context.getPendingCount());
 		}
 	}
 
 	// The Collector reads the attribute set at or before the exposure instant, latest setAt first.
 	@Test
 	void latestAttributeSetAtOrBeforeTheResolutionInstantIsUsed() {
-		final Context context = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context context = createContext(dataOf(attributeSwitchback("city")));
 		clock.now = ANCHOR + 2 * HOUR;
 		context.setAttribute("city", "Porto");
 		clock.now = ANCHOR + 4 * HOUR;
@@ -313,32 +349,32 @@ class ContextSwitchbackClusterTest {
 		clock.now = ANCHOR + HOUR;
 		assertEquals(0, context.peekTreatment("exp_sb"));
 		clock.now = ANCHOR + 3 * HOUR;
-		assertEquals(expected("Porto", 100, 3), context.peekTreatment("exp_sb"));
+		assertEquals(expected("Porto", 3), context.peekTreatment("exp_sb"));
 		clock.now = ANCHOR + 4 * HOUR;
-		assertEquals(expected("Lisboa", 100, 4), context.peekTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 4), context.peekTreatment("exp_sb"));
 	}
 
-	// Within a period the bucket is fixed at first resolution; the next period reads
+	// Within a period the cluster key is fixed at first resolution; the next period reads
 	// the attribute again.
 	@Test
 	void setAttributeMidPeriodDoesNotReassignWithinThePeriod() {
-		final Context context = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context context = createContext(dataOf(attributeSwitchback("city")));
 		clock.now = ANCHOR + 10;
 		context.setAttribute("city", "Lisboa");
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 
 		clock.now = ANCHOR + 20;
 		context.setAttribute("city", "Porto");
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
-		assertEquals(expected("Lisboa", 100, 0), context.peekTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 0), context.peekTreatment("exp_sb"));
 		assertEquals(1, context.getPendingCount());
 
 		final int periods = 12;
 		int differing = 0;
 		for (int i = 1; i < periods; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(expected("Porto", 100, i), context.getTreatment("exp_sb"));
-			if (expected("Porto", 100, i) != expected("Lisboa", 100, i)) {
+			assertEquals(expected("Porto", i), context.getTreatment("exp_sb"));
+			if (expected("Porto", i) != expected("Lisboa", i)) {
 				++differing;
 			}
 		}
@@ -346,88 +382,92 @@ class ContextSwitchbackClusterTest {
 		assertEquals(periods, context.getPendingCount());
 	}
 
-	// A unit first resolved without a key stays ineligible for the rest of that period.
+	// A unit first resolved without a key stays ineligible (and unrecorded) for the rest of that
+	// period.
 	@Test
 	void attributeSetAfterAnIneligibleResolutionWaitsForTheNextPeriod() {
-		final Context context = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context context = createContext(dataOf(attributeSwitchback("city")));
 		clock.now = ANCHOR + 10;
 		assertEquals(0, context.getTreatment("exp_sb"));
 		context.setAttribute("city", "Lisboa");
 		clock.now = ANCHOR + 20;
 		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(0, context.getPendingCount());
 
 		clock.now = ANCHOR + HOUR;
-		assertEquals(expected("Lisboa", 100, 1), context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false),
-				exposure(expected("Lisboa", 100, 1), ANCHOR + HOUR, true, false)}, publishExposures(context));
+		assertEquals(expected("Lisboa", 1), context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(expected("Lisboa", 1), ANCHOR + HOUR, true, false)},
+				publishExposures(context));
 	}
 
 	// A slot replaced through an ineligible resolution still keeps the period's first key.
 	@Test
 	void trafficChangesWithinThePeriodKeepThePeriodsBucket() {
-		final Context context = createContext(dataOf(attributeSwitchback("city", 100)));
+		final Context context = createContext(dataOf(attributeSwitchback("city")));
 		clock.now = ANCHOR + 10;
 		context.setAttribute("city", "Lisboa");
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 
 		clock.now = ANCHOR + 20;
 		context.setAttribute("city", "Porto");
-		final Experiment noTraffic = attributeSwitchback("city", 100);
+		final Experiment noTraffic = attributeSwitchback("city");
 		noTraffic.trafficSplit = new double[]{1.0, 0.0};
 		refreshTo(context, noTraffic);
 		assertEquals(0, context.getTreatment("exp_sb"));
 
-		refreshTo(context, attributeSwitchback("city", 100));
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
+		refreshTo(context, attributeSwitchback("city"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 		assertEquals(3, context.getPendingCount());
 
 		clock.now = ANCHOR + HOUR;
-		assertEquals(expected("Porto", 100, 1), context.getTreatment("exp_sb"));
+		assertEquals(expected("Porto", 1), context.getTreatment("exp_sb"));
 	}
 
-	// A traffic miss never reads the key, so traffic restored later in the period reads it then.
+	// The cluster is resolved before traffic, as the Collector does: a traffic miss of an eligible
+	// cluster is a recorded ineligible exposure under the serving unit, and traffic restored later in
+	// the period serves the key read at first resolution.
 	@Test
-	void trafficRestoredWithinThePeriodReadsTheKey() {
-		final Experiment noTraffic = attributeSwitchback("city", 100);
+	void trafficRestoredWithinThePeriodKeepsTheKey() {
+		final Experiment noTraffic = attributeSwitchback("city");
 		noTraffic.trafficSplit = new double[]{1.0, 0.0};
 		final Context context = createContext(dataOf(noTraffic));
 		clock.now = ANCHOR + 10;
-		context.setAttribute("city", "Porto");
+		context.setAttribute("city", "Faro");
 		assertEquals(0, context.getTreatment("exp_sb"));
 
 		clock.now = ANCHOR + 20;
-		refreshTo(context, attributeSwitchback("city", 100));
-		assertEquals(1, expected("Porto", 100, 0));
-		assertEquals(expected("Porto", 100, 0), context.getTreatment("exp_sb"));
+		context.setAttribute("city", "Lisboa");
+		refreshTo(context, attributeSwitchback("city"));
+		assertEquals(1, expected("Faro", 0));
+		assertEquals(expected("Faro", 0), context.getTreatment("exp_sb"));
 		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false),
-				exposure(expected("Porto", 100, 0), ANCHOR + 20, true, false)}, publishExposures(context));
+				exposure(expected("Faro", 0), ANCHOR + 20, true, false)}, publishExposures(context));
 	}
 
-	// An audience change re-resolves the period slot (new exposure state) but keeps its bucket.
+	// An audience change re-resolves the period slot (new exposure state) but keeps its key.
 	@Test
 	void audienceRevalidationAfterSetAttributeKeepsThePeriodsBucket() {
-		final Experiment experiment = attributeSwitchback("city", 100);
+		final Experiment experiment = attributeSwitchback("city");
 		experiment.audience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
 		final Context context = createContext(dataOf(experiment));
 		clock.now = ANCHOR + 10;
 		context.setAttribute("city", "Lisboa");
 		context.setAttribute("tier", "gold");
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 
 		clock.now = ANCHOR + 20;
 		context.setAttribute("city", "Porto");
 		context.setAttribute("tier", "silver");
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 
-		assertArrayEquals(new Exposure[]{exposure(expected("Lisboa", 100, 0), ANCHOR + 10, true, false),
-				exposure(expected("Lisboa", 100, 0), ANCHOR + 20, true, true)}, publishExposures(context));
+		assertArrayEquals(new Exposure[]{exposure(expected("Lisboa", 0), ANCHOR + 10, true, false),
+				exposure(expected("Lisboa", 0), ANCHOR + 20, true, true)}, publishExposures(context));
 	}
 
 	// A slot first resolved without a key carries that missing key into its replacement.
 	@Test
 	void audienceRevalidationAfterAnIneligibleResolutionKeepsTheMissingKey() {
-		final Experiment experiment = attributeSwitchback("city", 100);
+		final Experiment experiment = attributeSwitchback("city");
 		experiment.audience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
 		final Context context = createContext(dataOf(experiment));
 		clock.now = ANCHOR + 10;
@@ -435,90 +475,121 @@ class ContextSwitchbackClusterTest {
 		assertEquals(0, context.getTreatment("exp_sb"));
 
 		clock.now = ANCHOR + 20;
-		context.setAttribute("city", "Porto");
+		context.setAttribute("city", "Faro");
 		context.setAttribute("tier", "silver");
-		assertEquals(1, expected("Porto", 100, 0));
+		assertEquals(1, expected("Faro", 0));
 		assertEquals(0, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{exposure(0, ANCHOR + 10, false, false),
-				exposure(0, ANCHOR + 20, false, true)}, publishExposures(context));
+		assertEquals(0, context.getPendingCount());
 
 		clock.now = ANCHOR + HOUR;
-		assertEquals(expected("Porto", 100, 1), context.peekTreatment("exp_sb"));
-		// Period 1 of Porto is variant 0; period 2 is not, so the key is visibly read again.
+		assertEquals(expected("Faro", 1), context.peekTreatment("exp_sb"));
+		// Period 1 of Faro is variant 0; period 2 is not, so the key is visibly read again.
 		clock.now = ANCHOR + 2 * HOUR;
-		assertEquals(2, expected("Porto", 100, 2));
-		assertEquals(expected("Porto", 100, 2), context.peekTreatment("exp_sb"));
+		assertEquals(2, expected("Faro", 2));
+		assertEquals(expected("Faro", 2), context.peekTreatment("exp_sb"));
 	}
 
 	@Test
-	void clusterCountOrAttributeChangesInvalidateThePeriod() {
-		final Context context = createContext(dataOf(attributeSwitchback("city", 100)));
+	void clusterPathChangesInvalidateThePeriod() {
+		final Context context = createContext(dataOf(attributeSwitchback("city")));
 		clock.now = ANCHOR + 10;
 		context.setAttribute("city", "Lisboa");
 		context.setAttribute("geo", TestUtils.mapOf("city", "Porto"));
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 		assertEquals(1, context.getPendingCount());
 
-		refreshTo(context, attributeSwitchback("city", 100));
-		assertEquals(expected("Lisboa", 100, 0), context.getTreatment("exp_sb"));
+		refreshTo(context, attributeSwitchback("city"));
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 		assertEquals(1, context.getPendingCount());
 
-		refreshTo(context, attributeSwitchback("city", 10));
-		assertEquals(expected("Lisboa", 10, 0), context.getTreatment("exp_sb"));
+		refreshTo(context, attributeSwitchback("geo/city"));
+		assertEquals(expected("Porto", 0), context.getTreatment("exp_sb"));
 		assertEquals(2, context.getPendingCount());
 
-		refreshTo(context, attributeSwitchback("geo/city", 10));
-		assertEquals(expected("Porto", 10, 0), context.getTreatment("exp_sb"));
+		final Experiment filtered = attributeSwitchback("geo/city");
+		filtered.switchbackClusterValues = new String[]{"Porto", "Faro"};
+		refreshTo(context, filtered);
+		assertEquals(expected("Porto", 0), context.getTreatment("exp_sb"));
 		assertEquals(3, context.getPendingCount());
-
-		final Experiment unitSource = switchback(ARMS, HOUR);
-		unitSource.switchbackClusterCount = 10;
-		refreshTo(context, unitSource);
-		assertEquals(expected(UID_HASH, 10, 0), context.getTreatment("exp_sb"));
-		assertEquals(4, context.getPendingCount());
 	}
 
-	// With no cluster unit type, the experiment's unitType alone decides the hashed unit, so a
-	// unitType change re-keys the period.
+	// Re-linking the experiment to another unit type re-keys the period and moves the exposure unit.
 	@Test
-	void unitTypeChangeWithoutClusterUnitTypeRekeysThePeriod() {
-		final String userUid = "user-0002";
-		final String userHash = new String(Hashing.hashUnit(userUid), StandardCharsets.US_ASCII);
-		final Experiment byStore = switchback(ARMS, HOUR);
-		byStore.switchbackClusterUnitType = null;
-		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", userUid), dataOf(byStore));
-		assertNotEquals(expected(UID_HASH, 100, 0), expected(userHash, 100, 0));
-
+	void linkedUnitTypeChangeRekeysThePeriod() {
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", "user-0002"),
+				dataOf(attributeSwitchback("city")));
 		clock.now = ANCHOR + 1;
-		assertEquals(expected(UID_HASH, 100, 0), context.getTreatment("exp_sb"));
+		context.setAttribute("city", "Lisboa");
+		context.setAttribute("ucity", "Faro");
+		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 
-		final Experiment byUser = switchback(ARMS, HOUR);
-		byUser.switchbackClusterUnitType = null;
-		byUser.unitType = "user_id";
+		final Experiment byUser = attributeSwitchback("ucity");
+		byUser.switchbackClusters = ContextSwitchbackTest.clusters("user_id", "ucity");
 		refreshTo(context, byUser);
-		assertEquals(expected(userHash, 100, 0), context.getTreatment("exp_sb"));
+		assertEquals(expected("Faro", 0), context.getTreatment("exp_sb"));
+		final Exposure[] exposures = publishExposures(context);
+		assertEquals(2, exposures.length);
+		assertEquals(UNIT_TYPE, exposures[0].unit);
+		assertEquals("user_id", exposures[1].unit);
 	}
 
 	@Test
 	void customAssignmentAppliesOnlyToUnitsWithAClusterKey() {
-		final Context keyed = createContext(dataOf(attributeSwitchback("city", 10)));
+		final Context keyed = createContext(dataOf(attributeSwitchback("city")));
 		keyed.setAttribute("city", "Lisboa");
 		keyed.setCustomAssignment("exp_sb", 2);
 		assertEquals(2, keyed.getTreatment("exp_sb"));
 
-		final Context unkeyed = createContext(dataOf(attributeSwitchback("city", 10)));
+		final Context unkeyed = createContext(dataOf(attributeSwitchback("city")));
 		unkeyed.setCustomAssignment("exp_sb", 2);
 		assertEquals(0, unkeyed.getTreatment("exp_sb"));
 	}
 
+	// Inertness: a unit experiment ("unit" or absent) carrying every switchback field serves and
+	// publishes exactly what the same experiment without them does.
 	@Test
 	void unitExperimentsIgnoreClusterFields() {
-		final Experiment unit = attributeSwitchback("city", 1000);
-		unit.randomizationType = null;
-		final Experiment reference = switchback(ARMS, HOUR);
-		reference.randomizationType = null;
-		final Context withFields = createContext(dataOf(unit));
-		final Context without = createContext(dataOf(reference));
-		assertEquals(without.getTreatment("exp_sb"), withFields.getTreatment("exp_sb"));
+		for (final String type : new String[]{"unit", null}) {
+			final Experiment unit = attributeSwitchback("city");
+			unit.randomizationType = type;
+			unit.switchbackClusters = ContextSwitchbackTest.clusters("user_id", "city", UNIT_TYPE, "'x");
+			unit.switchbackClusterValues = new String[]{"nothing"};
+			unit.switchbackPeriodMs = 0L;
+			final Experiment reference = new Experiment();
+			reference.id = unit.id;
+			reference.name = unit.name;
+			reference.unitType = unit.unitType;
+			reference.iteration = unit.iteration;
+			reference.seedHi = unit.seedHi;
+			reference.seedLo = unit.seedLo;
+			reference.split = unit.split;
+			reference.trafficSeedHi = unit.trafficSeedHi;
+			reference.trafficSeedLo = unit.trafficSeedLo;
+			reference.trafficSplit = unit.trafficSplit;
+			reference.applications = unit.applications;
+			reference.variants = unit.variants;
+			reference.randomizationType = type;
+
+			final Exposure[][] published = new Exposure[2][];
+			final Experiment[] experiments = {unit, reference};
+			for (int e = 0; e < experiments.length; ++e) {
+				Mockito.reset(eventHandler);
+				when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
+				final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", "u"),
+						dataOf(experiments[e]));
+				context.setAttribute("city", "Lisboa");
+				clock.now = ANCHOR - HOUR;
+				final int first = context.getTreatment("exp_sb");
+				for (int i = 1; i < 6; ++i) {
+					clock.now = ANCHOR - HOUR + i * HOUR;
+					assertEquals(first, context.getTreatment("exp_sb"));
+				}
+				published[e] = publishExposures(context);
+			}
+			assertEquals(1, published[0].length);
+			assertTrue(published[0][0].eligible);
+			assertEquals(ANCHOR - HOUR, published[0][0].exposedAt);
+			assertArrayEquals(published[1], published[0]);
+		}
 	}
 }

@@ -4,16 +4,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 
 class ExperimentSwitchbackFieldsTest {
+	private static Map<String, String> clusters(String... entries) {
+		final Map<String, String> map = new LinkedHashMap<String, String>();
+		for (int i = 0; i < entries.length; i += 2) {
+			map.put(entries[i], entries[i + 1]);
+		}
+		return map;
+	}
+
 	private static Experiment switchback() {
 		final Experiment experiment = new Experiment();
 		experiment.id = 1;
 		experiment.name = "exp";
 		experiment.unitType = "store_id";
 		experiment.randomizationType = "switchback";
-		experiment.switchbackClusterUnitType = "store_id";
+		experiment.switchbackClusters = clusters("store_id", "store/key", "device_id", "geo/city");
+		experiment.switchbackClusterValues = new String[]{"porto", "lisbon"};
 		experiment.switchbackStartAt = 1767225600000L;
 		experiment.switchbackPeriodMs = 3600000L;
 		experiment.switchbackCarryoverDurationMs = 900000L;
@@ -21,8 +33,6 @@ class ExperimentSwitchbackFieldsTest {
 		experiment.switchbackBurnOutDurationMs = 0L;
 		experiment.switchbackDesignType = "balanced_block";
 		experiment.switchbackEstimand = "global_average_treatment_effect";
-		experiment.switchbackClusterCount = 50;
-		experiment.switchbackClusterAttribute = "geo/city";
 		return experiment;
 	}
 
@@ -43,7 +53,33 @@ class ExperimentSwitchbackFieldsTest {
 				},
 				new Mutation() {
 					public void apply(Experiment e) {
-						e.switchbackClusterUnitType = "user_id";
+						e.switchbackClusters = null;
+					}
+				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusters = clusters("store_id", "store/key");
+					}
+				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusters = clusters("store_id", "store/key", "device_id", "geo/country");
+					}
+				},
+				// Same entries, other order: the order is semantic.
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusters = clusters("device_id", "geo/city", "store_id", "store/key");
+					}
+				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusterValues = null;
+					}
+				},
+				new Mutation() {
+					public void apply(Experiment e) {
+						e.switchbackClusterValues = new String[]{"lisbon", "porto"};
 					}
 				},
 				new Mutation() {
@@ -81,26 +117,6 @@ class ExperimentSwitchbackFieldsTest {
 						e.switchbackEstimand = "other";
 					}
 				},
-				new Mutation() {
-					public void apply(Experiment e) {
-						e.switchbackClusterCount = 100;
-					}
-				},
-				new Mutation() {
-					public void apply(Experiment e) {
-						e.switchbackClusterCount = null;
-					}
-				},
-				new Mutation() {
-					public void apply(Experiment e) {
-						e.switchbackClusterAttribute = null;
-					}
-				},
-				new Mutation() {
-					public void apply(Experiment e) {
-						e.switchbackClusterAttribute = "geo/country";
-					}
-				},
 		};
 
 		for (final Mutation mutation : mutations) {
@@ -116,7 +132,8 @@ class ExperimentSwitchbackFieldsTest {
 	void toStringIncludesSwitchbackFields() {
 		final String s = switchback().toString();
 		assertTrue(s.contains("randomizationType='switchback'"));
-		assertTrue(s.contains("switchbackClusterUnitType='store_id'"));
+		assertTrue(s.contains("switchbackClusters={store_id=store/key, device_id=geo/city}"));
+		assertTrue(s.contains("switchbackClusterValues=[porto, lisbon]"));
 		assertTrue(s.contains("switchbackStartAt=1767225600000"));
 		assertTrue(s.contains("switchbackPeriodMs=3600000"));
 		assertTrue(s.contains("switchbackCarryoverDurationMs=900000"));
@@ -124,7 +141,5 @@ class ExperimentSwitchbackFieldsTest {
 		assertTrue(s.contains("switchbackBurnOutDurationMs=0"));
 		assertTrue(s.contains("switchbackDesignType='balanced_block'"));
 		assertTrue(s.contains("switchbackEstimand='global_average_treatment_effect'"));
-		assertTrue(s.contains("switchbackClusterCount=50"));
-		assertTrue(s.contains("switchbackClusterAttribute='geo/city'"));
 	}
 }

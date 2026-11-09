@@ -1,22 +1,28 @@
 package com.absmartly.sdk;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java8.util.concurrent.CompletableFuture;
 
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -31,61 +37,28 @@ import com.absmartly.sdk.json.ExperimentApplication;
 import com.absmartly.sdk.json.ExperimentVariant;
 import com.absmartly.sdk.json.Exposure;
 
-// Serves contexts through the public Context API and compares every exposure with the Collector's
-// ContextAPI.switchbackVariant: -1 (variant 0, not eligible) for an unservable experiment or a
-// missing bucket key, otherwise assignSwitchback(bucketOf(key), periodIndex, seed, armCount). The
-// expected bucket is read from bucket-golden-vectors.json, never computed by SDK code, and the
-// expected path outcome from attribute-path-cases.json.
+// Replays the Collector's R33 switchback serving rules (ContextAPI.switchbackServing and
+// switchbackVariant, exercised by the Collector's ContextAPISwitchbackTest through its shared
+// SdkSwitchbackRule fixture) through the public Context API. Each case states, independently of SDK
+// code, the serving unit type and the raw cluster key the Collector picks, or that it records
+// nothing; the expected variant is SwitchbackAssigner over that raw key, pinned by
+// switchback/golden-vectors.json, and a few schedules are also pinned to an independent murmur3
+// reference.
+//
+// The Collector's "two units of the same type" case has no SDK counterpart: a context holds one uid
+// per unit type and setUnit rejects a second, which sameTypeSecondUidIsRejected asserts.
 class SwitchbackServerParityTest {
-	static final String UNIT_TYPE = "store_id";
 	static final long HOUR = 3_600_000L;
 	static final long ANCHOR = 1_767_225_600_000L;
-	static final int[] COUNTS = {10, 50, 100};
-	static final int[] ARM_COUNTS = {2, 3, 10};
 	static final int PERIODS = 4;
+	static final int ARMS = 3;
+	static final long SEED = 1_234_567_890_123L;
+
+	static final String STORE = "store_id";
+	static final String DEVICE = "device_id";
+	static final String USER = "user_id";
 
 	static final ObjectMapper MAPPER = new ObjectMapper();
-	static JsonNode bucketVectors;
-	static JsonNode pathCases;
-	// "key\u0000seed\u0000count" -> expectedBucket.
-	static final Map<String, Integer> BUCKETS = new HashMap<String, Integer>();
-	static final List<Long> SEEDS = new ArrayList<Long>();
-
-	@BeforeAll
-	static void loadFixtures() throws IOException {
-		bucketVectors = read("switchback/bucket-golden-vectors.json");
-		pathCases = read("switchback/attribute-path-cases.json");
-		for (final JsonNode c : bucketVectors.get("buckets")) {
-			final long seed = Long.parseLong(c.get("seed").textValue());
-			BUCKETS.put(bucketKey(c.get("key").textValue(), seed, c.get("count").intValue()),
-					c.get("expectedBucket").intValue());
-			if (!SEEDS.contains(seed)) {
-				SEEDS.add(seed);
-			}
-		}
-		assertEquals(9, SEEDS.size());
-	}
-
-	static JsonNode read(String resource) throws IOException {
-		final InputStream in = SwitchbackServerParityTest.class.getClassLoader().getResourceAsStream(resource);
-		try {
-			return MAPPER.readTree(in);
-		} finally {
-			in.close();
-		}
-	}
-
-	static String bucketKey(String key, long seed, int count) {
-		return key + '\u0000' + seed + '\u0000' + count;
-	}
-
-	// ContextAPI.switchbackVariant after the unservable and missing-key checks: the schedule of the
-	// key's fixture bucket. SwitchbackAssigner is pinned by switchback/golden-vectors.json.
-	static int collectorVariant(String key, long seed, int count, long periodIndex, int armCount) {
-		final Integer bucket = BUCKETS.get(bucketKey(key, seed, count));
-		assertNotNull(bucket, "no fixture bucket for " + key + " seed " + seed + " count " + count);
-		return SwitchbackAssigner.assign(String.valueOf(bucket), periodIndex, seed, armCount);
-	}
 
 	static final class FixedClock extends Clock {
 		long now = ANCHOR;
@@ -107,11 +80,20 @@ class SwitchbackServerParityTest {
 		}
 	}
 
-	static Experiment experiment(long seed, int armCount, Integer count, String attribute) {
+	static Map<String, String> clusters(String... entries) {
+		final Map<String, String> map = new LinkedHashMap<String, String>();
+		for (int i = 0; i < entries.length; i += 2) {
+			map.put(entries[i], entries[i + 1]);
+		}
+		return map;
+	}
+
+	static Experiment experiment(long seed, int armCount, Map<String, String> clusters, String[] values) {
 		final Experiment experiment = new Experiment();
 		experiment.id = 1;
 		experiment.name = "exp_sb";
-		experiment.unitType = UNIT_TYPE;
+		// R33 payloads may still carry unitType; it is never used for switchback assignment.
+		experiment.unitType = USER;
 		experiment.iteration = 1;
 		experiment.seedHi = (int) (seed >> 32);
 		experiment.seedLo = (int) seed;
@@ -124,23 +106,29 @@ class SwitchbackServerParityTest {
 		experiment.trafficSplit = new double[]{0.0, 1.0};
 		experiment.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
 		experiment.randomizationType = "switchback";
-		experiment.switchbackClusterUnitType = UNIT_TYPE;
+		experiment.switchbackClusters = clusters;
+		experiment.switchbackClusterValues = values;
 		experiment.switchbackStartAt = ANCHOR;
 		experiment.switchbackPeriodMs = HOUR;
 		experiment.switchbackDesignType = "balanced_block";
-		experiment.switchbackClusterCount = count;
-		experiment.switchbackClusterAttribute = attribute;
 		return experiment;
 	}
 
-	// Serves PERIODS periods with getTreatment and returns one variant per period, plus the
-	// exposures: one per period, or a single one for an unservable grid, whose periods share one
-	// slot.
-	static Served serve(Experiment experiment, String uid, Map<String, Object> attributes) {
+	static Experiment experiment(Map<String, String> clusters) {
+		return experiment(SEED, ARMS, clusters, null);
+	}
+
+	static final class Served {
+		final List<Integer> variants = new ArrayList<Integer>();
+		List<Exposure> exposures;
+	}
+
+	// Serves PERIODS periods with getTreatment, one call per period.
+	static Served serve(Experiment experiment, Map<String, ?> units, Map<String, Object> attributes) {
 		final FixedClock clock = new FixedClock();
 		final ExposureCapture capture = new ExposureCapture();
 		final ContextConfig config = ContextConfig.create();
-		config.setUnits(TestUtils.mapOf(UNIT_TYPE, uid));
+		config.setUnits(units);
 		config.setEventLogger(capture);
 		final ContextData data = new ContextData();
 		data.experiments = new Experiment[]{experiment};
@@ -152,173 +140,343 @@ class SwitchbackServerParityTest {
 		if (attributes != null) {
 			context.setAttributes(attributes);
 		}
-		final List<Integer> variants = new ArrayList<Integer>();
+		final Served served = new Served();
 		for (int p = 0; p < PERIODS; ++p) {
 			clock.now = ANCHOR + p * HOUR + 1;
-			variants.add(context.getTreatment("exp_sb"));
+			served.variants.add(context.getTreatment("exp_sb"));
 		}
-		return new Served(variants, capture.exposures);
+		served.exposures = capture.exposures;
+		return served;
 	}
 
-	static final class Served {
-		final List<Integer> variants;
-		final List<Exposure> exposures;
-
-		Served(List<Integer> variants, List<Exposure> exposures) {
-			this.variants = variants;
-			this.exposures = exposures;
-		}
+	static int collectorVariant(String rawKey, long seed, long periodIndex, int armCount) {
+		return SwitchbackAssigner.assign(rawKey, periodIndex, seed, armCount);
 	}
 
-	static void assertServed(Served served, String key, long seed, int count, int armCount, String message) {
-		assertTrue(!served.exposures.isEmpty(), message);
+	// The Collector served `key` under a unit of `servingType`: one eligible exposure per period
+	// under that unit, variant from the raw key.
+	static void assertEligible(Served served, String servingType, String key, String message) {
+		assertEquals(PERIODS, served.exposures.size(), message);
 		for (int p = 0; p < PERIODS; ++p) {
-			final int expected = (key == null) ? 0 : collectorVariant(key, seed, count, p, armCount);
-			assertEquals(expected, served.variants.get(p).intValue(), message);
-		}
-		for (int i = 0; i < served.exposures.size(); ++i) {
-			final Exposure exposure = served.exposures.get(i);
-			if (key == null) {
-				assertEquals(0, exposure.variant, message);
-				assertEquals(false, exposure.eligible, message);
-			} else {
-				assertEquals(PERIODS, served.exposures.size(), message);
-				assertEquals(collectorVariant(key, seed, count, i, armCount), exposure.variant, message);
-				assertEquals(true, exposure.eligible, message);
-			}
-			assertEquals(true, exposure.assigned, message);
+			final int expected = collectorVariant(key, SEED, p, ARMS);
+			assertEquals(expected, served.variants.get(p).intValue(), message + " period " + p);
+			final Exposure exposure = served.exposures.get(p);
+			assertEquals(servingType, exposure.unit, message);
+			assertEquals(expected, exposure.variant, message);
+			assertTrue(exposure.assigned, message);
+			assertTrue(exposure.eligible, message);
+			assertEquals(ANCHOR + p * HOUR + 1, exposure.exposedAt, message);
 		}
 	}
 
-	// Unit source: the bucket key is UnitHasher.hash(uid). The SDK keeps unit uids as strings and
-	// rejects a blank uid in setUnit, so numeric uids are served in base 10 and "" is skipped.
-	@Test
-	void unitSourceMatchesTheCollectorForEveryUnitKeySeedAndCount() {
-		int served = 0;
-		for (final JsonNode c : bucketVectors.get("unitKeys")) {
-			final JsonNode uidNode = c.get("unitUid");
-			final String uid = uidNode.isIntegralNumber() ? Long.toString(uidNode.longValue()) : uidNode.textValue();
-			if (uid.trim().isEmpty()) {
-				continue;
-			}
-			for (final long seed : SEEDS) {
-				for (final int count : COUNTS) {
-					final int armCount = ARM_COUNTS[served % ARM_COUNTS.length];
-					assertServed(serve(experiment(seed, armCount, count, null), uid, null),
-							c.get("key").textValue(), seed, count, armCount, c + " seed " + seed + " count " + count);
-					++served;
-				}
-			}
+	// The Collector records nothing: control in every period, no exposure.
+	static void assertSilentControl(Served served, String message) {
+		for (int p = 0; p < PERIODS; ++p) {
+			assertEquals(0, served.variants.get(p).intValue(), message);
 		}
-		assertEquals(11 * 9 * 3, served);
+		assertTrue(served.exposures.isEmpty(), message + ": " + served.exposures);
 	}
 
-	// Attribute source at a top-level, a nested and an array path: the key is
-	// normalizeAttribute(value), or none for "", null, booleans and floats.
+	static Map<String, Object> attrs(Object... entries) {
+		final Map<String, Object> map = new LinkedHashMap<String, Object>();
+		for (int i = 0; i < entries.length; i += 2) {
+			map.put((String) entries[i], entries[i + 1]);
+		}
+		return map;
+	}
+
+	static final Map<String, String> TWO_SOURCES = clusters(STORE, "store_city", DEVICE, "geo/city");
+
+	static Map<String, Object> twoUnits() {
+		return TestUtils.mapOf(STORE, "s1", DEVICE, "d1");
+	}
+
+	// Independent murmur3 reference: periods 0..3 of the raw keys under SEED with 3 arms.
 	@Test
-	void attributeSourceMatchesTheCollectorForEveryAttributeValueSeedAndCount() {
-		int served = 0;
+	void rawKeySchedulesMatchTheIndependentReference() {
+		assertEligible(serve(experiment(clusters(STORE, "city")), TestUtils.mapOf(STORE, "s1"),
+				attrs("city", "Lisboa")), STORE, "Lisboa", "Lisboa");
+		for (int p = 0; p < PERIODS; ++p) {
+			assertEquals(new int[]{0, 1, 2, 2}[p], collectorVariant("Lisboa", SEED, p, ARMS));
+			assertEquals(new int[]{2, 1, 0, 1}[p], collectorVariant("Porto", SEED, p, ARMS));
+			assertEquals(new int[]{0, 2, 1, 2}[p], collectorVariant("42", SEED, p, ARMS));
+		}
+	}
+
+	@Test
+	void agreementServesTheFirstSourceUnit() {
+		assertEligible(serve(experiment(TWO_SOURCES), twoUnits(),
+				attrs("store_city", "Lisboa", "geo", TestUtils.mapOf("city", "Lisboa"))), STORE, "Lisboa",
+				"agreement");
+	}
+
+	@Test
+	void disagreementIsIneligibleAndRecordsNothing() {
+		assertSilentControl(serve(experiment(TWO_SOURCES), twoUnits(),
+				attrs("store_city", "Lisboa", "geo", TestUtils.mapOf("city", "Porto"))), "disagreement");
+	}
+
+	// A unit yielding no value is skipped; the next unit with a value serves.
+	@Test
+	void missingValueIsSkippedAndTheNextValueServes() {
+		assertEligible(serve(experiment(TWO_SOURCES), twoUnits(), attrs("geo", TestUtils.mapOf("city", "Porto"))),
+				DEVICE, "Porto", "first source missing");
+		assertEligible(serve(experiment(TWO_SOURCES), twoUnits(), attrs("store_city", "Porto")), STORE, "Porto",
+				"second source missing");
+		assertSilentControl(serve(experiment(TWO_SOURCES), twoUnits(), attrs("other", "x")), "no value at all");
+		assertSilentControl(serve(experiment(TWO_SOURCES), twoUnits(), null), "no attributes");
+	}
+
+	// A unit linked by a source but absent from the context does not take part; with its value
+	// present, the present unit still serves alone.
+	@Test
+	void onlyLinkedUnitsPresentInTheContextTakePart() {
+		assertEligible(serve(experiment(TWO_SOURCES), TestUtils.mapOf(DEVICE, "d1"),
+				attrs("store_city", "Lisboa", "geo", TestUtils.mapOf("city", "Porto"))), DEVICE, "Porto",
+				"store unit absent");
+	}
+
+	@Test
+	void filteredValueIsIneligibleAndAllowedValueServes() {
+		final Map<String, Object> lisboa = attrs("store_city", "Lisboa");
+		assertSilentControl(serve(experiment(SEED, ARMS, TWO_SOURCES, new String[]{"Porto", "Faro"}), twoUnits(),
+				lisboa), "filtered");
+		assertEligible(serve(experiment(SEED, ARMS, TWO_SOURCES, new String[]{"Porto", "Lisboa"}), twoUnits(),
+				lisboa), STORE, "Lisboa", "allowed");
+		// A null or empty allow-list admits every value.
+		assertEligible(serve(experiment(SEED, ARMS, TWO_SOURCES, null), twoUnits(), lisboa), STORE, "Lisboa",
+				"null filter");
+		assertEligible(serve(experiment(SEED, ARMS, TWO_SOURCES, new String[0]), twoUnits(), lisboa), STORE,
+				"Lisboa", "empty filter");
+		// The filter compares the normalised text of numeric values.
+		assertEligible(serve(experiment(SEED, ARMS, TWO_SOURCES, new String[]{"42"}), twoUnits(),
+				attrs("store_city", 42)), STORE, "42", "numeric filter");
+		// A filtered first value is not replaced by a later allowed one: they disagree.
+		assertSilentControl(serve(experiment(SEED, ARMS, TWO_SOURCES, new String[]{"Porto"}), twoUnits(),
+				attrs("store_city", "Lisboa", "geo", TestUtils.mapOf("city", "Porto"))), "filtered first value");
+	}
+
+	@Test
+	void sameTypeSecondUidIsRejected() {
+		final Context context = Context.create(new FixedClock(), ContextConfig.create(),
+				mock(ScheduledExecutorService.class), CompletableFuture.completedFuture(new ContextData()),
+				mock(ContextDataProvider.class), mock(ContextEventHandler.class), null, new DefaultVariableParser(),
+				new AudienceMatcher(new DefaultAudienceDeserializer()));
+		context.setUnit(STORE, "s1");
+		assertThrows(IllegalArgumentException.class, () -> context.setUnit(STORE, "s2"));
+		assertEligible(serve(experiment(clusters(STORE, "city")), TestUtils.mapOf(STORE, "s1"),
+				attrs("city", "Faro")), STORE, "Faro", "single unit of the type");
+	}
+
+	// The declared order (unit_type_id ascending) decides, not the order units were set or named.
+	@Test
+	void lowerUnitTypeIdSourceServesFirst() {
+		final Map<String, String> deviceFirst = clusters(DEVICE, "geo/city", STORE, "store_city");
+		final Map<String, Object> agreeing = attrs("store_city", "Lisboa", "geo", TestUtils.mapOf("city", "Lisboa"));
+		final Map<String, Object> units = new LinkedHashMap<String, Object>();
+		units.put(STORE, "s1");
+		units.put(DEVICE, "d1");
+		assertEligible(serve(experiment(deviceFirst), units, agreeing), DEVICE, "Lisboa", "device declared first");
+		assertEligible(serve(experiment(TWO_SOURCES), units, agreeing), STORE, "Lisboa", "store declared first");
+	}
+
+	// Booleans, floating-point numbers, objects, arrays, null and "" yield no value: skipped, never a
+	// disagreement.
+	@Test
+	void nonKeyValuesAreIgnored() {
+		final Object[] ignored = {true, false, 1.5, 2.0, 2.0f, TestUtils.mapOf("a", "b"), TestUtils.listOf("x"),
+				TestUtils.listOf(), null, ""};
+		for (final Object value : ignored) {
+			final String message = "ignored " + value;
+			assertEligible(serve(experiment(TWO_SOURCES), twoUnits(),
+					attrs("store_city", value, "geo", TestUtils.mapOf("city", "Porto"))), DEVICE, "Porto", message);
+			assertSilentControl(serve(experiment(clusters(STORE, "store_city")), TestUtils.mapOf(STORE, "s1"),
+					attrs("store_city", value)), message + " alone");
+		}
+	}
+
+	// Integral numbers are keyed by their base-10 text, so they agree with that text.
+	@Test
+	void numericValuesAreKeyedAsText() {
+		final Object[] fortyTwo = {42, 42L, (short) 42, (byte) 42, BigInteger.valueOf(42), "42"};
+		for (final Object store : fortyTwo) {
+			for (final Object device : fortyTwo) {
+				assertEligible(serve(experiment(TWO_SOURCES), twoUnits(),
+						attrs("store_city", store, "geo", TestUtils.mapOf("city", device))), STORE, "42",
+						store.getClass().getSimpleName() + "/" + device.getClass().getSimpleName());
+			}
+		}
+		assertEligible(serve(experiment(clusters(STORE, "n")), TestUtils.mapOf(STORE, "s1"),
+				attrs("n", new BigInteger("123456789012345678901234567890"))), STORE,
+				"123456789012345678901234567890", "big integer");
+		assertEligible(serve(experiment(clusters(STORE, "n")), TestUtils.mapOf(STORE, "s1"), attrs("n", -7L)), STORE,
+				"-7", "negative");
+		assertSilentControl(serve(experiment(TWO_SOURCES), twoUnits(),
+				attrs("store_city", 42, "geo", TestUtils.mapOf("city", "042"))), "42 vs 042 disagree");
+	}
+
+	// A malformed path (unterminated quote, literal dotted segment) makes the whole experiment
+	// unservable: ineligible control for any linked unit, even when another source is valid.
+	@Test
+	void malformedPathsAreUnservable() {
+		final Map<String, Object> attributes = attrs("store_city", "Lisboa", "geo", TestUtils.mapOf("city", "Porto"),
+				"geo.city", "Faro");
+		for (final String path : new String[]{"'geo/city", "\"geo", "geo/'city", "geo.city", "geo/a.b"}) {
+			assertSilentControl(serve(experiment(clusters(STORE, "store_city", DEVICE, path)), twoUnits(),
+					attributes), path);
+			assertSilentControl(serve(experiment(clusters(DEVICE, path)), twoUnits(), attributes), path + " alone");
+		}
+		// Quoted segments are literal keys, so a quoted dotted key is a valid path.
+		assertEligible(serve(experiment(clusters(STORE, "'geo.city'")), twoUnits(), attributes), STORE, "Faro",
+				"quoted dotted key");
+	}
+
+	// No context unit of any linked type: the experiment does not apply; unitType is never used.
+	@Test
+	void noLinkedUnitIsAbsent() {
+		final Served served = serve(experiment(TWO_SOURCES), TestUtils.mapOf(USER, "u1"),
+				attrs("store_city", "Lisboa"));
+		assertSilentControl(served, "no linked unit");
+	}
+
+	// Traffic eligibility is sticky on the serving unit's hash: it equals that of a unit experiment
+	// on the serving unit's type with the same traffic seed and split, in every period.
+	@Test
+	void trafficFollowsTheServingUnitHash() {
+		int eligible = 0;
 		int ineligible = 0;
-		for (final JsonNode c : bucketVectors.get("attributeKeys")) {
-			final Object value = MAPPER.convertValue(c.get("value"), Object.class);
-			final String key = c.get("key").isNull() ? null : c.get("key").textValue();
-			final Map<String, Object> flat = TestUtils.mapOf("cluster", value);
-			final Map<String, Object> nested = TestUtils.mapOf("geo", TestUtils.mapOf("city", value));
-			final Map<String, Object> array = TestUtils.mapOf("items",
-					TestUtils.listOf(TestUtils.mapOf("city", "other"), TestUtils.mapOf("city", value)));
+		for (int u = 0; u < 24; ++u) {
+			final Experiment switchback = experiment(TWO_SOURCES);
+			switchback.trafficSplit = new double[]{0.5, 0.5};
+			switchback.trafficSeedHi = 3;
+			switchback.trafficSeedLo = 4;
+			final Experiment twin = experiment(TWO_SOURCES);
+			twin.name = "exp_unit";
+			twin.id = 2;
+			twin.randomizationType = null;
+			twin.unitType = DEVICE;
+			twin.trafficSplit = switchback.trafficSplit;
+			twin.trafficSeedHi = 3;
+			twin.trafficSeedLo = 4;
 
-			final String[] paths = {"cluster", "geo/city", "items/1/city"};
-			final List<Map<String, Object>> attributes = TestUtils.listOf(flat, nested, array);
-			for (final long seed : SEEDS) {
-				for (final int count : COUNTS) {
-					final int armCount = ARM_COUNTS[served % ARM_COUNTS.length];
-					final int shape = served % paths.length;
-					assertServed(serve(experiment(seed, armCount, count, paths[shape]), "u1", attributes.get(shape)),
-							key, seed, count, armCount, c + " path " + paths[shape] + " seed " + seed);
-					++served;
-					if (key == null) {
-						++ineligible;
-					}
-				}
+			final ContextConfig config = ContextConfig.create();
+			config.setUnits(TestUtils.mapOf(STORE, "s1", DEVICE, "device-" + u));
+			final ExposureCapture capture = new ExposureCapture();
+			config.setEventLogger(capture);
+			final ContextData data = new ContextData();
+			data.experiments = new Experiment[]{switchback, twin};
+			final FixedClock clock = new FixedClock();
+			final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
+					CompletableFuture.completedFuture(data), mock(ContextDataProvider.class),
+					mock(ContextEventHandler.class), null, new DefaultVariableParser(),
+					new AudienceMatcher(new DefaultAudienceDeserializer()));
+			// Only the device unit has a value, so it serves.
+			context.setAttribute("geo", TestUtils.mapOf("city", "Porto"));
+			context.getTreatment("exp_unit");
+			final boolean twinEligible = capture.exposures.get(0).eligible;
+			for (int p = 0; p < PERIODS; ++p) {
+				clock.now = ANCHOR + p * HOUR;
+				final int variant = context.getTreatment("exp_sb");
+				final Exposure exposure = capture.exposures.get(p + 1);
+				assertEquals(DEVICE, exposure.unit);
+				assertEquals(twinEligible, exposure.eligible);
+				assertEquals(twinEligible ? collectorVariant("Porto", SEED, p, ARMS) : 0, variant);
+			}
+			if (twinEligible) {
+				++eligible;
+			} else {
+				++ineligible;
 			}
 		}
-		assertEquals(21 * 9 * 3, served);
-		assertEquals(6 * 9 * 3, ineligible);
+		assertTrue(eligible > 0);
+		assertTrue(ineligible > 0);
 	}
 
-	// Each path case is served over the fixture's attributes. An unsupported path is unservable and
-	// a path resolving to null is ineligible. Any other path serves the schedule of its value's
-	// bucket. The case values are not bucket-fixture keys, so their buckets for counts 10, 50 and
-	// 100 under the seeds used below were computed with Python hashlib MD5 over the platform
-	// formula, which reproduces all 702 bucket-fixture vectors.
-	static final Map<String, int[]> PATH_CASE_BUCKETS = TestUtils.mapOf("items/0/city", new int[]{8, 10, 58},
-			"geo/+1", new int[]{7, 12, 77}, "geo/city", new int[]{2, 5, 82});
-
+	// Each attribute-path-cases.json case, served as a cluster path over the fixture's attributes:
+	// unsupported paths are unservable, a null value is ineligible, and any other value serves.
 	@Test
-	void attributePathCasesMatchTheCollector() {
+	void attributePathCasesMatchTheCollector() throws IOException {
+		final JsonNode pathCases = MAPPER.readTree(readResource("switchback/attribute-path-cases.json"));
 		final Map<String, Object> attributes = MAPPER.convertValue(pathCases.get("attributes"),
 				new TypeReference<Map<String, Object>>() {});
 		int eligibleCases = 0;
 		for (final JsonNode c : pathCases.get("cases")) {
 			final String path = c.get("path").textValue();
 			final Object value = MAPPER.convertValue(c.get("value"), Object.class);
-			for (int n = 0; n < COUNTS.length; ++n) {
-				final int count = COUNTS[n];
-				final long seed = SEEDS.get(count % SEEDS.size());
-				final Served served = serve(experiment(seed, 3, count, path), "u1", attributes);
-				if (!c.get("supported").booleanValue() || (value == null)) {
-					assertServed(served, null, seed, count, 3, c.toString());
-					continue;
-				}
-				final int bucket = PATH_CASE_BUCKETS.get(path)[n];
-				assertEquals(PERIODS, served.exposures.size(), c.toString());
-				for (int p = 0; p < PERIODS; ++p) {
-					assertEquals(true, served.exposures.get(p).eligible, c.toString());
-					assertEquals(SwitchbackAssigner.assign(String.valueOf(bucket), p, seed, 3),
-							served.variants.get(p).intValue(), c + " count " + count + " period " + p);
-				}
-				++eligibleCases;
+			final Served served = serve(experiment(clusters(STORE, path)), TestUtils.mapOf(STORE, "s1"), attributes);
+			if (!c.get("supported").booleanValue() || (value == null)) {
+				assertSilentControl(served, c.toString());
+				continue;
 			}
+			assertEligible(served, STORE, (String) value, c.toString());
+			++eligibleCases;
 		}
-		assertEquals(3 * COUNTS.length, eligibleCases);
+		assertEquals(3, eligibleCases);
 	}
 
-	// The Collector's CLUSTER_COUNT unservable rule: any count outside {10, 50, 100}, or none.
-	@Test
-	void disallowedCountsAreUnservable() {
-		final String key = bucketVectors.get("unitKeys").get(0).get("key").textValue();
-		final String uid = bucketVectors.get("unitKeys").get(0).get("unitUid").textValue();
-		for (final Integer count : new Integer[]{null, 0, 1, 20, 99, 1000}) {
-			assertServed(serve(experiment(0L, 2, count, null), uid, null), null, 0L, 10, 2, String.valueOf(count));
-		}
-		assertServed(serve(experiment(0L, 2, 10, null), uid, null), key, 0L, 10, 2, "control");
-	}
-
-	// The Collector resolves attributes by trimmed name, latest setAt winning.
+	// Context creation keeps the latest supplied value of a repeated attribute name; names are
+	// matched trimmed.
 	@Test
 	void repeatedAttributeNamesResolveToTheLatest() {
-		final JsonNode keys = bucketVectors.get("attributeKeys");
-		final String first = keys.get(0).get("key").textValue();
-		final String second = keys.get(1).get("key").textValue();
-		final Map<String, Object> attributes = TestUtils.mapOf(" cluster ", first);
-		assertServed(serve(experiment(0L, 3, 50, "cluster"), "u1", attributes), first, 0L, 50, 3, "trimmed name");
+		assertEligible(serve(experiment(clusters(STORE, "cluster")), TestUtils.mapOf(STORE, "s1"),
+				attrs(" cluster ", "Porto")), STORE, "Porto", "trimmed name");
 
 		final FixedClock clock = new FixedClock();
 		final ExposureCapture capture = new ExposureCapture();
 		final ContextConfig config = ContextConfig.create();
-		config.setUnits(TestUtils.mapOf(UNIT_TYPE, "u1"));
+		config.setUnits(TestUtils.mapOf(STORE, "s1"));
 		config.setEventLogger(capture);
 		final ContextData data = new ContextData();
-		data.experiments = new Experiment[]{experiment(0L, 3, 50, "cluster")};
+		data.experiments = new Experiment[]{experiment(clusters(STORE, "cluster"))};
 		final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
 				CompletableFuture.completedFuture(data), mock(ContextDataProvider.class),
 				mock(ContextEventHandler.class), null, new DefaultVariableParser(),
 				new AudienceMatcher(new DefaultAudienceDeserializer()));
-		context.setAttribute("cluster", first);
-		context.setAttribute("cluster", second);
+		context.setAttribute("cluster", "Lisboa");
+		context.setAttribute("cluster", "Porto");
 		clock.now = ANCHOR + 1;
-		context.getTreatment("exp_sb");
-		assertEquals(collectorVariant(second, 0L, 50, 0, 3), capture.exposures.get(0).variant);
+		assertEquals(collectorVariant("Porto", SEED, 0, ARMS), context.getTreatment("exp_sb"));
 		assertTrue(capture.exposures.get(0).eligible);
+	}
+
+	// Shared fixtures are byte-identical copies of absmartly/abs lib/utils/src/test/resources/switchback
+	// (git blobs b314abeb9e97 and 7b1d3fed5985).
+	@Test
+	void sharedFixturesAreByteIdentical() throws IOException, NoSuchAlgorithmException {
+		assertEquals("66dda4bafddaa119b030beafff8dc56f5750a8387919ffbe0842c93525ef32b6",
+				sha256(readResource("switchback/golden-vectors.json")));
+		assertEquals("2ee7eb0053997b48b8992980ffe11fe3accb2db01471aa9a617420e1609c6518",
+				sha256(readResource("switchback/attribute-path-cases.json")));
+		assertNull(SwitchbackServerParityTest.class.getClassLoader()
+				.getResource("switchback/bucket-golden-vectors.json"));
+	}
+
+	static byte[] readResource(String resource) throws IOException {
+		final InputStream in = SwitchbackServerParityTest.class.getClassLoader().getResourceAsStream(resource);
+		try {
+			final ByteArrayOutputStream out = new ByteArrayOutputStream();
+			final byte[] buffer = new byte[8192];
+			int n;
+			while ((n = in.read(buffer)) > 0) {
+				out.write(buffer, 0, n);
+			}
+			return out.toByteArray();
+		} finally {
+			in.close();
+		}
+	}
+
+	static String sha256(byte[] bytes) throws NoSuchAlgorithmException {
+		final byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+		final StringBuilder hex = new StringBuilder();
+		for (final byte b : digest) {
+			hex.append(String.format("%02x", b & 0xff));
+		}
+		return hex.toString();
+	}
+
+	static {
+		assertFalse(TWO_SOURCES.isEmpty());
+		assertArrayEquals(new Object[]{STORE, DEVICE}, TWO_SOURCES.keySet().toArray());
 	}
 }

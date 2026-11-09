@@ -16,7 +16,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 // A switchback cluster attribute path, resolved exactly like the Collector's
 // SwitchbackAttributePath: "/" separates segments, a segment wrapped in ' or " is a literal key,
 // and an unquoted segment that Guava Ints.tryParse accepts (ASCII digits, optional leading '-')
-// indexes a List and nothing else. Every other segment reads a Map key.
+// indexes a List and nothing else. Every other segment reads a Map key. A path is malformed, and
+// its experiment unservable, when a quote is left unterminated or an unquoted segment contains a
+// '.' (dotted paths are not a nesting syntax; nesting is written with '/').
 public final class SwitchbackAttributePath {
 	private static final Logger log = LoggerFactory.getLogger(SwitchbackAttributePath.class);
 	private static final ObjectMapper JSON = new ObjectMapper();
@@ -31,13 +33,16 @@ public final class SwitchbackAttributePath {
 		this.indices = indices;
 	}
 
-	// Returns null for an unsupported path: empty, or an array index that is negative, first,
-	// last, or directly after another index. Analysis cannot read those.
+	// Returns null for an unsupported path: malformed (see above), empty, or an array index that is
+	// negative, first, last, or directly after another index. Analysis cannot read those.
 	public static SwitchbackAttributePath parseSupported(final String path) {
 		if (path == null) {
 			return null;
 		}
 		final SwitchbackAttributePath parsed = parse(path);
+		if (parsed == null) {
+			return null;
+		}
 		final int n = parsed.keys.size();
 		if (n == 0) {
 			return null;
@@ -129,6 +134,7 @@ public final class SwitchbackAttributePath {
 		return current;
 	}
 
+	// Null when the path is malformed.
 	private static SwitchbackAttributePath parse(final String path) {
 		final List<String> keys = new ArrayList<String>();
 		final List<Integer> indices = new ArrayList<Integer>();
@@ -143,8 +149,7 @@ public final class SwitchbackAttributePath {
 			if ((first == '\'') || (first == '"')) {
 				final int end = path.indexOf(first, i + 1);
 				if (end < 0) {
-					// The platform's JsonPathParser drops an unterminated quoted tail.
-					break;
+					return null;
 				}
 				keys.add(path.substring(i + 1, end));
 				indices.add(null);
@@ -153,6 +158,9 @@ public final class SwitchbackAttributePath {
 				final int end = path.indexOf('/', i);
 				final int stop = (end < 0) ? path.length() : end;
 				final String key = path.substring(i, stop);
+				if (key.indexOf('.') >= 0) {
+					return null;
+				}
 				keys.add(key);
 				indices.add(tryParseInt(key));
 				i = stop;

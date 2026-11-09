@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
@@ -29,7 +30,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import com.absmartly.sdk.internal.SwitchbackAssigner;
-import com.absmartly.sdk.internal.SwitchbackBuckets;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.java.time.Clock;
@@ -54,16 +54,19 @@ class ContextSwitchbackTest {
 	static final int SEED_HI = -5;
 	static final int SEED_LO = -7;
 
-	// UID_HASH falls in bucket 35 of 100 under seed (SEED_HI, SEED_LO). Periods 0..11 of bucket
-	// "35", computed with an independent Python reference (hashlib MD5 and murmur3 over the
-	// platform formulas) that reproduces every bucket and schedule golden vector.
-	static final int CLUSTER_COUNT = 100;
-	static final int UID_BUCKET = 35;
-	static final int[] EXPECTED_2_ARMS = {0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0};
-	static final int[] EXPECTED_3_ARMS = {0, 2, 1, 2, 0, 1, 0, 1, 2, 2, 1, 0};
-	static final int[] EXPECTED_10_ARMS = {5, 3, 8, 9, 0, 7, 4, 6, 1, 2, 2, 4};
-	// Same reference fed UID_HASH itself rather than its bucket: what per-value clustering serves.
-	static final int[] PER_VALUE_3_ARMS = {1, 2, 0, 2, 1, 0, 2, 0, 1, 1, 2, 0};
+	// The store unit's cluster value: attribute CLUSTER_PATH, set on every default context.
+	static final String CLUSTER_PATH = "store_key";
+	static final String CLUSTER_KEY = "store-42";
+	// Periods 0..11 of the raw cluster key "store-42" under seed (SEED_HI, SEED_LO), computed with
+	// an independent Python reference (murmur3 over the platform formulas) that reproduces every
+	// switchback/golden-vectors.json case.
+	static final int[] EXPECTED_2_ARMS = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1};
+	static final int[] EXPECTED_3_ARMS = {0, 2, 1, 2, 1, 0, 1, 2, 0, 1, 0, 2};
+	static final int[] EXPECTED_10_ARMS = {8, 3, 7, 4, 2, 0, 5, 1, 9, 6, 3, 7};
+	// Same reference fed UID_HASH and the raw UID: what keying by the unit instead of the cluster
+	// value would serve.
+	static final int[] UID_HASH_3_ARMS = {1, 2, 0, 2, 1, 0, 2, 0, 1, 1, 2, 0};
+	static final int[] UID_3_ARMS = {2, 0, 1, 0, 1, 2, 1, 2, 0, 0, 1, 2};
 
 	static final class MutableClock extends Clock {
 		long now;
@@ -119,7 +122,7 @@ class ContextSwitchbackTest {
 		experiment.trafficSplit = new double[]{0.0, 1.0};
 		experiment.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
 		experiment.randomizationType = "switchback";
-		experiment.switchbackClusterUnitType = UNIT_TYPE;
+		experiment.switchbackClusters = clusters(UNIT_TYPE, CLUSTER_PATH);
 		experiment.switchbackStartAt = ANCHOR;
 		experiment.switchbackPeriodMs = periodMs;
 		experiment.switchbackCarryoverDurationMs = 0L;
@@ -127,8 +130,16 @@ class ContextSwitchbackTest {
 		experiment.switchbackBurnOutDurationMs = 0L;
 		experiment.switchbackDesignType = "balanced_block";
 		experiment.switchbackEstimand = "global_average_treatment_effect";
-		experiment.switchbackClusterCount = CLUSTER_COUNT;
 		return experiment;
+	}
+
+	// An ordered switchbackClusters map: type, path, type, path, ...
+	static Map<String, String> clusters(String... entries) {
+		final Map<String, String> map = new LinkedHashMap<String, String>();
+		for (int i = 0; i < entries.length; i += 2) {
+			map.put(entries[i], entries[i + 1]);
+		}
+		return map;
 	}
 
 	static Experiment switchback(int armCount, long periodMs) {
@@ -150,6 +161,7 @@ class ContextSwitchbackTest {
 		if (units != null) {
 			config.setUnits(units);
 		}
+		config.setAttribute(CLUSTER_PATH, CLUSTER_KEY);
 		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, null, new DefaultVariableParser(), audienceMatcher);
 	}
@@ -204,20 +216,26 @@ class ContextSwitchbackTest {
 		return holdout;
 	}
 
+	// The cluster identity is the raw attribute value, neither hashed nor the unit uid.
 	@Test
-	void clusterIdentityIsTheSdkUnitHash() {
+	void clusterIdentityIsTheRawClusterValue() {
 		assertEquals(UID_HASH, new String(Hashing.hashUnit(UID), StandardCharsets.US_ASCII));
 
 		final Context context = createContext(dataOf(switchback(3, HOUR)));
 		final int[] served = peekSchedule(context, "exp_sb", HOUR, 12);
 
 		assertArrayEquals(EXPECTED_3_ARMS, served);
-		assertFalse(Arrays.equals(PER_VALUE_3_ARMS, served));
-		assertEquals(UID_BUCKET, SwitchbackBuckets.bucketOf(SEED_HI, SEED_LO, UID_HASH, CLUSTER_COUNT));
+		assertFalse(Arrays.equals(UID_HASH_3_ARMS, served));
+		assertFalse(Arrays.equals(UID_3_ARMS, served));
+		final String hashedKey = new String(Hashing.hashUnit(CLUSTER_KEY), StandardCharsets.US_ASCII);
+		boolean hashedDiffers = false;
 		for (int i = 0; i < 12; ++i) {
-			assertEquals(SwitchbackAssigner.assign(String.valueOf(UID_BUCKET), i,
-					((long) SEED_HI << 32) | (SEED_LO & 0xffffffffL), 3), served[i]);
+			assertEquals(SwitchbackAssigner.assign(CLUSTER_KEY, i, ((long) SEED_HI << 32) | (SEED_LO & 0xffffffffL), 3),
+					served[i]);
+			hashedDiffers |= SwitchbackAssigner.assign(hashedKey, i,
+					((long) SEED_HI << 32) | (SEED_LO & 0xffffffffL), 3) != served[i];
 		}
+		assertTrue(hashedDiffers);
 	}
 
 	@Test
@@ -268,28 +286,31 @@ class ContextSwitchbackTest {
 		assertEquals(EXPECTED_2_ARMS[4], context.peekTreatment("exp_sb"));
 	}
 
-	// The anchor is the start instant rounded up to the hour; start..anchor is pre-period.
+	// The Collector uses switchbackStartAt as the anchor as served (the backend stores it hour
+	// aligned); before it the experiment is an ineligible control that records no exposure.
 	@Test
-	void unalignedStartIsRoundedUpAndPreAnchorIsIneligible() {
+	void unalignedStartIsUsedAsServedAndPreAnchorIsIneligible() {
 		final Experiment experiment = switchback(2, HOUR);
-		final long start = ANCHOR - 1_234_567L;
+		final long start = ANCHOR + 1_234_567L;
 		experiment.switchbackStartAt = start;
 		final Context context = createContext(dataOf(experiment));
 
-		clock.now = start;
-		assertEquals(0, context.getTreatment("exp_sb"));
-		clock.now = ANCHOR - 1;
-		assertEquals(0, context.getTreatment("exp_sb"));
 		clock.now = ANCHOR;
+		assertEquals(0, context.getTreatment("exp_sb"));
+		clock.now = start - 1;
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(0, context.getPendingCount());
+		clock.now = start;
 		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		clock.now = ANCHOR + HOUR;
+		clock.now = start + HOUR - 1;
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		clock.now = start + HOUR;
 		assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"));
 
 		final Exposure[] exposures = publishExposures(context);
 		assertArrayEquals(new Exposure[]{
-				exposure(1, "exp_sb", 0, start, true, false),
-				exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR, true, true),
-				exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR, true, true),
+				exposure(1, "exp_sb", EXPECTED_2_ARMS[0], start, true, true),
+				exposure(1, "exp_sb", EXPECTED_2_ARMS[1], start + HOUR, true, true),
 		}, exposures);
 	}
 
@@ -302,9 +323,11 @@ class ContextSwitchbackTest {
 		for (int i = 0; i < 4; ++i) {
 			clock.now = ANCHOR + i * HOUR;
 			assertEquals(0, context.getTreatment("exp_sb"));
+			// Variant 0's own config, like any ineligible assignment.
+			assertEquals(0, context.getVariableValue("sb.arm", -1));
 		}
 
-		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", 0, ANCHOR, true, false)}, publishExposures(context));
+		assertEquals(0, context.getPendingCount());
 	}
 
 	@Test
@@ -352,9 +375,13 @@ class ContextSwitchbackTest {
 		assertEquals(3, context.getPendingCount());
 	}
 
+	// No unit of a linked type: the experiment does not apply and records nothing. unitType is
+	// never a fallback.
 	@Test
 	void missingClusterUnitIsUnassignedWithoutFallback() {
-		final Context context = createContext(TestUtils.mapOf("user_id", UID), dataOf(switchback(2, HOUR)));
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.unitType = "user_id";
+		final Context context = createContext(TestUtils.mapOf("user_id", UID), dataOf(experiment));
 
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
@@ -362,11 +389,13 @@ class ContextSwitchbackTest {
 			assertEquals(0, context.getTreatment("exp_sb"));
 			assertEquals(-1, context.getVariableValue("sb.arm", -1));
 		}
+		assertEquals(0, context.getPendingCount());
 
-		for (final Exposure exposure : publishExposures(context)) {
-			assertEquals(0, exposure.variant);
-			assertFalse(exposure.assigned);
-		}
+		// Setting a linked unit later makes the experiment apply.
+		context.setUnit(UNIT_TYPE, UID);
+		assertEquals(EXPECTED_2_ARMS[2], context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[2], ANCHOR + 2 * HOUR, true, true)},
+				publishExposures(context));
 	}
 
 	@Test
@@ -425,8 +454,8 @@ class ContextSwitchbackTest {
 			twin.randomizationType = null;
 			twin.switchbackStartAt = null;
 
-			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, "store_" + u), dataOf(sb, twin));
 			clock.now = ANCHOR;
+			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, "store_" + u), dataOf(sb, twin));
 			context.getTreatment("exp_unit");
 			for (int i = 0; i < 4; ++i) {
 				clock.now = ANCHOR + i * HOUR;
@@ -509,6 +538,41 @@ class ContextSwitchbackTest {
 		refreshTo(context, backToSwitchback);
 		context.getTreatment("exp_sb");
 		assertEquals(5, context.getPendingCount());
+
+		// The cluster map (types, paths and their order) and the allow-list are identity.
+		final Experiment pathChanged = switchback(2, 2 * HOUR);
+		pathChanged.switchbackClusters = clusters(UNIT_TYPE, "'store_key'");
+		refreshTo(context, pathChanged);
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(6, context.getPendingCount());
+
+		final Experiment linkAdded = switchback(2, 2 * HOUR);
+		linkAdded.switchbackClusters = clusters(UNIT_TYPE, "'store_key'", "device_id", "city");
+		refreshTo(context, linkAdded);
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(7, context.getPendingCount());
+
+		final Experiment linksReordered = switchback(2, 2 * HOUR);
+		linksReordered.switchbackClusters = clusters("device_id", "city", UNIT_TYPE, "'store_key'");
+		refreshTo(context, linksReordered);
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(8, context.getPendingCount());
+
+		final Experiment valuesSet = switchback(2, 2 * HOUR);
+		valuesSet.switchbackClusters = linksReordered.switchbackClusters;
+		valuesSet.switchbackClusterValues = new String[]{CLUSTER_KEY};
+		refreshTo(context, valuesSet);
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(9, context.getPendingCount());
+
+		// An unrelated unitType edit is not identity: switchbacks never read it.
+		final Experiment unitTypeChanged = switchback(2, 2 * HOUR);
+		unitTypeChanged.switchbackClusters = valuesSet.switchbackClusters;
+		unitTypeChanged.switchbackClusterValues = valuesSet.switchbackClusterValues;
+		unitTypeChanged.unitType = "anything";
+		refreshTo(context, unitTypeChanged);
+		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(9, context.getPendingCount());
 	}
 
 	@Test
@@ -521,9 +585,11 @@ class ContextSwitchbackTest {
 
 		refreshTo(context, switchback(2, HOUR));
 		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(1, context.getPendingCount());
 	}
 
+	// Holdouts never apply to a switchback: a holdout that would hold the unit out neither
+	// suppresses the switchback nor records its own exposure through it.
 	@Test
 	void holdoutSuppressionAndExposureSpanPeriods() {
 		// split[0.1,0.9] -> variant 0 (held out) for UID.
@@ -537,12 +603,24 @@ class ContextSwitchbackTest {
 		final Context context = createContext(data);
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(0, context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[i], context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[i], context.getVariableValue("sb.arm", -1));
 		}
 
 		assertArrayEquals(new Exposure[]{
-				new Exposure(11, "holdout_a", UNIT_TYPE, 0, ANCHOR, true, true, false, false, false, false)
+				exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR, true, true),
+				exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR, true, true),
+				exposure(1, "exp_sb", EXPECTED_2_ARMS[2], ANCHOR + 2 * HOUR, true, true),
 		}, publishExposures(context));
+	}
+
+	// Assignment rules are not part of the switchback contract and are ignored.
+	@Test
+	void assignmentRulesNeverApplyToASwitchback() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.assignmentRules = "{\"rules\":[{\"type\":\"assign\",\"variant\":1}]}";
+		final Context context = createContext(dataOf(experiment));
+		assertArrayEquals(Arrays.copyOf(EXPECTED_2_ARMS, 4), peekSchedule(context, "exp_sb", HOUR, 4));
 	}
 
 	@Test
@@ -567,22 +645,25 @@ class ContextSwitchbackTest {
 		assertEquals(50, context.getPendingCount());
 	}
 
+	// unitType on a switchback payload is never used for assignment: the cluster map decides.
 	@Test
-	void clusterUnitTypeDifferentFromUnitTypeIsIneligible() {
+	void unitTypeIsNotUsedForSwitchbackAssignment() {
 		final Experiment experiment = switchback(2, HOUR);
-		experiment.switchbackClusterUnitType = "user_id";
+		experiment.unitType = "user_id";
 		final Context context = createContext(
 				TestUtils.mapOf(UNIT_TYPE, UID, "user_id", "u1"), dataOf(experiment));
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(0, context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[i], context.getTreatment("exp_sb"));
 		}
 		final Exposure[] exposures = publishExposures(context);
-		assertEquals(1, exposures.length);
-		assertFalse(exposures[0].eligible);
+		assertEquals(3, exposures.length);
+		for (final Exposure exposure : exposures) {
+			assertEquals(UNIT_TYPE, exposure.unit);
+		}
 	}
 
-	// The publish payload carries no switchback-specific exposure fields.
+	// The publish payload carries no switchback-specific exposure or publish fields.
 	@Test
 	void publishPayloadHasNoNewFields() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
@@ -607,7 +688,11 @@ class ContextSwitchbackTest {
 				+ ",\"exposedAt\":" + (ANCHOR + HOUR + 7)
 				+ ",\"assigned\":true,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,"
 				+ "\"audienceMismatch\":false,\"ruleOverride\":false}"
-				+ "]}", json);
+				+ "],"
+				// The cluster attribute is published timestamped, as before: the Collector re-resolves
+				// the cluster at exposedAt from it.
+				+ "\"attributes\":[{\"name\":\"" + CLUSTER_PATH + "\",\"value\":\"" + CLUSTER_KEY
+				+ "\",\"setAt\":" + ANCHOR + "}]}", json);
 		assertNotEquals(EXPECTED_2_ARMS[0], EXPECTED_2_ARMS[1]);
 	}
 
@@ -648,8 +733,8 @@ class ContextSwitchbackTest {
 	}
 
 	@Test
-	void variableExposureIsStampedWithTheResolutionInstantAcrossHoldoutTriggering() {
-		// Two arms, all traffic in arm 1: never holds the covered experiment out.
+	void variableExposureIsStampedWithTheResolutionInstant() {
+		// Two arms, all traffic in arm 1; holdouts never fire through a switchback.
 		final Experiment holdout = holdout(new double[]{0.0, 1.0});
 
 		final Experiment covered = switchback(2, HOUR);
@@ -662,12 +747,8 @@ class ContextSwitchbackTest {
 		clock.nextRead = ANCHOR + HOUR - 1;
 
 		assertEquals(EXPECTED_2_ARMS[0], context.getVariableValue("sb.arm", -1));
-		final Exposure[] exposures = publishExposures(context);
-		assertEquals(2, exposures.length);
-		// Holdout membership is not period-scoped and keeps its own enqueue-time reading.
-		assertEquals(new Exposure(11, "holdout_a", UNIT_TYPE, 1, ANCHOR + HOUR, true, true, false, false, false,
-				false), exposures[0]);
-		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true), exposures[1]);
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
+				publishExposures(context));
 	}
 
 	// A peek caches the period's assignment without exposing; the later getTreatment exposes at
@@ -765,7 +846,7 @@ class ContextSwitchbackTest {
 	}
 
 	// An overridden switchback slot is re-resolved on a grid change like a normal one; the
-	// override still wins and the holdout still fires exactly once.
+	// override still wins and the holdout never fires.
 	@Test
 	void overrideIsReresolvedWhenTheGridChanges() {
 		final Experiment holdout = holdout(new double[]{0.0, 1.0});
@@ -780,7 +861,7 @@ class ContextSwitchbackTest {
 		clock.now = ANCHOR + 10;
 		assertEquals(2, context.getTreatment("exp_sb"));
 		assertEquals(2, context.getVariableValue("sb.arm", -1));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(1, context.getPendingCount());
 
 		// Same index 0 under the new period length; variant 2 now carries a different value.
 		final Experiment regridded = switchback(3, 2 * HOUR);
@@ -793,12 +874,11 @@ class ContextSwitchbackTest {
 
 		assertEquals(2, context.getTreatment("exp_sb"));
 		assertEquals(22, context.getVariableValue("sb.arm", -1));
-		assertEquals(3, context.getPendingCount());
+		assertEquals(2, context.getPendingCount());
 
 		final Exposure[] exposures = publishExposures(context);
-		assertEquals(new Exposure(11, "holdout_a", UNIT_TYPE, 1, ANCHOR + 10, true, true, false, false, false,
-				false), exposures[1]);
-		for (final int i : new int[]{0, 2}) {
+		assertEquals(2, exposures.length);
+		for (final int i : new int[]{0, 1}) {
 			assertEquals(new Exposure(1, "exp_sb", UNIT_TYPE, 2, ANCHOR + 10, false, true, true, false, false,
 					false), exposures[i]);
 		}
@@ -848,15 +928,17 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(gridA));
 		clock.now = ANCHOR + 10;
 		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(0, context.getPendingCount());
 
 		refreshTo(context, switchback(2, HOUR));
 		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(1, context.getPendingCount());
 
 		refreshTo(context, gridA);
 		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(3, context.getPendingCount());
+		assertEquals(1, context.getPendingCount());
+		assertEquals(0, context.getVariableValue("sb.arm", -1));
+		assertEquals(1, context.getPendingCount());
 	}
 
 	// Epochs are reconciled lazily; an intermediate state that is never looked up must still end the
@@ -1037,15 +1119,15 @@ class ContextSwitchbackTest {
 		resolvePeriodOneConcurrently(experiment, null, EXPECTED_2_ARMS[1]);
 	}
 
-	// Attribute-sourced: the cluster attribute changes before both readers re-resolve the slot, and
-	// a third worker keeps writing it meanwhile. The slot keeps the key read at first resolution
-	// (Lisboa, variant 1 in period 1); Porto is variant 0 there, so a re-read key is visible.
+	// The cluster attribute changes before both readers re-resolve the slot, and a third worker
+	// keeps writing it meanwhile. The slot keeps the key read at first resolution (Lisboa, variant 1
+	// in period 1); Faro is variant 0 there, so a re-read key is visible.
 	@Test
 	void concurrentResolutionWithConcurrentSetAttributeExposesOnce() throws InterruptedException {
 		final Experiment experiment = switchback(2, HOUR);
 		experiment.audience = "{\"filter\":[{\"value\":true}]}";
-		experiment.switchbackClusterAttribute = "city";
-		resolvePeriodOneConcurrently(experiment, "Porto", 1);
+		experiment.switchbackClusters = clusters(UNIT_TYPE, "city");
+		resolvePeriodOneConcurrently(experiment, "Faro", 1);
 	}
 
 	void resolvePeriodOneConcurrently(Experiment experiment, String concurrentCity, int expectedVariant)

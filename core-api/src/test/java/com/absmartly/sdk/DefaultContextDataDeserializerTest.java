@@ -2,6 +2,11 @@ package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
@@ -222,7 +227,11 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 				new ExperimentVariant("B", "{\"banner.border\":1}")
 		};
 		switchback.randomizationType = "switchback";
-		switchback.switchbackClusterUnitType = "store_id";
+		final Map<String, String> clusters = new LinkedHashMap<String, String>();
+		clusters.put("store_id", "store/key");
+		clusters.put("device_id", "geo/city");
+		switchback.switchbackClusters = clusters;
+		switchback.switchbackClusterValues = new String[]{"porto", "lisbon"};
 		switchback.switchbackStartAt = 1767225600000L;
 		switchback.switchbackPeriodMs = 3600000L;
 		switchback.switchbackCarryoverDurationMs = 900000L;
@@ -230,8 +239,6 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		switchback.switchbackBurnOutDurationMs = 0L;
 		switchback.switchbackDesignType = "balanced_block";
 		switchback.switchbackEstimand = "global_average_treatment_effect";
-		switchback.switchbackClusterCount = 50;
-		switchback.switchbackClusterAttribute = "geo/city";
 
 		final Experiment unit = new Experiment();
 		unit.id = 2;
@@ -258,6 +265,21 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		assertNotNull(data);
 		assertEquals(expected, data);
 		assertEquals(expected.hashCode(), data.hashCode());
+		// The declared order (unit_type_id ascending) survives deserialization; it is not sorted.
+		assertEquals(Arrays.asList("store_id", "device_id"),
+				new ArrayList<String>(data.experiments[0].switchbackClusters.keySet()));
+	}
+
+	@Test
+	void deserializeSwitchbackClusterOrderIsPreserved() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp\",\"randomizationType\":\"switchback\","
+				+ "\"switchbackClusters\":{\"z_type\":\"a\",\"a_type\":\"b\",\"m_type\":\"c\"}}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertEquals(Arrays.asList("z_type", "a_type", "m_type"),
+				new ArrayList<String>(data.experiments[0].switchbackClusters.keySet()));
+		assertNull(data.experiments[0].switchbackClusterValues);
 	}
 
 	@Test
@@ -268,7 +290,8 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 
 		for (final Experiment experiment : data.experiments) {
 			assertNull(experiment.randomizationType);
-			assertNull(experiment.switchbackClusterUnitType);
+			assertNull(experiment.switchbackClusters);
+			assertNull(experiment.switchbackClusterValues);
 			assertNull(experiment.switchbackStartAt);
 			assertNull(experiment.switchbackPeriodMs);
 			assertNull(experiment.switchbackCarryoverDurationMs);
@@ -276,8 +299,6 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 			assertNull(experiment.switchbackBurnOutDurationMs);
 			assertNull(experiment.switchbackDesignType);
 			assertNull(experiment.switchbackEstimand);
-			assertNull(experiment.switchbackClusterCount);
-			assertNull(experiment.switchbackClusterAttribute);
 		}
 	}
 

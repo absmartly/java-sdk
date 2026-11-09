@@ -35,6 +35,11 @@
 			],
 			"audience":null,
 			"randomizationType":"switchback",
+			"switchbackClusters":{
+				"store_id":"store/key",
+				"device_id":"geo/city"
+			},
+			"switchbackClusterValues":["porto","lisbon"],
 			"switchbackClusterUnitType":"store_id",
 			"switchbackStartAt":1767225600000,
 			"switchbackPeriodMs":3600000,
