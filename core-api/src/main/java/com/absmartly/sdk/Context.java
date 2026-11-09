@@ -1232,6 +1232,14 @@ public class Context implements Closeable {
 				});
 	}
 
+	// The unit type a switchback with no serving unit is recorded under (an override is still
+	// exposed): the first linked type of a readable cluster map, otherwise the declared unitType the
+	// legacy path reads.
+	private static String switchbackFallbackUnitType(final ContextExperiment experiment) {
+		return (experiment.switchbackSourcePaths != null) ? experiment.switchbackSourceTypes[0]
+				: experiment.data.unitType;
+	}
+
 	// The attribute the Collector records with an exposure at `now` (ContextAPI.extractAttributes):
 	// among attributes set at or before now whose trimmed name matches, the greatest setAt wins and
 	// a tie goes to the one set last. Caller holds contextLock_.
@@ -1693,8 +1701,7 @@ public class Context implements Closeable {
 		assignment.variant = 0;
 		if (serving.status == SwitchbackServing.ABSENT) {
 			// No linked unit: the experiment does not apply, like an unset unit type.
-			assignment.unitType = (experiment.switchbackSourceTypes != null) ? experiment.switchbackSourceTypes[0]
-					: null;
+			assignment.unitType = switchbackFallbackUnitType(experiment);
 			assignment.eligible = false;
 			assignment.switchbackSilent = true;
 			return;
@@ -1814,7 +1821,7 @@ public class Context implements Closeable {
 					final SwitchbackServing serving = switchbackServing(experiment, cachedServing, now);
 					assignment.switchbackServing = serving;
 					assignment.unitType = (serving.unit != null) ? serving.unit.type()
-							: experiment.switchbackSourceTypes != null ? experiment.switchbackSourceTypes[0] : null;
+							: switchbackFallbackUnitType(experiment);
 				} else if (experiment != null) {
 					assignment.id = experiment.data.id;
 					assignment.unitType = experiment.data.unitType;

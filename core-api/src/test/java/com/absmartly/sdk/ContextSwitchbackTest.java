@@ -1141,6 +1141,31 @@ class ContextSwitchbackTest {
 		assertEquals(4, context.getPendingCount());
 	}
 
+	// An override on a switchback with no serving unit is exposed under the declared unitType when the
+	// cluster map is missing or unreadable (the legacy path's unit), never under null or a cluster
+	// map type.
+	@Test
+	void overrideWithoutAServingUnitOnALegacySwitchbackUsesTheDeclaredUnitType() {
+		final Experiment missing = switchback(1, "exp_missing_map", 2, HOUR);
+		missing.unitType = "user_id";
+		missing.switchbackClusters = null;
+		final Experiment unreadable = switchback(2, "exp_unreadable_map", 2, HOUR);
+		unreadable.unitType = "user_id";
+		unreadable.switchbackClusters = clusters(UNIT_TYPE, "'unterminated");
+		final Context context = createContext(dataOf(missing, unreadable));
+		context.setOverride("exp_missing_map", 1);
+		context.setOverride("exp_unreadable_map", 1);
+		clock.now = ANCHOR + 5;
+		assertEquals(1, context.getTreatment("exp_missing_map"));
+		assertEquals(1, context.getTreatment("exp_unreadable_map"));
+
+		assertArrayEquals(new Exposure[]{
+				new Exposure(1, "exp_missing_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false, false),
+				new Exposure(2, "exp_unreadable_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false,
+						false),
+		}, publishExposures(context));
+	}
+
 	// Audience evaluation runs under contextLock_; this matcher refreshes the context from inside it.
 	static final class RefreshingAudienceMatcher extends AudienceMatcher {
 		volatile Context context;
