@@ -13,7 +13,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,13 +39,14 @@ import com.absmartly.sdk.json.Exposure;
 // session_id (unit type id 1) at "session_store", declared in unit type id order, so session_id
 // comes first although the user_id link was inserted first.
 //
-// The Collector's "request order within a unit type" has no SDK counterpart: a context holds one
-// uid per unit type (setUnit rejects a second). Request order across unit types is exercised by
-// installing the units in both orders.
+// The SDK has no request order: a context holds one uid per unit type (setUnit rejects a second)
+// and keeps its units in a map, so the declared source order alone decides which unit serves.
+// SwitchbackServingTest pins that source-major iteration directly.
 //
 // An ineligible Collector response (eligible=false, variant 0, config 0, under the first linked
-// request unit in declared order, no exposure) is checked through the cached assignment: its unit
-// and eligibility are not otherwise observable when nothing is published.
+// request unit in declared order, no exposure) is checked through Context's
+// switchbackResolutionForTest seam: its unit and eligibility are not otherwise observable when
+// nothing is published.
 class ContextSwitchbackClusterRuleTest {
 	static final long HOUR = 3_600_000L;
 	// 2026-01-01T00:00:00Z, hour aligned.
@@ -188,6 +188,7 @@ class ContextSwitchbackClusterRuleTest {
 		int variant;
 		boolean fullOn;
 		boolean ruleOverride;
+		boolean silent;
 		String config;
 		List<Exposure> exposures;
 	}
@@ -196,61 +197,46 @@ class ContextSwitchbackClusterRuleTest {
 		return sbcWith(attributes, new Experiment[]{experiment}, units);
 	}
 
+	// Every other experiment is resolved (and exposed) before "sbc", so the unit hash and assigner
+	// caches it fills are in place when "sbc" resolves. Only "sbc" exposures are returned.
 	Assigned sbcWith(Map<String, Object> attributes, Experiment[] experiments, String[]... units) {
 		final Context context = createContext(attributes, experiments, units);
+		for (final Experiment other : experiments) {
+			if (!other.name.equals("sbc")) {
+				context.getTreatment(other.name);
+			}
+		}
 		final int variant = context.getTreatment("sbc");
-		final Object slot = cachedSlot(context);
-		final boolean applies = (Boolean) field(slot, "assigned") || (Boolean) field(slot, "ruleOverride");
-		final String config = context.getVariableValue("sbc.config", null) == null ? null
-				: (String) context.getVariableValue("sbc.config", null);
-		if (!applies) {
+		final Context.SwitchbackResolution resolution = context.switchbackResolutionForTest("sbc");
+		assertNotNull(resolution);
+		final String config = (String) context.getVariableValue("sbc.config", null);
+		final List<Exposure> exposures = sbcExposures();
+		if (!resolution.assigned && !resolution.ruleOverride) {
 			assertEquals(0, variant);
 			assertNull(config);
-			assertTrue(capture.exposures.isEmpty());
+			assertTrue(exposures.isEmpty());
 			return null;
 		}
 		final Assigned assigned = new Assigned();
-		assigned.unit = (String) field(slot, "unitType");
-		assigned.eligible = (Boolean) field(slot, "eligible");
+		assigned.unit = resolution.unitType;
+		assigned.eligible = resolution.eligible;
+		assigned.silent = resolution.silent;
 		assigned.variant = variant;
-		assigned.fullOn = (Boolean) field(slot, "fullOn");
-		assigned.ruleOverride = (Boolean) field(slot, "ruleOverride");
+		assigned.fullOn = resolution.fullOn;
+		assigned.ruleOverride = resolution.ruleOverride;
 		assigned.config = config;
-		assigned.exposures = capture.exposures;
+		assigned.exposures = exposures;
 		return assigned;
 	}
 
-	// The single cached slot of "sbc" (each context resolves one period).
-	static Object cachedSlot(Context context) {
-		final Map<?, ?> cache = (Map<?, ?>) field(context, "assignmentCache_");
-		Object found = null;
-		for (final Map.Entry<?, ?> entry : cache.entrySet()) {
-			final String key = (String) entry.getKey();
-			if (key.equals("sbc") || key.startsWith("sbc\u001f")) {
-				assertNull(found, "one slot");
-				found = entry.getValue();
+	List<Exposure> sbcExposures() {
+		final List<Exposure> exposures = new ArrayList<Exposure>();
+		for (final Exposure exposure : capture.exposures) {
+			if (exposure.name.equals("sbc")) {
+				exposures.add(exposure);
 			}
 		}
-		assertNotNull(found);
-		return found;
-	}
-
-	static Object field(Object target, String name) {
-		try {
-			Class<?> type = target.getClass();
-			while (type != null) {
-				try {
-					final Field field = type.getDeclaredField(name);
-					field.setAccessible(true);
-					return field.get(target);
-				} catch (NoSuchFieldException e) {
-					type = type.getSuperclass();
-				}
-			}
-			throw new AssertionError("no field " + name);
-		} catch (IllegalAccessException e) {
-			throw new AssertionError(e);
-		}
+		return exposures;
 	}
 
 	// R33-5: an ineligible cluster resolution is still an assignment, as control, under the first
@@ -260,6 +246,7 @@ class ContextSwitchbackClusterRuleTest {
 		assertNotNull(assignment, String.valueOf(attributes));
 		assertEquals(expectedUnit, assignment.unit);
 		assertFalse(assignment.eligible);
+		assertTrue(assignment.silent);
 		assertEquals(0, assignment.variant);
 		assertFalse(assignment.fullOn);
 		assertFalse(assignment.ruleOverride);
@@ -282,10 +269,15 @@ class ContextSwitchbackClusterRuleTest {
 	@Test
 	void missingOrUnreadableClusterConfigurationReturnsOnlyLegacyIneligibleControl() {
 		for (final String broken : new String[]{"null-cluster", "missing-links", "unreadable-path", "geo.city",
-				"'geo.city'", "\"geo.city\""}) {
+				"'geo.city'", "\"geo.city\"", "unknown-unit"}) {
 			unlinkAll();
 			if (broken.equals("unreadable-path")) {
 				link(SESSION, "'geo");
+			} else if (broken.equals("unknown-unit")) {
+				// A readable map whose only linked type (device_id) is absent from the request.
+				link("device_id", "session_store");
+				assertNull(sbc(attrs("session_store", "s-1"), unit(SESSION, "x1"), unit(USER, "u1")), broken);
+				continue;
 			} else if (!broken.equals("null-cluster") && !broken.equals("missing-links")) {
 				link(SESSION, broken);
 			} else if (broken.equals("missing-links")) {
@@ -300,6 +292,8 @@ class ContextSwitchbackClusterRuleTest {
 		}
 	}
 
+	// The Collector's name is kept; the SDK has no request order (see the class comment), so one
+	// order is exercised.
 	@Test
 	void trafficUsesServingUidNotExperimentUidInBothRequestOrders() {
 		// percentageOfTraffic = 40.
@@ -314,27 +308,20 @@ class ContextSwitchbackClusterRuleTest {
 		}
 		assertNotNull(witnesses[0]);
 		assertNotNull(witnesses[1]);
-		assertNotEquals(witnesses[0], witnesses[1], "opposite traffic witnesses must differ");
+		final String key = "s-18";
+		// The eligible draw must be distinguishable from control.
+		assertNotEquals(0, scheduled(key));
 		for (final boolean servingEligible : new boolean[]{false, true}) {
-			final String servingUid = witnesses[servingEligible ? 1 : 0];
-			final String otherUid = witnesses[servingEligible ? 0 : 1];
-			assertNotEquals(
-					new VariantAssigner(Hashing.hashUnit(servingUid)).assign(split, TRAFFIC_SEED_HI, TRAFFIC_SEED_LO),
-					new VariantAssigner(Hashing.hashUnit(otherUid)).assign(split, TRAFFIC_SEED_HI, TRAFFIC_SEED_LO));
-			for (final boolean reverse : new boolean[]{false, true}) {
-				final String[] session = unit(SESSION, servingUid);
-				final String[] user = unit(USER, otherUid);
-				final Assigned assignment = sbcWith(attrs("session_store", "s-5", "profile", store("s-5")),
-						new Experiment[]{experiment, ordinary},
-						reverse ? new String[][]{user, session} : new String[][]{session, user});
-				assertEquals(SESSION, assignment.unit);
-				assertEquals(servingEligible, assignment.eligible);
-				assertEquals(servingEligible ? scheduled("s-5") : 0, assignment.variant);
-				// A traffic miss on an eligible cluster is still recorded, under the serving unit.
-				assertEquals(1, assignment.exposures.size());
-				assertEquals(SESSION, assignment.exposures.get(0).unit);
-				assertEquals(servingEligible, assignment.exposures.get(0).eligible);
-			}
+			final Assigned assignment = sbcWith(attrs("session_store", key, "profile", store(key)),
+					new Experiment[]{experiment, ordinary}, unit(SESSION, witnesses[servingEligible ? 1 : 0]),
+					unit(USER, witnesses[servingEligible ? 0 : 1]));
+			assertEquals(SESSION, assignment.unit);
+			assertEquals(servingEligible, assignment.eligible);
+			assertEquals(servingEligible ? scheduled(key) : 0, assignment.variant);
+			// A traffic miss on an eligible cluster is still recorded, under the serving unit.
+			assertEquals(1, assignment.exposures.size());
+			assertEquals(SESSION, assignment.exposures.get(0).unit);
+			assertEquals(servingEligible, assignment.exposures.get(0).eligible);
 		}
 	}
 
@@ -421,19 +408,16 @@ class ContextSwitchbackClusterRuleTest {
 
 	@Test
 	void exposureUnitIsTheFirstMatchingUnitInDeclaredOrderWhateverTheRequestOrder() {
-		final Map<String, Object> agreeing = attrs("profile", store("s-5"), "session_store", "s-5");
-
+		final String key = "s-18";
+		assertNotEquals(0, scheduled(key));
 		// Declared order is unit type id ascending: session_id (1) before user_id (2), although the
 		// user_id link was inserted first.
-		final Assigned userFirst = sbc(agreeing, unit(USER, "u1"), unit(SESSION, "x1"));
-		final Assigned sessionFirst = sbc(agreeing, unit(SESSION, "x1"), unit(USER, "u1"));
+		final Assigned assignment = sbc(attrs("profile", store(key), "session_store", key), unit(USER, "u1"),
+				unit(SESSION, "x1"));
 
-		assertEquals(SESSION, userFirst.unit);
-		assertEquals(SESSION, sessionFirst.unit);
-		assertEquals(SESSION, userFirst.exposures.get(0).unit);
-		assertEquals(SESSION, sessionFirst.exposures.get(0).unit);
-		assertEquals(scheduled("s-5"), userFirst.variant);
-		assertEquals(userFirst.variant, sessionFirst.variant);
+		assertEquals(SESSION, assignment.unit);
+		assertEquals(SESSION, assignment.exposures.get(0).unit);
+		assertEquals(scheduled(key), assignment.variant);
 	}
 
 	@Test
@@ -449,11 +433,13 @@ class ContextSwitchbackClusterRuleTest {
 
 	@Test
 	void aUnitWithoutAValueDoesNotServeEvenIfFirstInDeclaredOrder() {
-		final Assigned assignment = sbc(attrs("profile", store("s-5")), unit(SESSION, "x1"), unit(USER, "u1"));
+		final String key = "s-17";
+		assertNotEquals(0, scheduled(key));
+		final Assigned assignment = sbc(attrs("profile", store(key)), unit(SESSION, "x1"), unit(USER, "u1"));
 
 		assertEquals(USER, assignment.unit);
 		assertEquals(USER, assignment.exposures.get(0).unit);
-		assertEquals(scheduled("s-5"), assignment.variant);
+		assertEquals(scheduled(key), assignment.variant);
 	}
 
 	@Test
@@ -491,9 +477,11 @@ class ContextSwitchbackClusterRuleTest {
 	}
 
 	// The Collector's wire-rule oracle SdkSwitchbackRule (ContextAPISwitchbackTest support class),
-	// transcribed: period index from the anchor (the oracle re-ceils it to the hour; with the aligned
-	// anchors fed here that is a no-op), traffic on the serving uid's hash, then the schedule draw
-	// over the cluster key.
+	// transcribed: period index from the anchor re-ceiled to the hour, traffic on the serving uid's
+	// hash, then the schedule draw over the cluster key. A null cluster key (no value, disagreement,
+	// filtered value) has no draw. It shares SwitchbackAssigner, VariantAssigner and Hashing with the
+	// SDK, whose parity is pinned by the golden vectors, so it is a wire-rule parity check, not an
+	// independent oracle.
 	static final class SdkSwitchbackRule {
 		static final long NO_PERIOD = Long.MIN_VALUE;
 
@@ -516,7 +504,7 @@ class ContextSwitchbackClusterRuleTest {
 		// {variant, eligible ? 1 : 0}
 		static int[] evaluate(Experiment experiment, String uid, String clusterKey, long nowMs) {
 			final long periodIndex = periodIndex(experiment, nowMs);
-			if (periodIndex == NO_PERIOD) {
+			if ((clusterKey == null) || (periodIndex == NO_PERIOD)) {
 				return new int[]{0, 0};
 			}
 			final boolean eligible = new VariantAssigner(Hashing.hashUnit(uid)).assign(experiment.trafficSplit,
@@ -530,35 +518,68 @@ class ContextSwitchbackClusterRuleTest {
 		}
 	}
 
+	// Cluster axis of the grid: one source with the key, or a cluster that resolves no key.
+	enum ClusterCase {
+		SINGLE, DISAGREEING_SECOND_SOURCE, MISSING_VALUE, FILTERED_VALUE
+	}
+
+	Context gridContext(ClusterCase cluster, String uid, String key) {
+		unlinkAll();
+		link(SESSION, "session_store");
+		experiment.switchbackClusterValues = null;
+		switch (cluster) {
+		case DISAGREEING_SECOND_SOURCE:
+			link(USER, "profile/store");
+			return createContext(attrs("session_store", key, "profile", store(key + "-other")),
+					new Experiment[]{experiment}, unit(SESSION, uid), unit(USER, "u-" + uid));
+		case MISSING_VALUE:
+			return createContext(attrs("other", key), new Experiment[]{experiment}, unit(SESSION, uid));
+		case FILTERED_VALUE:
+			experiment.switchbackClusterValues = new String[]{key + "-allowed"};
+			return createContext(attrs("session_store", key), new Experiment[]{experiment}, unit(SESSION, uid));
+		default:
+			return createContext(attrs("session_store", key), new Experiment[]{experiment}, unit(SESSION, uid));
+		}
+	}
+
 	@Test
-	void contextMatchesTheSdkSwitchbackRuleOracleOnAGrid() {
+	void contextMatchesTheSdkSwitchbackWireRuleParityGrid() {
 		int eligible = 0;
 		int ineligible = 0;
 		final long[] anchors = {ANCHOR, ANCHOR + 7 * HOUR};
 		final long[] periods = {HOUR, 2 * HOUR, 24 * HOUR};
-		for (final long anchor : anchors) {
-			for (final long periodMs : periods) {
-				unlinkAll();
-				link(SESSION, "session_store");
-				experiment.trafficSplit = new double[]{0.3, 0.7};
-				experiment.switchbackStartAt = anchor;
-				experiment.switchbackPeriodMs = periodMs;
-				for (int u = 0; u < 6; ++u) {
-					final String uid = "uid-" + u;
-					for (final String key : new String[]{"s-1", "s-2", "42", "Lisboa"}) {
-						for (final long now : new long[]{anchor - HOUR, anchor - 1, anchor, anchor + periodMs - 1,
-								anchor + periodMs, anchor + 3 * periodMs + 5, anchor + 11 * periodMs}) {
-							clock.now = now;
-							final int[] oracle = SdkSwitchbackRule.evaluate(experiment, uid, key, now);
-							final Context context = createContext(attrs("session_store", key),
-									new Experiment[]{experiment}, unit(SESSION, uid));
-							final String message = anchor + "/" + periodMs + "/" + uid + "/" + key + "/" + now;
-							assertEquals(oracle[0], context.getTreatment("sbc"), message);
-							assertEquals(oracle[1] == 1, field(cachedSlot(context), "eligible"), message);
-							if (oracle[1] == 1) {
-								++eligible;
-							} else {
-								++ineligible;
+		for (final ClusterCase cluster : ClusterCase.values()) {
+			for (final long anchor : anchors) {
+				for (final long periodMs : periods) {
+					experiment.trafficSplit = new double[]{0.3, 0.7};
+					experiment.switchbackStartAt = anchor;
+					experiment.switchbackPeriodMs = periodMs;
+					for (int u = 0; u < 6; ++u) {
+						final String uid = "uid-" + u;
+						for (final String key : new String[]{"s-1", "s-2", "42", "Lisboa"}) {
+							for (final long now : new long[]{anchor - HOUR, anchor - 1, anchor, anchor + periodMs - 1,
+									anchor + periodMs, anchor + 3 * periodMs + 5, anchor + 11 * periodMs}) {
+								clock.now = now;
+								final String oracleKey = (cluster == ClusterCase.SINGLE) ? key : null;
+								final int[] oracle = SdkSwitchbackRule.evaluate(experiment, uid, oracleKey, now);
+								final Context context = gridContext(cluster, uid, key);
+								final String message = cluster + "/" + anchor + "/" + periodMs + "/" + uid + "/" + key
+										+ "/" + now;
+								assertEquals(oracle[0], context.getTreatment("sbc"), message);
+								assertEquals(oracle[1] == 1, context.switchbackResolutionForTest("sbc").eligible,
+										message);
+								// Before the anchor nothing is recorded; from it, a keyed cluster records
+								// one exposure whose eligibility is the oracle's (a traffic miss included).
+								final int expectedExposures = ((oracleKey != null) && (now >= anchor)) ? 1 : 0;
+								assertEquals(expectedExposures, capture.exposures.size(), message);
+								if (expectedExposures == 1) {
+									assertEquals(oracle[1] == 1, capture.exposures.get(0).eligible, message);
+								}
+								if (oracle[1] == 1) {
+									++eligible;
+								} else {
+									++ineligible;
+								}
 							}
 						}
 					}
@@ -567,5 +588,19 @@ class ContextSwitchbackClusterRuleTest {
 		}
 		assertTrue(eligible > 100);
 		assertTrue(ineligible > 100);
+
+		// The deliberate divergence: an anchor off the hour is unservable in the SDK (as in the
+		// Collector's Registry), while the transcribed oracle would re-ceil it and draw.
+		final long unaligned = ANCHOR + 7 * HOUR + 1;
+		experiment.trafficSplit = new double[]{0.0, 1.0};
+		experiment.switchbackStartAt = unaligned;
+		experiment.switchbackPeriodMs = HOUR;
+		clock.now = ANCHOR + 8 * HOUR + 5;
+		assertNotEquals(SdkSwitchbackRule.NO_PERIOD, SdkSwitchbackRule.periodIndex(experiment, clock.now));
+		assertEquals(1, SdkSwitchbackRule.evaluate(experiment, "uid-0", "s-1", clock.now)[1]);
+		final Context context = gridContext(ClusterCase.SINGLE, "uid-0", "s-1");
+		assertEquals(0, context.getTreatment("sbc"));
+		assertFalse(context.switchbackResolutionForTest("sbc").eligible);
+		assertTrue(capture.exposures.isEmpty());
 	}
 }

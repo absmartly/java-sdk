@@ -12,7 +12,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -30,6 +29,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import com.absmartly.sdk.internal.SwitchbackAssigner;
+import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.java.time.Clock;
@@ -745,12 +745,16 @@ class ContextSwitchbackTest {
 				+ "\"percentages\":\"50/50\"}]}";
 		int ones = 0;
 		for (int u = 0; u < 32; ++u) {
+			reset(eventHandler);
+			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 			final String uid = "store-" + u;
-			final int expected = new com.absmartly.sdk.internal.VariantAssigner(Hashing.hashUnit(uid))
-					.assign(new double[]{0.5, 0.5}, SEED_HI, SEED_LO);
+			final int expected = new VariantAssigner(Hashing.hashUnit(uid)).assign(new double[]{0.5, 0.5}, SEED_HI,
+					SEED_LO);
 			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, uid, "user_id", "fixed-user"),
 					dataOf(experiment));
 			assertEquals(expected, context.getTreatment("exp_sb"), uid);
+			assertArrayEquals(new Exposure[]{ruleExposure("exp_sb", expected, ANCHOR)}, publishExposures(context),
+					uid);
 			ones += expected;
 		}
 		assertTrue((ones > 0) && (ones < 32));
@@ -798,15 +802,13 @@ class ContextSwitchbackTest {
 
 	// Each experiment keeps entries for at most its two most recent periods.
 	@Test
-	void perPeriodCacheIsBounded() throws Exception {
+	void perPeriodCacheIsBounded() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		for (int i = 0; i < 50; ++i) {
 			clock.now = ANCHOR + i * HOUR;
 			context.getTreatment("exp_sb");
 		}
-		final Field field = Context.class.getDeclaredField("assignmentCache_");
-		field.setAccessible(true);
-		assertEquals(2, ((Map<?, ?>) field.get(context)).size());
+		assertEquals(2, context.assignmentCacheSizeForTest());
 		assertEquals(50, context.getPendingCount());
 	}
 
@@ -1183,6 +1185,104 @@ class ContextSwitchbackTest {
 		assertEquals(2, matcher.ruleEvaluations.get());
 	}
 
+	// A legacy (missing or unreadable cluster map) switchback serves under its declared unitType, so
+	// a unitType change on refresh is identity for it, unlike for a readable map.
+	@Test
+	void legacySwitchbackUnitTypeChangeIsIdentity() {
+		final Experiment legacy = switchback(2, HOUR);
+		legacy.switchbackClusters = null;
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", "u1"), dataOf(legacy));
+		clock.now = ANCHOR + 10;
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(0, context.getVariableValue("sb.arm", -1));
+		assertEquals(UNIT_TYPE, context.switchbackResolutionForTest("exp_sb").unitType);
+
+		final Experiment other = switchback(2, HOUR);
+		other.switchbackClusters = null;
+		other.unitType = "other";
+		refreshTo(context, other);
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(-1, context.getVariableValue("sb.arm", -1));
+
+		final Experiment user = switchback(2, HOUR);
+		user.switchbackClusters = null;
+		user.unitType = "user_id";
+		refreshTo(context, user);
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(0, context.getVariableValue("sb.arm", -1));
+		final Context.SwitchbackResolution resolution = context.switchbackResolutionForTest("exp_sb");
+		assertEquals("user_id", resolution.unitType);
+		assertFalse(resolution.eligible);
+		assertTrue(resolution.silent);
+		assertEquals(0, context.getPendingCount());
+	}
+
+	// An ineligible or absent switchback slot never consulted its rules, so neither a set attribute
+	// nor a rules refresh re-evaluates them or changes its result.
+	@Test
+	void rulesAreNotReevaluatedForAnIneligibleOrAbsentSlot() {
+		final Experiment ineligible = switchback(1, "exp_ineligible", 2, HOUR);
+		ineligible.assignmentRules = ASSIGN_VARIANT_1;
+		ineligible.switchbackClusterValues = new String[]{"other-store"};
+		final Experiment absent = switchback(2, "exp_absent", 2, HOUR);
+		absent.assignmentRules = ASSIGN_VARIANT_1;
+		absent.switchbackClusters = clusters("device_id", CLUSTER_PATH);
+		final CountingAudienceMatcher matcher = new CountingAudienceMatcher();
+		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID), dataOf(ineligible, absent), matcher);
+		clock.now = ANCHOR + 10;
+		assertEquals(0, context.getTreatment("exp_ineligible"));
+		assertEquals(0, context.getTreatment("exp_absent"));
+		assertEquals(0, matcher.ruleEvaluations.get());
+
+		context.setAttribute("x", 1);
+		final Experiment ineligibleRefreshed = switchback(1, "exp_ineligible", 2, HOUR);
+		ineligibleRefreshed.assignmentRules = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],"
+				+ "\"variant\":1,\"name\":\"changed\"}]}";
+		ineligibleRefreshed.switchbackClusterValues = ineligible.switchbackClusterValues;
+		final Experiment absentRefreshed = switchback(2, "exp_absent", 2, HOUR);
+		absentRefreshed.assignmentRules = ineligibleRefreshed.assignmentRules;
+		absentRefreshed.switchbackClusters = absent.switchbackClusters;
+		refreshTo(context, ineligibleRefreshed, absentRefreshed);
+
+		assertEquals(0, context.getTreatment("exp_ineligible"));
+		assertEquals(0, context.getTreatment("exp_absent"));
+		assertEquals(0, matcher.ruleEvaluations.get());
+		assertEquals(0, context.getPendingCount());
+	}
+
+	// A rule-won switchback re-resolved in the same period (an attribute set, a different rule with
+	// the same variant) keeps its variant and is exposed once.
+	@Test
+	void inPeriodRuleRefreshKeepsTheVariantAndExposesOnce() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.assignmentRules = ASSIGN_VARIANT_1;
+		final Context context = createContext(dataOf(experiment));
+		clock.now = ANCHOR + 5;
+		assertEquals(1, context.getTreatment("exp_sb"));
+
+		context.setAttribute("tier", "x");
+		final Experiment refreshed = switchback(2, HOUR);
+		refreshed.assignmentRules = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":1,"
+				+ "\"conditions\":{\"and\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"x\"}]}]}}]}";
+		refreshTo(context, refreshed);
+		clock.now = ANCHOR + 6;
+		assertEquals(1, context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{ruleExposure("exp_sb", 1, ANCHOR + 5)}, publishExposures(context));
+	}
+
+	// SDK choice (see SWITCHBACK.md): before the anchor nothing is recorded, a traffic miss included,
+	// because the pre-period check precedes traffic.
+	@Test
+	void preAnchorTrafficMissIsSilent() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.trafficSplit = new double[]{1.0, 0.0};
+		// The cluster attribute is set before the call, so the cluster itself is eligible.
+		clock.now = ANCHOR - 1;
+		final Context context = createContext(dataOf(experiment));
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(0, context.getPendingCount());
+	}
+
 	// An override on a switchback with no serving unit is exposed under the declared unitType when the
 	// cluster map is missing or unreadable (the legacy path's unit), never under null or a cluster
 	// map type.
@@ -1206,6 +1306,38 @@ class ContextSwitchbackTest {
 				new Exposure(2, "exp_unreadable_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false,
 						false),
 		}, publishExposures(context));
+	}
+
+	// Exact wire form of a rule-won and a traffic-miss switchback exposure.
+	@Test
+	void ruleWonAndTrafficMissExposuresSerializeExactly() {
+		final Experiment rule = switchback(1, "exp_rule", 2, HOUR);
+		rule.assignmentRules = ASSIGN_VARIANT_1;
+		final Experiment miss = switchback(2, "exp_miss", 2, HOUR);
+		miss.trafficSplit = new double[]{1.0, 0.0};
+		final Context context = createContext(dataOf(rule, miss));
+		clock.now = ANCHOR + 5;
+		context.getTreatment("exp_rule");
+		context.getTreatment("exp_miss");
+		clock.now = ANCHOR + 9;
+
+		final PublishEvent event = publishAndCapture(context, 1).get(0);
+		final String json = new String(new DefaultContextEventSerializer().serialize(event),
+				StandardCharsets.UTF_8);
+		assertEquals("{\"hashed\":true,\"units\":[{\"type\":\"store_id\",\"uid\":\"" + UID_HASH + "\"}],"
+				+ "\"publishedAt\":" + (ANCHOR + 9) + ","
+				+ "\"exposures\":["
+				+ "{\"id\":1,\"name\":\"exp_rule\",\"unit\":\"store_id\",\"variant\":1,\"exposedAt\":"
+				+ (ANCHOR + 5)
+				+ ",\"assigned\":false,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,"
+				+ "\"audienceMismatch\":false,\"ruleOverride\":true},"
+				+ "{\"id\":2,\"name\":\"exp_miss\",\"unit\":\"store_id\",\"variant\":0,\"exposedAt\":"
+				+ (ANCHOR + 5)
+				+ ",\"assigned\":true,\"eligible\":false,\"overridden\":false,\"fullOn\":false,\"custom\":false,"
+				+ "\"audienceMismatch\":false,\"ruleOverride\":false}"
+				+ "],"
+				+ "\"attributes\":[{\"name\":\"" + CLUSTER_PATH + "\",\"value\":\"" + CLUSTER_KEY
+				+ "\",\"setAt\":" + ANCHOR + "}]}", json);
 	}
 
 	// Audience evaluation runs under contextLock_; this matcher refreshes the context from inside it.

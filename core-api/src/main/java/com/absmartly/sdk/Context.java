@@ -1755,6 +1755,49 @@ public class Context implements Closeable {
 				data.split.length);
 	}
 
+	// Test seam: the cached resolution of a switchback (or any experiment) at the clock's current
+	// reading, as the Collector would report it. Null when nothing is cached for that slot.
+	static final class SwitchbackResolution {
+		final String unitType;
+		final boolean assigned;
+		final boolean eligible;
+		final boolean fullOn;
+		final boolean ruleOverride;
+		// Whether the resolution records an exposure when exposed.
+		final boolean silent;
+
+		SwitchbackResolution(final Assignment assignment) {
+			this.unitType = assignment.unitType;
+			this.assigned = assignment.assigned;
+			this.eligible = assignment.eligible;
+			this.fullOn = assignment.fullOn;
+			this.ruleOverride = assignment.ruleOverride;
+			this.silent = assignment.switchbackSilent;
+		}
+	}
+
+	SwitchbackResolution switchbackResolutionForTest(final String experimentName) {
+		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		try {
+			readLock.lock();
+			final long period = currentSwitchbackPeriod(getExperiment(experimentName), clock_.millis());
+			final Assignment assignment = assignmentCache_.get(assignmentCacheKey(experimentName, period));
+			return (assignment != null) ? new SwitchbackResolution(assignment) : null;
+		} finally {
+			readLock.unlock();
+		}
+	}
+
+	int assignmentCacheSizeForTest() {
+		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
+		try {
+			readLock.lock();
+			return assignmentCache_.size();
+		} finally {
+			readLock.unlock();
+		}
+	}
+
 	// now is the caller's single clock reading for this resolution, so the cache key, the drawn
 	// period and a switchback exposure's exposedAt all agree.
 	private Assignment getAssignment(final String experimentName, final long now) {

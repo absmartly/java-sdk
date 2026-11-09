@@ -563,6 +563,9 @@ class ContextSwitchbackClusterTest {
 			unit.switchbackClusters = ContextSwitchbackTest.clusters("user_id", "city", UNIT_TYPE, "'x");
 			unit.switchbackClusterValues = new String[]{"nothing"};
 			unit.switchbackPeriodMs = 0L;
+			// A split rule randomizes over unitType for a unit experiment, never a cluster unit.
+			unit.assignmentRules = "{\"rules\":[{\"type\":\"split\",\"environments\":[],"
+					+ "\"percentages\":\"34/33/33\"}]}";
 			final Experiment reference = new Experiment();
 			reference.id = unit.id;
 			reference.name = unit.name;
@@ -577,6 +580,7 @@ class ContextSwitchbackClusterTest {
 			reference.applications = unit.applications;
 			reference.variants = unit.variants;
 			reference.randomizationType = type;
+			reference.assignmentRules = unit.assignmentRules;
 
 			final Exposure[][] published = new Exposure[2][];
 			final Experiment[] experiments = {unit, reference};
@@ -596,6 +600,7 @@ class ContextSwitchbackClusterTest {
 			}
 			assertEquals(1, published[0].length);
 			assertTrue(published[0][0].eligible);
+			assertTrue(published[0][0].ruleOverride);
 			assertEquals(ANCHOR - HOUR, published[0][0].exposedAt);
 			assertArrayEquals(published[1], published[0]);
 		}
