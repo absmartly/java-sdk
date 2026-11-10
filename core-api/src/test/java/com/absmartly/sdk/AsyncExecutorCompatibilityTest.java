@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java8.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import com.absmartly.sdk.internal.AsyncExecutor;
+import com.absmartly.sdk.internal.SdkFuture;
 import com.absmartly.sdk.json.ContextData;
 
 // streamsupport's default async pool cannot initialize on JDK 24+ (TLR reflects on the removed
@@ -177,6 +179,35 @@ class AsyncExecutorCompatibilityTest extends TestUtils {
 
 		assertSdkFuture(sdk.getContextData());
 		assertSdkFuture(sdk.createContextWith(ContextConfig.create(), data).waitUntilReadyAsync());
+	}
+
+	@Test
+	void eitherStagesWithCompletedPlainFutureDefaultToSdkExecutor() {
+		final CompletableFuture<String> pending = new SdkFuture<String>();
+		final CompletableFuture<String> completed = CompletableFuture.completedFuture("other");
+		final ExecutorService executor = Executors.newSingleThreadExecutor();
+		try {
+			assertSdkFuture(pending.applyToEither(completed, value -> value));
+			assertSdkFuture(pending.applyToEitherAsync(completed, value -> value));
+			assertSdkFuture(pending.applyToEitherAsync(completed, value -> value, executor));
+			assertSdkFuture(pending.acceptEither(completed, value -> {}));
+			assertSdkFuture(pending.acceptEitherAsync(completed, value -> {}));
+			assertSdkFuture(pending.acceptEitherAsync(completed, value -> {}, executor));
+			assertSdkFuture(pending.runAfterEither(completed, () -> {}));
+			assertSdkFuture(pending.runAfterEitherAsync(completed, () -> {}));
+			assertSdkFuture(pending.runAfterEitherAsync(completed, () -> {}, executor));
+
+			assertEquals("other",
+					pending.applyToEither(completed, value -> value).thenApplyAsync(value -> value).join());
+
+			final CompletableFuture<String> failed = new CompletableFuture<String>();
+			failed.completeExceptionally(new IllegalStateException("failed"));
+			final CompletionException exception = assertThrows(CompletionException.class,
+					() -> pending.applyToEither(failed, value -> value).join());
+			assertTrue(exception.getCause() instanceof IllegalStateException);
+		} finally {
+			executor.shutdownNow();
+		}
 	}
 
 	private static void assertSdkFuture(CompletableFuture<?> future) {
