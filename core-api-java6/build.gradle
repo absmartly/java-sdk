@@ -30,7 +30,7 @@ def generateSources = { String name, String sourceDir, String overrideDir ->
 			if (text =~ /(?m)^import java\.util\.function\.\*;/ || (text =~ /(?m)^import java\.util\.concurrent\.\*;/
 					&& text =~ /\bCompl(etableFuture|etionStage|etionException)\b/)) {
 				throw new GradleException("${file.file}: import java.util.concurrent and java.util.function types one by one, " +
-						"so core-api-java6 can switch them to the backport")
+				"so core-api-java6 can switch them to the backport")
 			}
 		}
 		filter { line -> line.replaceAll(backportTypes, 'java8.util.$1') }
