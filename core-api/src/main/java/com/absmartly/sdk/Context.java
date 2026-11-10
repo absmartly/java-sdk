@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.absmartly.sdk.internal.Algorithm;
+import com.absmartly.sdk.internal.AsyncExecutor;
 import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.VariantAssigner;
@@ -1026,7 +1027,7 @@ public class Context implements Closeable {
 								result.complete(null);
 							}
 						}
-					});
+					}, AsyncExecutor.get());
 
 					publishResult.exceptionally(onPublishFailure);
 
