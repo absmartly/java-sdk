@@ -1131,7 +1131,6 @@ public class Context implements Closeable {
 			assignment.switchbackStartAt = experiment.switchbackStartAt;
 			assignment.switchbackPeriodMs = experiment.switchbackPeriodMs;
 			assignment.switchbackDesignType = experiment.switchbackDesignType;
-			assignment.switchbackDeclaredUnitType = experiment.unitType;
 		}
 	}
 
@@ -1556,8 +1555,6 @@ public class Context implements Closeable {
 		Long switchbackStartAt;
 		Long switchbackPeriodMs;
 		String switchbackDesignType;
-		// The payload's unitType, used only by the legacy path of an unreadable cluster map.
-		String switchbackDeclaredUnitType;
 		// The serving resolution read for this slot (cluster key and serving unit); read once per
 		// slot. Null until read, and never kept when no linked unit was set.
 		SwitchbackServing switchbackServing;
