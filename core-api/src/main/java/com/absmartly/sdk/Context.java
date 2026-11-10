@@ -1716,6 +1716,8 @@ public class Context implements Closeable {
 			}
 		}
 		if (data.audienceStrict && assignment.audienceMismatch) {
+			// Recorded like a unit experiment's strict mismatch: control, audienceMismatch, not "assigned".
+			assignment.assigned = false;
 			return;
 		}
 		if (data.fullOnVariant != 0) {

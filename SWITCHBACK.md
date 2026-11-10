@@ -77,9 +77,9 @@ unservable schedule, see *SDK choice: no exposure before the anchor*):
 
 | Step | Result | Exposure |
 | --- | --- | --- |
-| 1. Override (`setOverride`) | The override variant, even without a cluster | Recorded, `overridden` |
+| 1. Override (`setOverride`) | The override variant, even without a cluster | Recorded, `overridden=true`, `assigned=false` (as for unit experiments) |
 | 2. Assignment rules | The first matching rule's variant. A `split` rule randomizes over the serving unit's hash | Recorded, `ruleOverride=true`, `assigned=false` (as for unit experiments) |
-| 3. Audience, strict mismatch | Variant 0 | Recorded, `audienceMismatch=true` (as for unit experiments) |
+| 3. Audience, strict mismatch | Variant 0 | Recorded, `audienceMismatch=true`, `assigned=false` (as for unit experiments) |
 | 4. Full-on | `fullOnVariant` | Recorded, `fullOn` |
 | 5. Pre-start, or unservable schedule | Variant 0, not eligible | None (an SDK choice, see *SDK choice: no exposure before the anchor*) |
 | 6. Traffic miss (hash of the serving unit) | Variant 0, not eligible | **Recorded** under the serving unit, `eligible=false` |
@@ -97,9 +97,34 @@ unservable schedule, see *SDK choice: no exposure before the anchor*):
   key is null. So a traffic miss on an eligible cluster records an ineligible exposure under the
   serving unit, unlike an ineligible cluster, which records nothing.
 - The handling of an audience-strict mismatch is confirmed against the Collector source: variant 0,
-  with the exposure recorded and flagged `audienceMismatch`, the same as for unit experiments.
+  with the exposure recorded and flagged `audienceMismatch`, the same as for unit experiments. Like a
+  unit experiment's, it is published with `assigned=false`.
 - Traffic eligibility uses the serving unit's traffic hash, never the experiment's `unitType`. It is
   sticky per serving unit across periods.
+
+### Exposure flags
+
+For every branch above that records an exposure, a switchback with an eligible cluster publishes
+the same flags as a unit experiment in the same branch. Only the unit and the variant can differ.
+`ContextSwitchbackTest.exposureFlagsMatchAUnitExperimentForEveryBranch` runs each row on both and
+asserts this table.
+
+| Branch | Variant | `assigned` | `eligible` | `overridden` | `fullOn` | `custom` | `audienceMismatch` | `ruleOverride` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Override | Override | false | true | true | false | false | false | false |
+| Override, strict audience mismatch | Override | false | true | true | false | false | false | false |
+| Assignment rule | Rule | false | true | false | false | false | false | true |
+| Assignment rule, strict audience mismatch | Rule | false | true | false | false | false | false | true |
+| Strict audience mismatch | 0 | **false** | true | false | false | false | true | false |
+| Strict audience mismatch, full-on set | 0 | **false** | true | false | false | false | true | false |
+| Non-strict audience mismatch | Drawn | true | true | false | false | false | true | false |
+| Full-on | `fullOnVariant` | true | true | false | true | false | false | false |
+| Traffic miss | 0 | true | false | false | false | false | false | false |
+| Custom assignment | Custom | true | true | false | false | true | false | false |
+| Schedule draw (unit: split draw) | Drawn | true | true | false | false | false | false | false |
+
+Every row records exactly one exposure. The switchback-only branches record none: an ineligible
+cluster, a pre-start or unservable draw, and a switchback with no linked unit.
 
 ### Anchor
 

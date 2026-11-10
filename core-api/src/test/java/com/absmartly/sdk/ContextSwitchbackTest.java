@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
@@ -25,6 +26,8 @@ import java8.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
@@ -731,18 +734,156 @@ class ContextSwitchbackTest {
 		assertTrue((ones > 0) && (ones < 32));
 	}
 
-	// Audience-strict mismatch: control, recorded with audienceMismatch, as for a unit experiment
-	// (the Collector's assignExperiment; publish only suppresses a null cluster key).
+	// Audience-strict mismatch: control, recorded with audienceMismatch and assigned=false, as for a unit
+	// experiment (the Collector's assignExperiment; publish only suppresses a null cluster key).
 	@Test
 	void audienceStrictMismatchIsRecordedAsControl() {
 		final Experiment experiment = switchback(2, HOUR);
-		experiment.audience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
+		experiment.audience = STRICT_GOLD_AUDIENCE;
 		experiment.audienceStrict = true;
 		final Context context = createContext(dataOf(experiment));
 		clock.now = ANCHOR + HOUR;
 		assertEquals(0, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, 0, ANCHOR + HOUR, true, true, false,
+		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, 0, ANCHOR + HOUR, false, true, false,
 				false, false, true, false)}, publishExposures(context));
+	}
+
+	// Exact wire form of a switchback strict audience mismatch: assigned=false, audienceMismatch=true,
+	// the same flags a unit experiment publishes for it.
+	@Test
+	void audienceStrictMismatchExposureSerializesExactly() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.audience = STRICT_GOLD_AUDIENCE;
+		experiment.audienceStrict = true;
+		final Context context = createContext(dataOf(experiment));
+		clock.now = ANCHOR + 5;
+		context.getTreatment("exp_sb");
+		clock.now = ANCHOR + 9;
+
+		final PublishEvent event = publishAndCapture(context, 1).get(0);
+		final String json = new String(new DefaultContextEventSerializer().serialize(event),
+				StandardCharsets.UTF_8);
+		assertEquals("{\"hashed\":true,\"units\":[{\"type\":\"store_id\",\"uid\":\"" + UID_HASH + "\"}],"
+				+ "\"publishedAt\":" + (ANCHOR + 9) + ","
+				+ "\"exposures\":["
+				+ "{\"id\":1,\"name\":\"exp_sb\",\"unit\":\"store_id\",\"variant\":0,\"exposedAt\":" + (ANCHOR + 5)
+				+ ",\"assigned\":false,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,"
+				+ "\"audienceMismatch\":true,\"ruleOverride\":false}"
+				+ "],"
+				+ "\"attributes\":[{\"name\":\"" + CLUSTER_PATH + "\",\"value\":\"" + CLUSTER_KEY
+				+ "\",\"setAt\":" + ANCHOR + "}]}", json);
+	}
+
+	// An audience the default context never matches (no "tier" attribute).
+	static final String STRICT_GOLD_AUDIENCE = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
+
+	// The branches of the SWITCHBACK.md "Exposure flags" table: every branch an eligible-cluster
+	// switchback shares with a unit experiment.
+	enum ParityBranch {
+		OVERRIDE, OVERRIDE_OVER_STRICT_MISMATCH, RULE, RULE_OVER_STRICT_MISMATCH, STRICT_MISMATCH, STRICT_MISMATCH_OVER_FULL_ON, NON_STRICT_MISMATCH, FULL_ON, TRAFFIC_MISS, CUSTOM, DRAW;
+
+		void configure(Experiment experiment) {
+			switch (this) {
+			case OVERRIDE_OVER_STRICT_MISMATCH:
+			case RULE_OVER_STRICT_MISMATCH:
+			case STRICT_MISMATCH:
+				experiment.audience = STRICT_GOLD_AUDIENCE;
+				experiment.audienceStrict = true;
+				break;
+			case STRICT_MISMATCH_OVER_FULL_ON:
+				experiment.audience = STRICT_GOLD_AUDIENCE;
+				experiment.audienceStrict = true;
+				experiment.fullOnVariant = 1;
+				break;
+			case NON_STRICT_MISMATCH:
+				experiment.audience = STRICT_GOLD_AUDIENCE;
+				break;
+			case FULL_ON:
+				experiment.fullOnVariant = 1;
+				break;
+			case TRAFFIC_MISS:
+				experiment.trafficSplit = new double[]{1.0, 0.0};
+				break;
+			default:
+				break;
+			}
+			if ((this == RULE) || (this == RULE_OVER_STRICT_MISMATCH)) {
+				experiment.assignmentRules = ASSIGN_VARIANT_1;
+			}
+		}
+
+		void configure(Context context) {
+			if ((this == OVERRIDE) || (this == OVERRIDE_OVER_STRICT_MISMATCH)) {
+				context.setOverride("exp_parity", 1);
+			} else if (this == CUSTOM) {
+				context.setCustomAssignment("exp_parity", 1);
+			}
+		}
+	}
+
+	// The SWITCHBACK.md "Exposure flags" table, one row per branch. Columns: assigned, eligible,
+	// overridden, fullOn, custom, audienceMismatch, ruleOverride.
+	static final Map<ParityBranch, boolean[]> EXPOSURE_FLAGS = new EnumMap<>(ParityBranch.class);
+	static {
+		EXPOSURE_FLAGS.put(ParityBranch.OVERRIDE, flags(false, true, true, false, false, false, false));
+		EXPOSURE_FLAGS.put(ParityBranch.OVERRIDE_OVER_STRICT_MISMATCH,
+				flags(false, true, true, false, false, false, false));
+		EXPOSURE_FLAGS.put(ParityBranch.RULE, flags(false, true, false, false, false, false, true));
+		EXPOSURE_FLAGS.put(ParityBranch.RULE_OVER_STRICT_MISMATCH,
+				flags(false, true, false, false, false, false, true));
+		EXPOSURE_FLAGS.put(ParityBranch.STRICT_MISMATCH, flags(false, true, false, false, false, true, false));
+		EXPOSURE_FLAGS.put(ParityBranch.STRICT_MISMATCH_OVER_FULL_ON,
+				flags(false, true, false, false, false, true, false));
+		EXPOSURE_FLAGS.put(ParityBranch.NON_STRICT_MISMATCH, flags(true, true, false, false, false, true, false));
+		EXPOSURE_FLAGS.put(ParityBranch.FULL_ON, flags(true, true, false, true, false, false, false));
+		EXPOSURE_FLAGS.put(ParityBranch.TRAFFIC_MISS, flags(true, false, false, false, false, false, false));
+		EXPOSURE_FLAGS.put(ParityBranch.CUSTOM, flags(true, true, false, false, true, false, false));
+		EXPOSURE_FLAGS.put(ParityBranch.DRAW, flags(true, true, false, false, false, false, false));
+	}
+
+	static boolean[] flags(boolean... flags) {
+		return flags;
+	}
+
+	static boolean[] exposureFlags(Exposure exposure) {
+		return new boolean[]{exposure.assigned, exposure.eligible, exposure.overridden, exposure.fullOn,
+				exposure.custom, exposure.audienceMismatch, exposure.ruleOverride};
+	}
+
+	Exposure exposeOnce(Experiment experiment, ParityBranch branch) {
+		reset(eventHandler);
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
+		branch.configure(experiment);
+		final Context context = createContext(dataOf(experiment));
+		branch.configure(context);
+		context.getTreatment("exp_parity");
+		final Exposure[] exposures = publishExposures(context);
+		assertEquals(1, exposures.length, branch.name());
+		return exposures[0];
+	}
+
+	// The same branch run on a unit experiment and on an eligible-cluster switchback publishes the same
+	// exposure, apart from the unit and the variant, and both match the SWITCHBACK.md table.
+	@ParameterizedTest(name = "{0}")
+	@EnumSource(ParityBranch.class)
+	void exposureFlagsMatchAUnitExperimentForEveryBranch(ParityBranch branch) {
+		clock.now = ANCHOR + HOUR + 3;
+
+		final Experiment unit = switchback(1, "exp_parity", 2, HOUR);
+		unit.randomizationType = null;
+		unit.switchbackClusters = null;
+		unit.switchbackStartAt = null;
+		unit.switchbackPeriodMs = null;
+		final Exposure unitExposure = exposeOnce(unit, branch);
+
+		final Exposure switchbackExposure = exposeOnce(switchback(1, "exp_parity", 2, HOUR), branch);
+
+		final boolean[] expected = EXPOSURE_FLAGS.get(branch);
+		assertArrayEquals(expected, exposureFlags(unitExposure), "unit " + branch);
+		assertArrayEquals(expected, exposureFlags(switchbackExposure), "switchback " + branch);
+		assertEquals(unitExposure.id, switchbackExposure.id);
+		assertEquals(unitExposure.name, switchbackExposure.name);
+		assertEquals(unitExposure.exposedAt, switchbackExposure.exposedAt);
 	}
 
 	// A traffic miss on an eligible cluster is recorded: eligible=false, variant 0, under the serving
