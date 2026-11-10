@@ -1271,7 +1271,7 @@ class ContextSwitchbackTest {
 	}
 
 	// SDK choice (see SWITCHBACK.md): before the anchor nothing is recorded, a traffic miss included,
-	// because the pre-period check precedes traffic.
+	// because the pre-period check precedes traffic. From the anchor the same miss is recorded.
 	@Test
 	void preAnchorTrafficMissIsSilent() {
 		final Experiment experiment = switchback(2, HOUR);
@@ -1281,6 +1281,12 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(experiment));
 		assertEquals(0, context.getTreatment("exp_sb"));
 		assertEquals(0, context.getPendingCount());
+
+		// Contrast: at the anchor the cluster is eligible and the draw can run, so the traffic miss
+		// is recorded.
+		clock.now = ANCHOR;
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(1, context.getPendingCount());
 	}
 
 	// An override on a switchback with no serving unit is exposed under the declared unitType when the
