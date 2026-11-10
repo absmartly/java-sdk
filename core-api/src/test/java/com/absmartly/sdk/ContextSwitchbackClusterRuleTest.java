@@ -575,10 +575,14 @@ class ContextSwitchbackClusterRuleTest {
 								if (expectedExposures == 1) {
 									assertEquals(oracle[1] == 1, capture.exposures.get(0).eligible, message);
 								}
-								if (oracle[1] == 1) {
-									++eligible;
-								} else {
-									++ineligible;
+								// Counted on the keyed cluster only, where both outcomes occur, so each
+								// guard below checks that case rather than the keyless cases' misses.
+								if (cluster == ClusterCase.SINGLE) {
+									if (oracle[1] == 1) {
+										++eligible;
+									} else {
+										++ineligible;
+									}
 								}
 							}
 						}
