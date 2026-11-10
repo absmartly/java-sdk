@@ -7,6 +7,10 @@ A/B Smartly - Java SDK
 The A/B Smartly Java SDK is compatible with Java versions 1.6 and later.
 It provides both a blocking and an asynchronous interfaces. The asynchronous functions return a [custom backport](https://github.com/stefan-zobel/streamsupport) of the Java 8 `CompletableFuture` API.
 
+### Java 24 and later
+
+The SDK runs on Java 24 and later, but the `CompletableFuture` backport's default async pool does not: it fails with `NoClassDefFoundError: Could not initialize class java8.util.concurrent.TLR`. The SDK never uses that pool. When you chain on a future returned by the SDK, always pass an executor to the `*Async` methods (`thenApplyAsync(fn, executor)`, not `thenApplyAsync(fn)`), or use the non-async variants (`thenApply`, `thenAccept`, ...). `join()` and `get()` are safe.
+
 ### Android
 
 The A/B Smartly SDK is compatible with Android 4.4 and later (API level 19+).

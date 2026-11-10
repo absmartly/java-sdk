@@ -18,6 +18,7 @@
 
 ### Fixed
 
+- Contexts work on Java 24 and later. 1.6.3 ran its internal async steps on the `CompletableFuture` backport's default pool, which cannot initialize on those JDKs, so `waitUntilReady()` failed with `NoClassDefFoundError: Could not initialize class java8.util.concurrent.TLR`. Without `ClientConfig.setExecutor`, the SDK now uses its own pool of daemon threads. On Java 24 and later, code that chains on futures returned by the SDK must also pass an executor to every `*Async` method.
 - Unit UIDs containing supplementary characters (emoji and other code points outside the Basic Multilingual Plane) are now hashed as standard UTF-8, matching the other SDKs. 1.6.3 encoded each half of a surrogate pair separately, so such UIDs hash differently and may be assigned a different variant after upgrading. UIDs made only of ASCII or Basic Multilingual Plane characters are unaffected.
 - If the publish during `close()` fails and the events are restored, the context stays open so that `close()` can be called again to retry, and the returned future fails. 1.6.3 marked the context closed in that case.
 - An audience filter that fails to evaluate, including one nested deeply enough to overflow the stack, is treated as a mismatch instead of throwing from `getTreatment`. With `audienceStrict`, the unit therefore gets variant 0.
