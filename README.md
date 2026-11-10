@@ -4,21 +4,29 @@ A/B Smartly - Java SDK
 
 ## Compatibility
 
-The A/B Smartly Java SDK is compatible with Java versions 1.6 and later.
-It provides both a blocking and an asynchronous interfaces. The asynchronous functions return a [custom backport](https://github.com/stefan-zobel/streamsupport) of the Java 8 `CompletableFuture` API.
+The A/B Smartly Java SDK provides both a blocking and an asynchronous interface. It is published as two artifacts with the same version and the same API, except for the types the asynchronous functions use:
+
+| Artifact                            | Runs on                                    | Asynchronous types                                                                 |
+| :---------------------------------- | :----------------------------------------- | :--------------------------------------------------------------------------------- |
+| `com.absmartly.sdk:core-api`        | Java 8 and later, Android API level 24+    | `java.util.concurrent.CompletableFuture`, `java.util.function.*`                   |
+| `com.absmartly.sdk:core-api-java6`  | Java 6 and later, Android API level 19+    | the [streamsupport backport](https://github.com/stefan-zobel/streamsupport): `java8.util.concurrent.CompletableFuture`, `java8.util.function.*` |
+
+Use `core-api` unless you need Java 6 or 7, or Android below API level 24. Both artifacts provide the same `com.absmartly.sdk` classes, so depend on only one of them.
 
 ### Java 24 and later
 
-The SDK runs on Java 24 and later, but the `CompletableFuture` backport's default async pool does not: it fails with `NoClassDefFoundError: Could not initialize class java8.util.concurrent.TLR`. The SDK never uses that pool. The futures the SDK returns, and the stages you chain on them with `thenApply`, `thenCompose` and the other instance methods, run `*Async` methods without an explicit executor on an SDK-owned pool of daemon threads, so `context.waitUntilReadyAsync().thenApplyAsync(fn)` is safe.
+`core-api` has no restrictions on Java 24 and later.
 
-These cases still use the backport's default pool and must be given an executor on Java 24 and later:
+With `core-api-java6`, the SDK runs on Java 24 and later, but the `CompletableFuture` backport's default async pool does not: it fails with `NoClassDefFoundError: Could not initialize class java8.util.concurrent.TLR`. The SDK never uses that pool. The futures the SDK returns, and the stages you chain on them with `thenApply`, `thenCompose` and the other instance methods, run `*Async` methods without an explicit executor on an SDK-owned pool of daemon threads, so `context.waitUntilReadyAsync().thenApplyAsync(fn)` is safe.
+
+With `core-api-java6`, these cases still use the backport's default pool and must be given an executor on Java 24 and later:
 - the static `CompletableFuture.supplyAsync(supplier)` and `CompletableFuture.runAsync(runnable)` calls in your own code;
 - futures that you create yourself, including those returned by a custom `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, and `ABSmartly.getContextData()` when a custom `ContextDataProvider` is configured;
 - futures derived through `minimalCompletionStage()`, `copy()` or the static `CompletableFuture.allOf` and `anyOf`, even when they start from an SDK future.
 
 ### Android
 
-The A/B Smartly SDK is compatible with Android 4.4 and later (API level 19+).
+The A/B Smartly SDK is compatible with Android 4.4 and later (API level 19+). Use `core-api` on API level 24 and later, and `core-api-java6` below API level 24.
 
 The `android.permission.INTERNET` permission is required. To add this permission to your application ensure the following line is present in the `AndroidManifest.xml` file:
 ```xml
@@ -27,6 +35,12 @@ The `android.permission.INTERNET` permission is required. To add this permission
 
 If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
 
+
+## Upgrading to 1.8.0
+
+1.8.0 moves the asynchronous API of `core-api` from the streamsupport backport to the JDK. If your code names `java8.util.concurrent.*` or `java8.util.function.*` types from the SDK API, or implements `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, replace those imports with the `java.util.concurrent` and `java.util.function` types of the same name. If you only use the blocking API, recompile.
+
+On Java 6 or 7, or Android below API level 24, depend on `core-api-java6` instead of `core-api`. It keeps the backport types, so no code changes are needed.
 
 ## Upgrading from 1.6.3
 
@@ -40,9 +54,19 @@ Context reads retain the 1.6.3 lifecycle behavior. Before ready they throw `"ABS
 
 To install the ABSmartly SDK, place the following in your `build.gradle` and replace {VERSION} with the latest SDK version available in MavenCentral.
 
+Java 8 and later, Android API level 24 and later:
+
 ```gradle
 dependencies {
-  compile 'com.absmartly.sdk:core-api:{VERSION}'
+  implementation 'com.absmartly.sdk:core-api:{VERSION}'
+}
+```
+
+Java 6 and 7, Android below API level 24:
+
+```gradle
+dependencies {
+  implementation 'com.absmartly.sdk:core-api-java6:{VERSION}'
 }
 ```
 
@@ -50,10 +74,22 @@ dependencies {
 
 To install the ABSmartly SDK, place the following in your `pom.xml` and replace {VERSION} with the latest SDK version available in MavenCentral.
 
+Java 8 and later:
+
 ```xml
 <dependency>
     <groupId>com.absmartly.sdk</groupId>
     <artifactId>core-api</artifactId>
+    <version>{VERSION}</version>
+</dependency>
+```
+
+Java 6 and 7:
+
+```xml
+<dependency>
+    <groupId>com.absmartly.sdk</groupId>
+    <artifactId>core-api-java6</artifactId>
     <version>{VERSION}</version>
 </dependency>
 ```
@@ -718,7 +754,7 @@ Cancel inflight requests when user navigates away:
 
 ```java
 import com.absmartly.sdk.*;
-import java8.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.*;
 
 public class CancellableContextExample {
@@ -769,7 +805,7 @@ public class CancellableContextExample {
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
 import com.absmartly.sdk.*;
-import java8.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletableFuture;
 
 public class MainActivity extends AppCompatActivity {
 
