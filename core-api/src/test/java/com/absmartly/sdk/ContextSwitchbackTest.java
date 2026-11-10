@@ -1251,7 +1251,8 @@ class ContextSwitchbackTest {
 	}
 
 	// A rule-won switchback re-resolved in the same period (an attribute set, a different rule with
-	// the same variant) keeps its variant and is exposed once.
+	// the same variant) keeps its variant and is exposed once. This pins that rules are not
+	// switchback identity; no second exposure in-period. It is not reuse coverage.
 	@Test
 	void inPeriodRuleRefreshKeepsTheVariantAndExposesOnce() {
 		final Experiment experiment = switchback(2, HOUR);
