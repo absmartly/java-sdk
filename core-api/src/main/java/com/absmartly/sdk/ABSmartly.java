@@ -2,10 +2,10 @@ package com.absmartly.sdk;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.CompletableFuture;
 
 import javax.annotation.Nonnull;
 
