@@ -27,6 +27,9 @@ dependencies {
 	testRuntimeOnly group: "org.junit.jupiter", name: "junit-jupiter-engine", version: junitVersion
 	testImplementation group: "org.mockito", name: "mockito-core", version: mockitoVersion
 	testImplementation group: "org.mockito", name: "mockito-junit-jupiter", version: mockitoVersion
+	// Mockito 5.11 ships Byte Buddy 1.14, which cannot instrument classes on a JDK 25 runtime.
+	testImplementation group: "net.bytebuddy", name: "byte-buddy", version: byteBuddyVersion
+	testImplementation group: "net.bytebuddy", name: "byte-buddy-agent", version: byteBuddyVersion
 }
 
 check.dependsOn jacocoTestCoverageVerification
@@ -114,3 +117,26 @@ public final class SdkVersion {
 }
 
 sourceSets.main.java.srcDir(generateSdkVersion)
+
+
+// streamsupport-minifuture fails on JDK 24+ once its default async pool is touched, so the SDK is
+// also tested on a JDK 25 runtime. The build JDK still compiles the 1.6 bytecode; the toolchain only
+// provides the test JVM.
+tasks.register("testJdk25", Test) {
+	description = "Runs the tests on a JDK 25 runtime."
+	group = "verification"
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+	useJUnitPlatform()
+	jvmArgs test.jvmArgs
+	// With parallelism 1 the backport skips its ForkJoinPool, hiding the failure on small machines.
+	systemProperty "java.util.concurrent.ForkJoinPool.common.parallelism", "4"
+	jacoco {
+		enabled = false
+	}
+}
+
+check.dependsOn "testJdk25"
