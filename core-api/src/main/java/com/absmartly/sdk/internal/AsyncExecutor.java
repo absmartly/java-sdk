@@ -9,7 +9,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Executor for the SDK's internal async stages. The streamsupport backport's default async pool (its own ForkJoinPool)
  * fails to initialize on JDK 24+, so every *Async call in the SDK must be given an explicit executor.
  */
-public class AsyncExecutor {
+public final class AsyncExecutor {
+	private AsyncExecutor() {}
+
 	static public Executor get() {
 		return Holder.INSTANCE;
 	}

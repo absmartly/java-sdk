@@ -139,4 +139,6 @@ tasks.register("testJdk25", Test) {
 	}
 }
 
-check.dependsOn "testJdk25"
+if (!project.hasProperty("skipJdk25")) {
+	check.dependsOn "testJdk25"
+}

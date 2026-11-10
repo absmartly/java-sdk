@@ -9,11 +9,12 @@ It provides both a blocking and an asynchronous interfaces. The asynchronous fun
 
 ### Java 24 and later
 
-The SDK runs on Java 24 and later, but the `CompletableFuture` backport's default async pool does not: it fails with `NoClassDefFoundError: Could not initialize class java8.util.concurrent.TLR`. The SDK never uses that pool, and the futures the SDK creates (and every stage chained on them) run `*Async` methods without an explicit executor on an SDK-owned pool of daemon threads, so `context.waitUntilReadyAsync().thenApplyAsync(fn)` is safe.
+The SDK runs on Java 24 and later, but the `CompletableFuture` backport's default async pool does not: it fails with `NoClassDefFoundError: Could not initialize class java8.util.concurrent.TLR`. The SDK never uses that pool. The futures the SDK returns, and the stages you chain on them with `thenApply`, `thenCompose` and the other instance methods, run `*Async` methods without an explicit executor on an SDK-owned pool of daemon threads, so `context.waitUntilReadyAsync().thenApplyAsync(fn)` is safe.
 
-Two cases still use the backport's default pool and must be given an executor on Java 24 and later:
-- the static `CompletableFuture.supplyAsync(supplier)` and `CompletableFuture.runAsync(runnable)` calls in your own code, and
-- futures that you create yourself, including those returned by a custom `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, and `ABSmartly.getContextData()` when a custom `ContextDataProvider` is configured.
+These cases still use the backport's default pool and must be given an executor on Java 24 and later:
+- the static `CompletableFuture.supplyAsync(supplier)` and `CompletableFuture.runAsync(runnable)` calls in your own code;
+- futures that you create yourself, including those returned by a custom `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, and `ABSmartly.getContextData()` when a custom `ContextDataProvider` is configured;
+- futures derived through `minimalCompletionStage()`, `copy()` or the static `CompletableFuture.allOf` and `anyOf`, even when they start from an SDK future.
 
 ### Android
 

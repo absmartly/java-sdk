@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import com.absmartly.sdk.internal.AsyncExecutor;
 import com.absmartly.sdk.json.ContextData;
 
 // streamsupport's default async pool cannot initialize on JDK 24+ (TLR reflects on the removed
@@ -154,5 +155,32 @@ class AsyncExecutorCompatibilityTest extends TestUtils {
 		assertNotNull(sdk.getContextData().thenApplyAsync(fetched -> fetched.experiments).join());
 		final Context prefetched = sdk.createContextWith(ContextConfig.create(), data);
 		assertSame(prefetched, prefetched.waitUntilReadyAsync().thenApplyAsync(ctx -> ctx).join());
+	}
+
+	@Test
+	void returnedFuturesDefaultToSdkExecutor() {
+		sdk = createSDK(ClientConfig.create());
+		final Context context = createContext();
+
+		assertSdkFuture(context.waitUntilReadyAsync());
+		context.waitUntilReady();
+		assertSdkFuture(context.waitUntilReadyAsync());
+		assertSdkFuture(context.waitUntilReadyAsync().thenApply(ctx -> ctx));
+		final ContextData data = context.getData();
+
+		context.track("goal1", null);
+		assertSdkFuture(context.publishAsync());
+		assertSdkFuture(context.publishAsync());
+		assertSdkFuture(context.refreshAsync());
+		assertSdkFuture(context.closeAsync());
+		assertSdkFuture(context.finalizeAsync());
+
+		assertSdkFuture(sdk.getContextData());
+		assertSdkFuture(sdk.createContextWith(ContextConfig.create(), data).waitUntilReadyAsync());
+	}
+
+	private static void assertSdkFuture(CompletableFuture<?> future) {
+		assertSame(AsyncExecutor.get(), future.defaultExecutor());
+		future.join();
 	}
 }
