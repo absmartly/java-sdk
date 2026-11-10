@@ -192,8 +192,9 @@ recorded.
 
 An experiment's switchback identity is `randomizationType`, `switchbackClusters` (types, paths and
 their order), `switchbackClusterValues`, `switchbackStartAt`, `switchbackPeriodMs`,
-`switchbackDesignType`, its id and its iteration. A change to a linked unit type, a path, their order
-or the allowed values therefore starts a new epoch. The backend rejects changes to the grid fields
+`switchbackDesignType`, its id and its iteration, plus `unitType` when the cluster map is missing,
+empty or unreadable (the legacy path). A change to a linked unit type, a path, their order or the
+allowed values therefore starts a new epoch. The backend rejects changes to the grid fields
 after an experiment starts, so within a live experiment a grid change means a pre-start edit, a
 restart (new iteration), or a type change.
 
