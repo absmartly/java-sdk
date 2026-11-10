@@ -354,13 +354,15 @@ class ContextSwitchbackClusterRuleTest {
 	// unit type, so the second is rejected and only the single-unit path is reproducible.
 	@Test
 	void twoUnitsOfOneTypeWithOnePathAgreeOnTheSameValue() {
-		final Context context = createContext(attrs("session_store", "s-1"), new Experiment[]{experiment},
+		final String key = "s-17";
+		assertNotEquals(0, scheduled(key));
+		final Context context = createContext(attrs("session_store", key), new Experiment[]{experiment},
 				unit(SESSION, "x1"));
 		assertThrows(IllegalArgumentException.class, () -> context.setUnit(SESSION, "x2"));
 
-		final Assigned assignment = sbc(attrs("session_store", "s-1"), unit(SESSION, "x1"));
+		final Assigned assignment = sbc(attrs("session_store", key), unit(SESSION, "x1"));
 		assertTrue(assignment.eligible);
-		assertEquals(scheduled("s-1"), assignment.variant);
+		assertEquals(scheduled(key), assignment.variant);
 	}
 
 	@Test
@@ -386,12 +388,13 @@ class ContextSwitchbackClusterRuleTest {
 
 	@Test
 	void wholeNumbersAreKeyedByTheirDecimalText() {
-		final Assigned assignment = sbc(attrs("session_store", 42), unit(SESSION, "x1"));
+		assertNotEquals(0, scheduled("17"));
+		final Assigned assignment = sbc(attrs("session_store", 17), unit(SESSION, "x1"));
 
 		assertTrue(assignment.eligible);
-		assertEquals(scheduled("42"), assignment.variant);
-		// Equal to the string "42" from another unit type, so the two agree.
-		assertTrue(sbc(attrs("session_store", 42, "profile", store("42")), unit(SESSION, "x1"),
+		assertEquals(scheduled("17"), assignment.variant);
+		// Equal to the string "17" from another unit type, so the two agree.
+		assertTrue(sbc(attrs("session_store", 17, "profile", store("17")), unit(SESSION, "x1"),
 				unit(USER, "u1")).eligible);
 	}
 
@@ -469,11 +472,13 @@ class ContextSwitchbackClusterRuleTest {
 	void validClusterWithoutLinkedRequestUnitDoesNotFallBackToExperimentUnit() {
 		unlinkAll();
 		link(SESSION, "session_store");
+		final String key = "s-17";
+		assertNotEquals(0, scheduled(key));
 
-		assertNull(sbc(attrs("session_store", "s-1", "profile", store("s-1")), unit(USER, "u1")));
-		final Assigned linked = sbc(attrs("session_store", "s-1"), unit(USER, "u1"), unit(SESSION, "x1"));
+		assertNull(sbc(attrs("session_store", key, "profile", store(key)), unit(USER, "u1")));
+		final Assigned linked = sbc(attrs("session_store", key), unit(USER, "u1"), unit(SESSION, "x1"));
 		assertEquals(SESSION, linked.unit);
-		assertEquals(scheduled("s-1"), linked.variant);
+		assertEquals(scheduled(key), linked.variant);
 	}
 
 	// The Collector's wire-rule oracle SdkSwitchbackRule (ContextAPISwitchbackTest support class),
