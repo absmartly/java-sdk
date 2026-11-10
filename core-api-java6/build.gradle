@@ -1,0 +1,51 @@
+description = """ABSmartly Java SDK for Java 6, Java 7 and Android below API level 24"""
+
+apply from: rootProject.file("gradle/sdk-module.gradle")
+
+
+dependencies {
+	api group: "net.sourceforge.streamsupport", name: "streamsupport-minifuture", version: "1.7.4"
+}
+
+
+// The sources are generated from core-api by switching the seven java.util.concurrent and java.util.function types
+// in its API to their streamsupport backports. A file in core-api's src/java6Main or src/java6Test replaces the file
+// at the same path in src/main or src/test, or adds a new one.
+def coreApi = project(":core-api")
+
+def backportTypes = /(?<![\w.])java\.util\.(concurrent\.(?:CompletableFuture|CompletionStage|CompletionException)|function\.(?:BiFunction|Function|Consumer|Supplier))\b/
+
+def generateSources = { String name, String sourceDir, String overrideDir ->
+	def sources = coreApi.file(sourceDir)
+	def overrides = coreApi.file(overrideDir)
+	tasks.register(name, Sync) {
+		into layout.buildDirectory.dir("generated/sources/java6/${name}")
+		from(sources) {
+			exclude { element -> !element.directory && new File(overrides, element.path).exists() }
+		}
+		from(overrides)
+		filteringCharset = "UTF-8"
+		eachFile { file ->
+			def text = file.file.getText("UTF-8")
+			if (text =~ /(?m)^import java\.util\.function\.\*;/ || (text =~ /(?m)^import java\.util\.concurrent\.\*;/
+					&& text =~ /\bCompl(etableFuture|etionStage|etionException)\b/)) {
+				throw new GradleException("${file.file}: import java.util.concurrent and java.util.function types one by one, " +
+						"so core-api-java6 can switch them to the backport")
+			}
+		}
+		filter { line -> line.replaceAll(backportTypes, 'java8.util.$1') }
+	}
+}
+
+def generateMainSources = generateSources("generateMainSources", "src/main/java", "src/java6Main/java")
+def generateTestSources = generateSources("generateTestSources", "src/test/java", "src/java6Test/java")
+
+sourceSets {
+	main {
+		java.srcDir(generateMainSources)
+	}
+	test {
+		java.srcDir(generateTestSources)
+		resources.srcDir(coreApi.file("src/test/resources"))
+	}
+}

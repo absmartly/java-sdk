@@ -46,7 +46,8 @@ allprojects {
 
 configure(subprojects.findAll {
 	[
-		"core-api"
+		"core-api",
+		"core-api-java6"
 	].contains(it.name)
 }) {
 	apply plugin: "signing"
