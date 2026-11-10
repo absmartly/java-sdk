@@ -9,12 +9,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java8.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+
+import com.absmartly.sdk.json.ContextData;
 
 // streamsupport's default async pool cannot initialize on JDK 24+ (TLR reflects on the removed
 // Thread.inheritedAccessControlContext), so the SDK must never fall back to it.
@@ -78,9 +81,14 @@ class AsyncExecutorCompatibilityTest extends TestUtils {
 		return ABSmartly.create(ABSmartlyConfig.create().setClient(Client.create(clientConfig, httpClient)));
 	}
 
+	private Context createContext() {
+		return sdk
+				.createContext(
+					ContextConfig.create().setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec"));
+	}
+
 	private void runLifecycle() {
-		final Context context = sdk
-				.createContext(ContextConfig.create().setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec"));
+		final Context context = createContext();
 		context.waitUntilReady();
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
@@ -122,5 +130,29 @@ class AsyncExecutorCompatibilityTest extends TestUtils {
 		} finally {
 			executor.shutdownNow();
 		}
+	}
+
+	@Test
+	void callerAsyncStagesWithoutExecutor() {
+		sdk = createSDK(ClientConfig.create());
+		final Context context = createContext();
+
+		assertSame(context, context.waitUntilReadyAsync().thenApplyAsync(ctx -> ctx).join());
+		assertSame(context, context.waitUntilReadyAsync().thenApplyAsync(ctx -> ctx).join());
+		final ContextData data = context.getData();
+
+		final AtomicInteger runs = new AtomicInteger();
+		context.track("goal1", null);
+		context.publishAsync().thenRunAsync(runs::incrementAndGet).join();
+		context.publishAsync().thenRunAsync(runs::incrementAndGet).join();
+		context.refreshAsync().thenRunAsync(runs::incrementAndGet).join();
+		context.track("goal2", null);
+		context.closeAsync().thenRunAsync(runs::incrementAndGet).join();
+		context.closeAsync().thenRunAsync(runs::incrementAndGet).join();
+		assertEquals(5, runs.get());
+
+		assertNotNull(sdk.getContextData().thenApplyAsync(fetched -> fetched.experiments).join());
+		final Context prefetched = sdk.createContextWith(ContextConfig.create(), data);
+		assertSame(prefetched, prefetched.waitUntilReadyAsync().thenApplyAsync(ctx -> ctx).join());
 	}
 }

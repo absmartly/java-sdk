@@ -24,6 +24,8 @@ import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 
+import com.absmartly.sdk.internal.SdkFuture;
+
 public class DefaultHTTPClient implements HTTPClient {
 	public static DefaultHTTPClient create(final DefaultHTTPClientConfig config) {
 		return new DefaultHTTPClient(config);
@@ -118,7 +120,7 @@ public class DefaultHTTPClient implements HTTPClient {
 	}
 
 	private CompletableFuture<Response> request(final SimpleHttpRequest request) {
-		final CompletableFuture<Response> future = new CompletableFuture<Response>();
+		final CompletableFuture<Response> future = new SdkFuture<Response>();
 
 		try {
 			httpClient_.execute(request, new FutureCallback<SimpleHttpResponse>() {
