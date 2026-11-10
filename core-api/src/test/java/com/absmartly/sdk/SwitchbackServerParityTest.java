@@ -1,7 +1,7 @@
 package com.absmartly.sdk;
 
-import static com.absmartly.sdk.ContextSwitchbackClusterRuleTest.attrs;
-import static com.absmartly.sdk.ContextSwitchbackTest.clusters;
+import static com.absmartly.sdk.SwitchbackTestSupport.attrs;
+import static com.absmartly.sdk.SwitchbackTestSupport.clusters;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,8 +31,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import com.absmartly.sdk.ContextSwitchbackClusterRuleTest.ExposureCapture;
-import com.absmartly.sdk.ContextSwitchbackTest.MutableClock;
+import com.absmartly.sdk.SwitchbackTestSupport.ExposureCapture;
+import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.Experiment;

@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
-import com.absmartly.sdk.ContextSwitchbackTest.MutableClock;
+import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
@@ -90,7 +90,7 @@ class ContextSwitchbackClusterTest {
 
 	static Experiment attributeSwitchback(String path) {
 		final Experiment experiment = switchback(ARMS, HOUR);
-		experiment.switchbackClusters = ContextSwitchbackTest.clusters(UNIT_TYPE, path);
+		experiment.switchbackClusters = SwitchbackTestSupport.clusters(UNIT_TYPE, path);
 		return experiment;
 	}
 
@@ -307,7 +307,7 @@ class ContextSwitchbackClusterTest {
 		oneArm.split = new double[]{1.0};
 		experiments.add(oneArm);
 		final Experiment pathlessLink = attributeSwitchback("city");
-		pathlessLink.switchbackClusters = ContextSwitchbackTest.clusters(UNIT_TYPE, null);
+		pathlessLink.switchbackClusters = SwitchbackTestSupport.clusters(UNIT_TYPE, null);
 		experiments.add(pathlessLink);
 		for (final Experiment experiment : experiments) {
 			final Context context = createContext(dataOf(experiment));
@@ -532,7 +532,7 @@ class ContextSwitchbackClusterTest {
 		assertEquals(expected("Lisboa", 0), context.getTreatment("exp_sb"));
 
 		final Experiment byUser = attributeSwitchback("ucity");
-		byUser.switchbackClusters = ContextSwitchbackTest.clusters("user_id", "ucity");
+		byUser.switchbackClusters = SwitchbackTestSupport.clusters("user_id", "ucity");
 		refreshTo(context, byUser);
 		assertEquals(expected("Faro", 0), context.getTreatment("exp_sb"));
 		final Exposure[] exposures = publishExposures(context);
@@ -560,7 +560,7 @@ class ContextSwitchbackClusterTest {
 		for (final String type : new String[]{"unit", null}) {
 			final Experiment unit = attributeSwitchback("city");
 			unit.randomizationType = type;
-			unit.switchbackClusters = ContextSwitchbackTest.clusters("user_id", "city", UNIT_TYPE, "'x");
+			unit.switchbackClusters = SwitchbackTestSupport.clusters("user_id", "city", UNIT_TYPE, "'x");
 			unit.switchbackClusterValues = new String[]{"nothing"};
 			unit.switchbackPeriodMs = 0L;
 			// A split rule randomizes over unitType for a unit experiment, never a cluster unit.

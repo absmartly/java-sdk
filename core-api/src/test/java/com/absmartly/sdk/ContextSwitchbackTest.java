@@ -1,5 +1,6 @@
 package com.absmartly.sdk;
 
+import static com.absmartly.sdk.SwitchbackTestSupport.clusters;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,7 +15,6 @@ import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
@@ -28,11 +28,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
+import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.Experiment;
 import com.absmartly.sdk.json.ExperimentApplication;
@@ -67,26 +67,6 @@ class ContextSwitchbackTest {
 	// value would serve.
 	static final int[] UID_HASH_3_ARMS = {1, 2, 0, 2, 1, 0, 2, 0, 1, 1, 2, 0};
 	static final int[] UID_3_ARMS = {2, 0, 1, 0, 1, 2, 1, 2, 0, 0, 1, 2};
-
-	static final class MutableClock extends Clock {
-		long now;
-		// When set, the next read returns this value once, then reads fall back to `now`.
-		Long nextRead;
-
-		MutableClock(long now) {
-			this.now = now;
-		}
-
-		@Override
-		public long millis() {
-			if (nextRead != null) {
-				final long value = nextRead;
-				nextRead = null;
-				return value;
-			}
-			return now;
-		}
-	}
 
 	MutableClock clock;
 	ContextDataProvider dataProvider;
@@ -131,15 +111,6 @@ class ContextSwitchbackTest {
 		experiment.switchbackDesignType = "balanced_block";
 		experiment.switchbackEstimand = "global_average_treatment_effect";
 		return experiment;
-	}
-
-	// An ordered switchbackClusters map: type, path, type, path, ...
-	static Map<String, String> clusters(String... entries) {
-		final Map<String, String> map = new LinkedHashMap<String, String>();
-		for (int i = 0; i < entries.length; i += 2) {
-			map.put(entries[i], entries[i + 1]);
-		}
-		return map;
 	}
 
 	static Experiment switchback(int armCount, long periodMs) {

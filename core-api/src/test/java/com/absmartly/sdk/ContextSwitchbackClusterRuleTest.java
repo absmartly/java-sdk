@@ -1,5 +1,6 @@
 package com.absmartly.sdk;
 
+import static com.absmartly.sdk.SwitchbackTestSupport.attrs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -23,7 +24,8 @@ import java8.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.absmartly.sdk.ContextSwitchbackTest.MutableClock;
+import com.absmartly.sdk.SwitchbackTestSupport.ExposureCapture;
+import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
@@ -65,17 +67,6 @@ class ContextSwitchbackClusterRuleTest {
 	MutableClock clock;
 	ContextEventHandler eventHandler;
 	Experiment experiment;
-
-	static final class ExposureCapture implements ContextEventLogger {
-		final List<Exposure> exposures = new ArrayList<Exposure>();
-
-		@Override
-		public void handleEvent(Context context, EventType type, Object data) {
-			if (type == EventType.Exposure) {
-				exposures.add((Exposure) data);
-			}
-		}
-	}
 
 	ExposureCapture capture;
 
@@ -252,14 +243,6 @@ class ContextSwitchbackClusterRuleTest {
 		assertFalse(assignment.ruleOverride);
 		assertEquals("test config 0", assignment.config);
 		assertTrue(assignment.exposures.isEmpty(), String.valueOf(attributes));
-	}
-
-	static Map<String, Object> attrs(Object... entries) {
-		final Map<String, Object> map = new LinkedHashMap<String, Object>();
-		for (int i = 0; i < entries.length; i += 2) {
-			map.put((String) entries[i], entries[i + 1]);
-		}
-		return map;
 	}
 
 	static Map<String, Object> store(Object value) {
