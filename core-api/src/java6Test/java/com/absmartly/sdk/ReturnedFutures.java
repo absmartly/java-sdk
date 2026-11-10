@@ -2,7 +2,7 @@ package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.concurrent.CompletableFuture;
+import java8.util.concurrent.CompletableFuture;
 
 import com.absmartly.sdk.internal.AsyncExecutor;
 

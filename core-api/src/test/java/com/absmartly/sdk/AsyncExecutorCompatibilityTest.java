@@ -165,6 +165,7 @@ class AsyncExecutorCompatibilityTest extends TestUtils {
 		context.waitUntilReady();
 		assertReturnedFuture(context.waitUntilReadyAsync());
 		assertReturnedFuture(context.waitUntilReadyAsync().thenApply(ctx -> ctx));
+		assertReturnedFuture(context.waitUntilReadyAsync().copy());
 		final ContextData data = context.getData();
 
 		context.track("goal1", null);
