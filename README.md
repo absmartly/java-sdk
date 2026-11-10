@@ -14,7 +14,7 @@ The SDK runs on Java 24 and later, but the `CompletableFuture` backport's defaul
 These cases still use the backport's default pool and must be given an executor on Java 24 and later:
 - the static `CompletableFuture.supplyAsync(supplier)` and `CompletableFuture.runAsync(runnable)` calls in your own code;
 - futures that you create yourself, including those returned by a custom `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, and `ABSmartly.getContextData()` when a custom `ContextDataProvider` is configured;
-- futures derived through `minimalCompletionStage()`, `copy()` or the static `CompletableFuture.allOf` and `anyOf`, even when they start from an SDK future.
+- futures derived through `minimalCompletionStage()` or the static `CompletableFuture.allOf` and `anyOf`, even when they start from an SDK future.
 
 ### Android
 
