@@ -17,8 +17,8 @@ import java.lang.reflect.Method;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.function.Function;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

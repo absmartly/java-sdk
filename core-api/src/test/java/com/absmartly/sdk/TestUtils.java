@@ -6,7 +6,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-import java8.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletableFuture;
 
 public abstract class TestUtils {
 	public static byte[] getResourceBytes(String resourceName) {

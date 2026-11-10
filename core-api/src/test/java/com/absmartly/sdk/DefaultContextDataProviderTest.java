@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.concurrent.ExecutionException;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

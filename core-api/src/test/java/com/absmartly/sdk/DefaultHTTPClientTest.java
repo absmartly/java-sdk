@@ -9,8 +9,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
