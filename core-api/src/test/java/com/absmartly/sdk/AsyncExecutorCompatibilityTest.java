@@ -84,7 +84,7 @@ class AsyncExecutorCompatibilityTest extends TestUtils {
 	private Context createContext() {
 		return sdk
 				.createContext(
-					ContextConfig.create().setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec"));
+						ContextConfig.create().setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec"));
 	}
 
 	private void runLifecycle() {
