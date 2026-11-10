@@ -72,7 +72,8 @@ For a switchback experiment, at `now` (one reading of the context's `Clock`, tak
 ### Precedence
 
 This is the Collector's `ContextAPI.assignExperiment` order for a switchback with an eligible cluster
-(rows 5–6 swapped relative to the Collector; same wire result):
+(rows 5–6 swapped relative to the Collector; the wire result differs before the anchor and for an
+unservable schedule, see *SDK choice: no exposure before the anchor*):
 
 | Step | Result | Exposure |
 | --- | --- | --- |
