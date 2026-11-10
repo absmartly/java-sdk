@@ -71,7 +71,8 @@ For a switchback experiment, at `now` (one reading of the context's `Clock`, tak
 
 ### Precedence
 
-This is the Collector's `ContextAPI.assignExperiment` order for a switchback with an eligible cluster:
+This is the Collector's `ContextAPI.assignExperiment` order for a switchback with an eligible cluster
+(rows 5–6 swapped relative to the Collector; same wire result):
 
 | Step | Result | Exposure |
 | --- | --- | --- |
@@ -182,11 +183,11 @@ eviction.
 
 When the cluster is eligible but the draw cannot run (before `switchbackStartAt`, or with an
 unservable schedule), the Collector's `assignExperiment` returns the same wire shape as a traffic
-miss: variant 0, `eligible=false`. Its publish path records whatever the client sends. This SDK
-deliberately sends nothing in that case. A pre-anchor exposure has no period, so analysis cannot
-place it on the schedule. The choice carries over from the approved Phase 1B design. The check runs
-before traffic, so a pre-anchor traffic miss is silent too. A traffic miss inside a period is still
-recorded.
+miss: variant 0, `eligible=false`. Its publish path records it whenever the cluster resolves to a
+key at exposedAt. This SDK deliberately sends nothing in that case. A pre-anchor exposure has no
+period, so analysis cannot place it on the schedule. The choice carries over from the approved
+Phase 1B design. The check runs before traffic, so a pre-anchor traffic miss is silent too. A
+traffic miss inside a period is still recorded.
 
 ### Refresh and epochs
 
