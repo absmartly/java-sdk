@@ -749,24 +749,27 @@ class ContextSwitchbackTest {
 	}
 
 	// Exact wire form of a switchback strict audience mismatch: assigned=false, audienceMismatch=true,
-	// the same flags a unit experiment publishes for it.
+	// the same flags a unit experiment publishes for it. Runs in period 1, whose draw is 1, so the
+	// variant 0 below is the strict mismatch's control and not a draw of arm 0.
 	@Test
 	void audienceStrictMismatchExposureSerializesExactly() {
 		final Experiment experiment = switchback(2, HOUR);
 		experiment.audience = STRICT_GOLD_AUDIENCE;
 		experiment.audienceStrict = true;
 		final Context context = createContext(dataOf(experiment));
-		clock.now = ANCHOR + 5;
+		assertEquals(1, EXPECTED_2_ARMS[1]);
+		clock.now = ANCHOR + HOUR + 5;
 		context.getTreatment("exp_sb");
-		clock.now = ANCHOR + 9;
+		clock.now = ANCHOR + HOUR + 9;
 
 		final PublishEvent event = publishAndCapture(context, 1).get(0);
 		final String json = new String(new DefaultContextEventSerializer().serialize(event),
 				StandardCharsets.UTF_8);
 		assertEquals("{\"hashed\":true,\"units\":[{\"type\":\"store_id\",\"uid\":\"" + UID_HASH + "\"}],"
-				+ "\"publishedAt\":" + (ANCHOR + 9) + ","
+				+ "\"publishedAt\":" + (ANCHOR + HOUR + 9) + ","
 				+ "\"exposures\":["
-				+ "{\"id\":1,\"name\":\"exp_sb\",\"unit\":\"store_id\",\"variant\":0,\"exposedAt\":" + (ANCHOR + 5)
+				+ "{\"id\":1,\"name\":\"exp_sb\",\"unit\":\"store_id\",\"variant\":0,\"exposedAt\":"
+				+ (ANCHOR + HOUR + 5)
 				+ ",\"assigned\":false,\"eligible\":true,\"overridden\":false,\"fullOn\":false,\"custom\":false,"
 				+ "\"audienceMismatch\":true,\"ruleOverride\":false}"
 				+ "],"
