@@ -1803,7 +1803,8 @@ public class Context implements Closeable {
 		// The cached slot the read path found stale (null on a miss). The write path does not
 		// recheck that same object: a concurrent install is always a different object, while a
 		// state change between the locks can leave the rejected object staler or, in an A-B-A
-		// race, current again; rebuilding it then matches main's pre-recheck behaviour.
+		// race, current again; rebuilding it then is what happened before the write-path recheck
+		// existed.
 		final Assignment rejected;
 		try {
 			readLock.lock();
