@@ -633,6 +633,7 @@ class ContextSwitchbackTest {
 	}
 
 	static final String ASSIGN_VARIANT_1 = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":1}]}";
+	static final String ASSIGN_VARIANT_2 = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":2}]}";
 
 	// A rule win is published exactly like a unit experiment's: ruleOverride set, assigned false.
 	static Exposure ruleExposure(String name, int variant, long exposedAt) {
@@ -865,7 +866,7 @@ class ContextSwitchbackTest {
 			case STRICT_MISMATCH_OVER_FULL_ON:
 				experiment.audience = STRICT_GOLD_AUDIENCE;
 				experiment.audienceStrict = true;
-				experiment.fullOnVariant = 1;
+				experiment.fullOnVariant = 2;
 				break;
 			case STRICT_MISMATCH_OVER_TRAFFIC_MISS:
 				experiment.audience = STRICT_GOLD_AUDIENCE;
@@ -876,7 +877,7 @@ class ContextSwitchbackTest {
 				experiment.audience = STRICT_GOLD_AUDIENCE;
 				break;
 			case FULL_ON:
-				experiment.fullOnVariant = 1;
+				experiment.fullOnVariant = 2;
 				break;
 			case TRAFFIC_MISS:
 				experiment.trafficSplit = new double[]{1.0, 0.0};
@@ -885,15 +886,15 @@ class ContextSwitchbackTest {
 				break;
 			}
 			if ((this == RULE) || (this == RULE_OVER_STRICT_MISMATCH)) {
-				experiment.assignmentRules = ASSIGN_VARIANT_1;
+				experiment.assignmentRules = ASSIGN_VARIANT_2;
 			}
 		}
 
 		void configure(Context context) {
 			if ((this == OVERRIDE) || (this == OVERRIDE_OVER_STRICT_MISMATCH)) {
-				context.setOverride("exp_parity", 1);
+				context.setOverride("exp_parity", 2);
 			} else if (this == CUSTOM) {
-				context.setCustomAssignment("exp_parity", 1);
+				context.setCustomAssignment("exp_parity", 2);
 			}
 		}
 	}
@@ -920,24 +921,26 @@ class ContextSwitchbackTest {
 		EXPOSURE_FLAGS.put(ParityBranch.DRAW, flags(true, true, false, false, false, false, false));
 	}
 
-	// The variant each branch serves at ANCHOR + HOUR + 3 (period 1). Override, rule, full-on and custom
-	// all set 1; strict mismatch and traffic miss serve control; the draw (also behind a non-strict
-	// mismatch) serves the switchback schedule's period-1 arm. The unit experiment serves the same
-	// variant on every branch except the two that draw, where it randomizes over the unit instead.
+	// The variant each branch serves at ANCHOR + 2 * HOUR + 3 (period 2, whose 3-arm draw is 1).
+	// Override, rule, full-on and custom all force arm 2, which differs from both control and the
+	// draw, so serving the schedule draw in place of a forced variant fails the row. Strict mismatch
+	// and traffic miss serve control; the draw (also behind a non-strict mismatch) serves the
+	// schedule's period-2 arm. The unit experiment serves the same variant on every branch except
+	// the two that draw, where it randomizes over the unit instead.
 	static final Map<ParityBranch, Integer> EXPECTED_VARIANT = new EnumMap<>(ParityBranch.class);
 	static {
-		EXPECTED_VARIANT.put(ParityBranch.OVERRIDE, 1);
-		EXPECTED_VARIANT.put(ParityBranch.OVERRIDE_OVER_STRICT_MISMATCH, 1);
-		EXPECTED_VARIANT.put(ParityBranch.RULE, 1);
-		EXPECTED_VARIANT.put(ParityBranch.RULE_OVER_STRICT_MISMATCH, 1);
+		EXPECTED_VARIANT.put(ParityBranch.OVERRIDE, 2);
+		EXPECTED_VARIANT.put(ParityBranch.OVERRIDE_OVER_STRICT_MISMATCH, 2);
+		EXPECTED_VARIANT.put(ParityBranch.RULE, 2);
+		EXPECTED_VARIANT.put(ParityBranch.RULE_OVER_STRICT_MISMATCH, 2);
 		EXPECTED_VARIANT.put(ParityBranch.STRICT_MISMATCH, 0);
 		EXPECTED_VARIANT.put(ParityBranch.STRICT_MISMATCH_OVER_FULL_ON, 0);
 		EXPECTED_VARIANT.put(ParityBranch.STRICT_MISMATCH_OVER_TRAFFIC_MISS, 0);
-		EXPECTED_VARIANT.put(ParityBranch.NON_STRICT_MISMATCH, EXPECTED_2_ARMS[1]);
-		EXPECTED_VARIANT.put(ParityBranch.FULL_ON, 1);
+		EXPECTED_VARIANT.put(ParityBranch.NON_STRICT_MISMATCH, EXPECTED_3_ARMS[2]);
+		EXPECTED_VARIANT.put(ParityBranch.FULL_ON, 2);
 		EXPECTED_VARIANT.put(ParityBranch.TRAFFIC_MISS, 0);
-		EXPECTED_VARIANT.put(ParityBranch.CUSTOM, 1);
-		EXPECTED_VARIANT.put(ParityBranch.DRAW, EXPECTED_2_ARMS[1]);
+		EXPECTED_VARIANT.put(ParityBranch.CUSTOM, 2);
+		EXPECTED_VARIANT.put(ParityBranch.DRAW, EXPECTED_3_ARMS[2]);
 	}
 
 	static boolean[] flags(boolean... flags) {
@@ -967,17 +970,17 @@ class ContextSwitchbackTest {
 	@ParameterizedTest(name = "{0}")
 	@EnumSource(ParityBranch.class)
 	void exposureFlagsMatchAUnitExperimentForEveryBranch(ParityBranch branch) {
-		clock.now = ANCHOR + HOUR + 3;
-		assertEquals(1, EXPECTED_2_ARMS[1]);
+		clock.now = ANCHOR + 2 * HOUR + 3;
+		assertEquals(1, EXPECTED_3_ARMS[2]);
 
-		final Experiment unit = switchback(1, "exp_parity", 2, HOUR);
+		final Experiment unit = switchback(1, "exp_parity", 3, HOUR);
 		unit.randomizationType = null;
 		unit.switchbackClusters = null;
 		unit.switchbackStartAt = null;
 		unit.switchbackPeriodMs = null;
 		final Exposure unitExposure = exposeOnce(unit, branch);
 
-		final Exposure switchbackExposure = exposeOnce(switchback(1, "exp_parity", 2, HOUR), branch);
+		final Exposure switchbackExposure = exposeOnce(switchback(1, "exp_parity", 3, HOUR), branch);
 
 		final boolean[] expected = EXPOSURE_FLAGS.get(branch);
 		assertArrayEquals(expected, exposureFlags(unitExposure), "unit " + branch);
