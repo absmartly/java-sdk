@@ -149,7 +149,6 @@ public class Experiment {
 		return result;
 	}
 
-	// Map equality that also requires the same iteration order.
 	public static boolean orderedEquals(final Map<String, String> a, final Map<String, String> b) {
 		if (a == b) {
 			return true;

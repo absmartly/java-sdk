@@ -1241,7 +1241,6 @@ public class Context implements Closeable {
 		return selected;
 	}
 
-	// Unit experiments, and switchback experiments with no current period, keep the bare name.
 	private static String assignmentCacheKey(final String experimentName, final long periodIndex) {
 		if (periodIndex == NO_SWITCHBACK_PERIOD) {
 			return experimentName;
@@ -1760,7 +1759,7 @@ public class Context implements Closeable {
 		final boolean eligible;
 		final boolean fullOn;
 		final boolean ruleOverride;
-		// Whether the resolution records an exposure when exposed.
+		// Set when the resolution records no exposure.
 		final boolean silent;
 		// Meaningful for switchbacks only (always false for a unit experiment): whether the switchback
 		// applies (its serving status is not ABSENT), i.e. the Collector lists an assignment. Unlike
@@ -1818,7 +1817,6 @@ public class Context implements Closeable {
 			final Assignment assignment = assignmentCache_
 					.get(assignmentCacheKey(experimentName, currentSwitchbackPeriod(experiment, now)));
 
-			// A stale epoch's slots are dropped by the write path below.
 			if ((assignment != null) && !isSwitchbackEpochStale(experimentName, experiment)
 					&& isAssignmentCurrent(assignment, cassignments_.get(experimentName),
 							overrides_.get(experimentName), experiment)) {

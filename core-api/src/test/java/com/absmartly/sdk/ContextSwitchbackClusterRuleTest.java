@@ -372,7 +372,6 @@ class ContextSwitchbackClusterRuleTest {
 	void noMatchingUnitIsIneligible() {
 		// A value at the path, but no unit of a linked type: not applicable to this context.
 		assertNull(sbc(attrs("session_store", "s-1"), unit("device_id", "d1")));
-		// No units at all.
 		assertNull(sbc(attrs("session_store", "s-1")));
 	}
 
