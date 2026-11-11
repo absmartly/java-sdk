@@ -120,7 +120,7 @@ final ABSmartly sdk = ABSmartly.create(sdkConfig);
 | apiKey                  | `String`                          |  &#9989;  | `null`      | Your API key which can be found on the Web Console.                                                                                                                           |
 | environment             | `String`                          |  &#9989;  | `null`      | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
 | application             | `String`                          |  &#9989;  | `null`      | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
-| applicationVersion      | `String` or `long`                |  &#10060; | `null`      | The version of your application, e.g. `"2.4.1"`. Sent as `X-Application-Version` only when it is a whole number (otherwise `0`); with system attributes enabled, the full value is available to targeting as `app_version`.              |
+| applicationVersion      | `String` or `long`                |  &#10060; | `null`      | The version of your application, e.g. `"2.4.1"`. Sent as the `X-Application-Version` request header only when it is a whole number (otherwise `0`). It is not exposed to targeting as `app_version`; set an `app_version` attribute yourself if you want to target on it.              |
 | timeout                 | `int`                             |  &#10060; | `3000`      | HTTP connection timeout in milliseconds                                                                                                                                        |
 | retries                 | `int`                             |  &#10060; | `5`         | Maximum number of retry attempts for failed HTTP requests                                                                                                                      |
 | contextEventLogger      | `ContextEventLogger`              |  &#10060; | `null`      | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
@@ -301,7 +301,18 @@ context.setAttributes(Map.of(
 
 ### System Attributes
 
-Set `includeSystemAttributes` to make the SDK supply attributes about itself and your application:
+The configured `application` and `environment` names are always available as variables to audience filters and
+assignment rule conditions, regardless of any flag. An attribute you set with the same name takes precedence, even
+one set after the context is created (it re-checks cached assignments). Names that are unset or empty are left out.
+These are not real attributes: they are not published (the collector adds `application` and `environment` to every
+event server-side) and `getAttributes()`/`getAttribute()` do not return them. A context created without a client
+(with the public `Context.create`, or through an `ABSmartly` with no client configured) has no `application` or
+`environment` to expose.
+
+`app_version` is no longer supplied to targeting. `ClientConfig.setApplicationVersion` only controls the
+`X-Application-Version` request header; set an `app_version` attribute yourself if you want to target on it.
+
+Set `includeSystemAttributes` to also add `sdk_name` and `sdk_version` to the attributes of every publish:
 
 ```java
 final ContextConfig contextConfig = ContextConfig.create()
@@ -309,20 +320,9 @@ final ContextConfig contextConfig = ContextConfig.create()
     .setIncludeSystemAttributes(true);
 ```
 
-With it enabled:
-
-- `application`, `environment` and `app_version` (from `ClientConfig.setApplicationVersion`) can be used in audience
-  filters and assignment rule conditions. An attribute you set with the same name takes precedence.
-- Every publish also includes `sdk_name`, `sdk_version`, `application`, `environment` and `app_version` as attributes.
-  `app_version` is left out when no application version is set, or it is `0`.
-  They are stamped with the time of the earliest exposure or goal in the publish, and one you have set yourself with
-  the same name is sent only as your value.
-
-The application, environment and application version come from the client. A context created without one (with the
-public `Context.create`, or through an `ABSmartly` with no client configured) includes only `sdk_name` and
-`sdk_version`.
-
-It is disabled by default.
+They are stamped with the time of the earliest exposure or goal in the publish, and one you have set yourself with
+the same name is sent only as your value. The option no longer publishes `application`, `environment` or
+`app_version`. It is disabled by default.
 
 ### Assignment Rules
 

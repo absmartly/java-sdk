@@ -86,7 +86,7 @@ public class Client implements Closeable {
 		final String configuredVersion = config.getApplicationVersion();
 		final String applicationVersion = (configuredVersion != null) ? configuredVersion : "0";
 		// The collector parses X-Application-Version as a whole number and rejects the request otherwise, so a
-		// non-numeric version such as "2.4.1" is sent as "0". The full version is still used for app_version.
+		// non-numeric version such as "2.4.1" is sent as "0".
 		headers_.put("X-Application-Version", applicationVersionHeader(applicationVersion));
 		headers_.put("X-Agent", SdkVersion.AGENT);
 
