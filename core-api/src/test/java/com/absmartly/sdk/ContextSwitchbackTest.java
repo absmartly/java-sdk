@@ -848,6 +848,26 @@ class ContextSwitchbackTest {
 		EXPOSURE_FLAGS.put(ParityBranch.DRAW, flags(true, true, false, false, false, false, false));
 	}
 
+	// The variant each branch serves at ANCHOR + HOUR + 3 (period 1). Override, rule, full-on and custom
+	// all set 1; strict mismatch and traffic miss serve control; the draw (also behind a non-strict
+	// mismatch) serves the switchback schedule's period-1 arm. The unit experiment serves the same
+	// variant on every branch except the two that draw, where it randomizes over the unit instead.
+	static final Map<ParityBranch, Integer> EXPECTED_VARIANT = new EnumMap<>(ParityBranch.class);
+	static {
+		EXPECTED_VARIANT.put(ParityBranch.OVERRIDE, 1);
+		EXPECTED_VARIANT.put(ParityBranch.OVERRIDE_OVER_STRICT_MISMATCH, 1);
+		EXPECTED_VARIANT.put(ParityBranch.RULE, 1);
+		EXPECTED_VARIANT.put(ParityBranch.RULE_OVER_STRICT_MISMATCH, 1);
+		EXPECTED_VARIANT.put(ParityBranch.STRICT_MISMATCH, 0);
+		EXPECTED_VARIANT.put(ParityBranch.STRICT_MISMATCH_OVER_FULL_ON, 0);
+		EXPECTED_VARIANT.put(ParityBranch.STRICT_MISMATCH_OVER_TRAFFIC_MISS, 0);
+		EXPECTED_VARIANT.put(ParityBranch.NON_STRICT_MISMATCH, EXPECTED_2_ARMS[1]);
+		EXPECTED_VARIANT.put(ParityBranch.FULL_ON, 1);
+		EXPECTED_VARIANT.put(ParityBranch.TRAFFIC_MISS, 0);
+		EXPECTED_VARIANT.put(ParityBranch.CUSTOM, 1);
+		EXPECTED_VARIANT.put(ParityBranch.DRAW, EXPECTED_2_ARMS[1]);
+	}
+
 	static boolean[] flags(boolean... flags) {
 		return flags;
 	}
@@ -870,11 +890,13 @@ class ContextSwitchbackTest {
 	}
 
 	// The same branch run on a unit experiment and on an eligible-cluster switchback publishes the same
-	// exposure, apart from the unit and the variant, and both match the SWITCHBACK.md table.
+	// exposure, apart from the unit and the variant, and both match the SWITCHBACK.md table. The
+	// variant is checked too: on the switchback for every branch, on the unit wherever it does not draw.
 	@ParameterizedTest(name = "{0}")
 	@EnumSource(ParityBranch.class)
 	void exposureFlagsMatchAUnitExperimentForEveryBranch(ParityBranch branch) {
 		clock.now = ANCHOR + HOUR + 3;
+		assertEquals(1, EXPECTED_2_ARMS[1]);
 
 		final Experiment unit = switchback(1, "exp_parity", 2, HOUR);
 		unit.randomizationType = null;
@@ -888,6 +910,11 @@ class ContextSwitchbackTest {
 		final boolean[] expected = EXPOSURE_FLAGS.get(branch);
 		assertArrayEquals(expected, exposureFlags(unitExposure), "unit " + branch);
 		assertArrayEquals(expected, exposureFlags(switchbackExposure), "switchback " + branch);
+		final int expectedVariant = EXPECTED_VARIANT.get(branch);
+		assertEquals(expectedVariant, switchbackExposure.variant, "switchback variant " + branch);
+		if ((branch != ParityBranch.DRAW) && (branch != ParityBranch.NON_STRICT_MISMATCH)) {
+			assertEquals(expectedVariant, unitExposure.variant, "unit variant " + branch);
+		}
 		assertEquals(unitExposure.id, switchbackExposure.id);
 		assertEquals(unitExposure.name, switchbackExposure.name);
 		assertEquals(unitExposure.exposedAt, switchbackExposure.exposedAt);
