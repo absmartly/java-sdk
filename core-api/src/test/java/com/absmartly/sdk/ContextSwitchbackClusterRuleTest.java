@@ -319,6 +319,24 @@ class ContextSwitchbackClusterRuleTest {
 		assertEquals(scheduled("s-17"), assignment.variant);
 	}
 
+	// A strict audience mismatch on an eligible cluster is not assigned, yet the Collector still lists
+	// it, as control under the serving unit, and publishes its exposure.
+	@Test
+	void strictAudienceMismatchOnAnEligibleClusterIsListedAsControlAndRecorded() {
+		experiment.audience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
+		experiment.audienceStrict = true;
+		final Assigned assignment = sbc(attrs("session_store", "s-17"), unit(SESSION, "x1"));
+
+		assertNotNull(assignment);
+		assertEquals(SESSION, assignment.unit);
+		assertTrue(assignment.eligible);
+		assertFalse(assignment.silent);
+		assertEquals(0, assignment.variant);
+		assertEquals(1, assignment.exposures.size());
+		assertTrue(assignment.exposures.get(0).audienceMismatch);
+		assertFalse(assignment.exposures.get(0).assigned);
+	}
+
 	@Test
 	void twoAgreeingUnitsServeTheValue() {
 		final Assigned assignment = sbc(attrs("profile", store("s-17"), "session_store", "s-17"), unit(USER, "u1"),
