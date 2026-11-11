@@ -168,13 +168,13 @@ public class ContextConfig {
 	}
 
 	/**
-	 * When enabled, the context exposes application, environment and app_version as variables to audience and
-	 * assignment-rule conditions (user attributes with the same name take precedence), and prepends sdk_name,
-	 * sdk_version, application, environment and app_version to the attributes of every publish. Disabled by
+	 * When enabled, the context prepends sdk_name and sdk_version to the attributes of every publish. Disabled by
 	 * default.
 	 *
-	 * The application, environment and application version come from the configured client; a context without one
-	 * includes only sdk_name and sdk_version. app_version is left out when no application version is set or it is "0".
+	 * This option no longer controls audience evaluation: the configured application and environment names are
+	 * always available as variables to audience and assignment-rule conditions (user attributes with the same name
+	 * take precedence), regardless of this flag, and they are no longer published here (the collector adds them
+	 * server-side). The flag is kept for backward compatibility. app_version is no longer provided or published.
 	 */
 	public ContextConfig setIncludeSystemAttributes(boolean includeSystemAttributes) {
 		this.includeSystemAttributes_ = includeSystemAttributes;
