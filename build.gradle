@@ -12,7 +12,7 @@ plugins {
 
 
 ext {
-	VERSION = "1.7.0"
+	VERSION = "1.8.0"
 	GROUP_ID = "com.absmartly.sdk"
 
 	slf4jVersion = "1.7.30"
@@ -46,7 +46,8 @@ allprojects {
 
 configure(subprojects.findAll {
 	[
-		"core-api"
+		"core-api",
+		"core-api-java6"
 	].contains(it.name)
 }) {
 	apply plugin: "signing"

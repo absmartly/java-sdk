@@ -3,7 +3,7 @@ package com.absmartly.sdk.internal;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java8.util.function.Function;
+import java.util.function.Function;
 
 public class Concurrency {
 	static public <K, V> V computeIfAbsentRW(ReentrantReadWriteLock lock, Map<K, V> map, K key,

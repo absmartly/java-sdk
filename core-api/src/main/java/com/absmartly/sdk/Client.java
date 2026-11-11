@@ -4,12 +4,12 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionStage;
-import java8.util.function.Consumer;
-import java8.util.function.Function;
-import java8.util.function.Supplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import javax.annotation.Nonnull;
 
@@ -17,7 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.absmartly.sdk.internal.AsyncExecutor;
-import com.absmartly.sdk.internal.SdkFuture;
+import com.absmartly.sdk.internal.Futures;
 import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
@@ -100,7 +100,7 @@ public class Client implements Closeable {
 	}
 
 	CompletableFuture<ContextData> getContextData() {
-		final CompletableFuture<ContextData> dataFuture = new SdkFuture<ContextData>();
+		final CompletableFuture<ContextData> dataFuture = Futures.incomplete();
 		final Executor executor = executor_ != null ? executor_ : AsyncExecutor.get();
 
 		CompletableFuture
@@ -144,7 +144,7 @@ public class Client implements Closeable {
 	}
 
 	CompletableFuture<Void> publish(@Nonnull final PublishEvent event) {
-		final CompletableFuture<Void> publishFuture = new SdkFuture<Void>();
+		final CompletableFuture<Void> publishFuture = Futures.incomplete();
 		final Executor executor = executor_ != null ? executor_ : AsyncExecutor.get();
 
 		CompletableFuture
