@@ -202,7 +202,9 @@ class ContextSwitchbackClusterRuleTest {
 		assertNotNull(resolution);
 		final String config = (String) context.getVariableValue("sbc.config", null);
 		final List<Exposure> exposures = sbcExposures();
-		if (!resolution.assigned && !resolution.ruleOverride) {
+		// Keyed on the serving status, not on assigned: a strict audience mismatch is not assigned yet is
+		// still an assignment the Collector lists.
+		if (!resolution.applies) {
 			assertEquals(0, variant);
 			assertNull(config);
 			assertTrue(exposures.isEmpty());
