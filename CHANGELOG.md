@@ -18,6 +18,7 @@
 
 ### Fixed
 
+- Numeric-to-string conversion in audience expression operators (`eq`, `in`, `match`, etc.) is now independent of the JVM default locale. `ExprEvaluator.stringConvert` formatted numbers with the default-locale `DecimalFormatSymbols`, so on a comma-decimal JVM (for example `Locale.GERMANY`) a numeric `2.5` converted to `"2,5"`, changing how numbers compared against their string form depending on the server's locale. It now uses `Locale.ROOT` symbols; output on an en-US JVM is unchanged and matches the JavaScript SDK.
 - Unit UIDs containing supplementary characters (emoji and other code points outside the Basic Multilingual Plane) are now hashed as standard UTF-8, matching the other SDKs. 1.6.3 encoded each half of a surrogate pair separately, so such UIDs hash differently and may be assigned a different variant after upgrading. UIDs made only of ASCII or Basic Multilingual Plane characters are unaffected.
 - If the publish during `close()` fails and the events are restored, the context stays open so that `close()` can be called again to retry, and the returned future fails. 1.6.3 marked the context closed in that case.
 - An audience filter that fails to evaluate, including one nested deeply enough to overflow the stack, is treated as a mismatch instead of throwing from `getTreatment`. With `audienceStrict`, the unit therefore gets variant 0.
