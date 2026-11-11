@@ -117,6 +117,7 @@ asserts this table.
 | Assignment rule, strict audience mismatch | Rule | false | true | false | false | false | false | true |
 | Strict audience mismatch | 0 | **false** | true | false | false | false | true | false |
 | Strict audience mismatch, full-on set | 0 | **false** | true | false | false | false | true | false |
+| Strict audience mismatch, traffic miss | 0 | **false** | true | false | false | false | true | false |
 | Non-strict audience mismatch | Drawn | true | true | false | false | false | true | false |
 | Full-on | `fullOnVariant` | true | true | false | true | false | false | false |
 | Traffic miss | 0 | true | false | false | false | false | false | false |
@@ -127,8 +128,9 @@ Through `getTreatment`, every row records exactly one exposure. The switchback-o
 none: an ineligible cluster, a pre-start or unservable draw, and a switchback with no linked unit.
 
 Through a variable key (`getVariableValue`, `peekVariableValue`), a strict-mismatched switchback,
-like a unit experiment, is not assigned, so the next experiment that declares the key wins and only
-it is exposed; with none, the default value is returned and nothing is recorded.
+like a unit experiment, is not assigned, so the next experiment that declares the key wins. Only
+`getVariableValue` exposes the winning experiment; `peekVariableValue` records nothing. With no
+other experiment on the key, the default value is returned and nothing is recorded.
 
 ### Anchor
 
