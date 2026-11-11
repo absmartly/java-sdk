@@ -10,3 +10,8 @@ description = """ABSmartly Java SDK Example"""
 dependencies {
 	implementation project(":core-api")
 }
+
+compileJava {
+	sourceCompatibility = "1.8"
+	targetCompatibility = "1.8"
+}

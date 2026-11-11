@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,8 +33,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -3404,7 +3404,7 @@ class ContextTest extends TestUtils {
 		when(eventHandler.publish(any(), any())).thenReturn(publish);
 		final CompletableFuture<Void> first = context.closeAsync();
 		final CompletableFuture<Void> second = context.closeAsync();
-		first.completeAsync(() -> null).join();
+		first.completeAsync(() -> null, Runnable::run).join();
 		assertFalse(second.isDone());
 		assertFalse(context.closeAsync().isDone());
 		publish.complete(null);

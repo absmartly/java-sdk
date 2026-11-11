@@ -4,6 +4,8 @@ import java.io.Closeable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -12,11 +14,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
-import java8.util.function.BiFunction;
-import java8.util.function.Consumer;
-import java8.util.function.Function;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -25,7 +25,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.absmartly.sdk.internal.Algorithm;
+import com.absmartly.sdk.internal.AsyncExecutor;
 import com.absmartly.sdk.internal.Concurrency;
+import com.absmartly.sdk.internal.Futures;
 import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.SwitchbackAttributePath;
@@ -148,7 +150,7 @@ public class Context implements Closeable {
 				}
 			});
 		} else {
-			final CompletableFuture<Void> newReadyFuture = new CompletableFuture<Void>();
+			final CompletableFuture<Void> newReadyFuture = Futures.incomplete();
 			readyFuture_.set(newReadyFuture);
 			dataFuture.thenAccept(new Consumer<ContextData>() {
 				@Override
@@ -216,7 +218,7 @@ public class Context implements Closeable {
 				}
 			});
 		}
-		return CompletableFuture.completedFuture(this);
+		return Futures.completed(this);
 	}
 
 	public Context waitUntilReady() {
@@ -814,11 +816,11 @@ public class Context implements Closeable {
 		checkNotClosed();
 
 		if (failed_) {
-			return CompletableFuture.completedFuture(null);
+			return Futures.completed(null);
 		}
 
 		if (refreshing_.compareAndSet(false, true)) {
-			final CompletableFuture<Void> newRefreshFuture = new CompletableFuture<Void>();
+			final CompletableFuture<Void> newRefreshFuture = Futures.incomplete();
 			refreshFuture_.set(newRefreshFuture);
 
 			dataProvider_.getContextData().thenAccept(new Consumer<ContextData>() {
@@ -847,7 +849,7 @@ public class Context implements Closeable {
 			return future;
 		}
 
-		return CompletableFuture.completedFuture(null);
+		return Futures.completed(null);
 	}
 
 	public void refresh() {
@@ -864,13 +866,13 @@ public class Context implements Closeable {
 			if (closing_.get() || closed_.get()) {
 				final CompletableFuture<Void> current = closingFuture_;
 				if ((current == null) || (closed_.get() && current.isCompletedExceptionally())) {
-					return CompletableFuture.completedFuture(null);
+					return Futures.completed(null);
 				}
 				return closeCallerFuture(current);
 			}
 
 			closing_.set(true);
-			attempt = new CompletableFuture<Void>();
+			attempt = Futures.incomplete();
 			closingFuture_ = attempt;
 		}
 
@@ -940,8 +942,8 @@ public class Context implements Closeable {
 				Exposure[] exposures = null;
 				GoalAchievement[] achievements = null;
 				int eventCount;
-				final CompletableFuture<Void> result = new CompletableFuture<Void>();
-				final CompletableFuture<Void> callerResult = new CompletableFuture<Void>();
+				final CompletableFuture<Void> result = Futures.incomplete();
+				final CompletableFuture<Void> callerResult = Futures.incomplete();
 				result.handle(new BiFunction<Void, Throwable, Void>() {
 					@Override
 					public Void apply(Void ignoredResult, Throwable exception) {
@@ -1054,7 +1056,7 @@ public class Context implements Closeable {
 								result.complete(null);
 							}
 						}
-					});
+					}, AsyncExecutor.get());
 
 					publishResult.exceptionally(onPublishFailure);
 
@@ -1072,7 +1074,7 @@ public class Context implements Closeable {
 			}
 		}
 
-		return CompletableFuture.completedFuture(null);
+		return Futures.completed(null);
 	}
 
 	private void checkNotClosed() {
@@ -2622,7 +2624,7 @@ public class Context implements Closeable {
 	private final AtomicBoolean closed_ = new AtomicBoolean(false);
 	private final AtomicBoolean refreshing_ = new AtomicBoolean(false);
 
-	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
+	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = Futures.completed(null);
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final Object closeLock_ = new Object();
 	// Guarded by closeLock_.

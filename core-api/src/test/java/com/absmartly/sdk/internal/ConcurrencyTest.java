@@ -6,7 +6,7 @@ import static org.mockito.Mockito.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java8.util.function.Function;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

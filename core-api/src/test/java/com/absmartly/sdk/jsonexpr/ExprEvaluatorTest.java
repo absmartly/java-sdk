@@ -7,7 +7,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
@@ -154,6 +156,41 @@ class ExprEvaluatorTest extends TestUtils {
 		assertEquals("-2147483647", evaluator.stringConvert(-2147483647));
 		assertEquals("9007199254740991", evaluator.stringConvert(9007199254740991L));
 		assertEquals("-9007199254740991", evaluator.stringConvert(-9007199254740991L));
+	}
+
+	@Test
+	void testStringConvertNumbersIsLocaleIndependent() throws InterruptedException {
+		final AtomicReference<Throwable> failure = new AtomicReference<Throwable>();
+		final Locale previous = Locale.getDefault();
+		Locale.setDefault(Locale.GERMANY);
+		try {
+			// A new thread, so the evaluator's thread-local number format is created under the German locale. Under a
+			// comma-decimal locale 2.5 would otherwise become "2,5".
+			final Thread thread = new Thread(new Runnable() {
+				@Override
+				public void run() {
+					try {
+						final ExprEvaluator evaluator = new ExprEvaluator(EMPTY_MAP, EMPTY_MAP);
+						assertEquals("2.5", evaluator.stringConvert(2.5));
+						assertEquals("1.5", evaluator.stringConvert(1.5));
+						assertEquals("-1", evaluator.stringConvert(-1.0));
+						assertEquals("2147483647", evaluator.stringConvert(2147483647.0));
+						assertEquals("9007199254740991", evaluator.stringConvert(9007199254740991.0));
+						assertEquals("0.900719925474099", evaluator.stringConvert(0.9007199254740991));
+						assertEquals(0, evaluator.compare("2.5", 2.5));
+					} catch (Throwable t) {
+						failure.set(t);
+					}
+				}
+			});
+			thread.start();
+			thread.join();
+		} finally {
+			Locale.setDefault(previous);
+		}
+		if (failure.get() != null) {
+			throw new AssertionError(failure.get());
+		}
 	}
 
 	@Test

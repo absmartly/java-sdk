@@ -6,7 +6,7 @@ import static org.mockito.Mockito.*;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import java8.util.function.Function;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;

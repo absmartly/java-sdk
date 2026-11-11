@@ -1,7 +1,7 @@
 package com.absmartly.sdk;
 
 import java.util.Map;
-import java8.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletableFuture;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -23,6 +23,8 @@ import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
+
+import com.absmartly.sdk.internal.Futures;
 
 public class DefaultHTTPClient implements HTTPClient {
 	public static DefaultHTTPClient create(final DefaultHTTPClientConfig config) {
@@ -118,7 +120,7 @@ public class DefaultHTTPClient implements HTTPClient {
 	}
 
 	private CompletableFuture<Response> request(final SimpleHttpRequest request) {
-		final CompletableFuture<Response> future = new CompletableFuture<Response>();
+		final CompletableFuture<Response> future = Futures.incomplete();
 
 		try {
 			httpClient_.execute(request, new FutureCallback<SimpleHttpResponse>() {
