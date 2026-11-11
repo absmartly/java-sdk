@@ -155,7 +155,7 @@ Paths follow the Collector's `SwitchbackAttributePath`:
 - An unquoted integer segment (`items/0/city`) indexes a list. An index must be non-negative and
   sit between two key segments.
 - A `.` anywhere in the path, quoted or not, is malformed: the Collector's
-  `SwitchbackAttributePath.java:40` rejects any parsed segment key that contains `.`, so `geo.city`,
+  `SwitchbackAttributePath` rejects any parsed segment key that contains `.`, so `geo.city`,
   `'geo.city'` and `"geo.city"` are alike unreadable. Dotted paths are not a nesting syntax.
 - An unterminated quote is malformed.
 
