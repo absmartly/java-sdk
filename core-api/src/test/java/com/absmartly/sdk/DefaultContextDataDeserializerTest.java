@@ -2,6 +2,11 @@ package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
@@ -195,6 +200,106 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 
 		assertNotNull(data);
 		assertEquals(expected, data);
+	}
+
+	@Test
+	void deserializeSwitchback() {
+		final byte[] bytes = getResourceBytes("switchback_context.json");
+
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+		final ContextData data = deser.deserialize(bytes, 0, bytes.length);
+
+		final Experiment switchback = new Experiment();
+		switchback.id = 1;
+		switchback.name = "exp_test_switchback";
+		switchback.unitType = "store_id";
+		switchback.iteration = 1;
+		switchback.seedHi = 3603515;
+		switchback.seedLo = 233373850;
+		switchback.split = new double[]{0.5, 0.5};
+		switchback.trafficSeedHi = 449867249;
+		switchback.trafficSeedLo = 455443629;
+		switchback.trafficSplit = new double[]{0.0, 1.0};
+		switchback.fullOnVariant = 0;
+		switchback.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
+		switchback.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", "{\"banner.border\":1}")
+		};
+		switchback.randomizationType = "switchback";
+		final Map<String, String> clusters = new LinkedHashMap<String, String>();
+		clusters.put("store_id", "store/key");
+		clusters.put("device_id", "geo/city");
+		switchback.switchbackClusters = clusters;
+		switchback.switchbackClusterValues = new String[]{"porto", "lisbon"};
+		switchback.switchbackStartAt = 1767225600000L;
+		switchback.switchbackPeriodMs = 3600000L;
+		switchback.switchbackCarryoverDurationMs = 900000L;
+		switchback.switchbackBurnInDurationMs = 600000L;
+		switchback.switchbackBurnOutDurationMs = 0L;
+		switchback.switchbackDesignType = "balanced_block";
+		switchback.switchbackEstimand = "global_average_treatment_effect";
+
+		final Experiment unit = new Experiment();
+		unit.id = 2;
+		unit.name = "exp_test_unit";
+		unit.unitType = "session_id";
+		unit.iteration = 1;
+		unit.seedHi = 55006150;
+		unit.seedLo = 47189152;
+		unit.split = new double[]{0.5, 0.5};
+		unit.trafficSeedHi = 705671872;
+		unit.trafficSeedLo = 212903484;
+		unit.trafficSplit = new double[]{0.0, 1.0};
+		unit.fullOnVariant = 0;
+		unit.applications = new ExperimentApplication[]{new ExperimentApplication("website")};
+		unit.variants = new ExperimentVariant[]{
+				new ExperimentVariant("A", null),
+				new ExperimentVariant("B", null)
+		};
+		unit.randomizationType = "unit";
+
+		final ContextData expected = new ContextData();
+		expected.experiments = new Experiment[]{switchback, unit};
+
+		assertNotNull(data);
+		assertEquals(expected, data);
+		assertEquals(expected.hashCode(), data.hashCode());
+		// The declared order (unit_type_id ascending) survives deserialization; it is not sorted.
+		assertEquals(Arrays.asList("store_id", "device_id"),
+				new ArrayList<String>(data.experiments[0].switchbackClusters.keySet()));
+	}
+
+	@Test
+	void deserializeSwitchbackClusterOrderIsPreserved() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp\",\"randomizationType\":\"switchback\","
+				+ "\"switchbackClusters\":{\"z_type\":\"a\",\"a_type\":\"b\",\"m_type\":\"c\"}}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertEquals(Arrays.asList("z_type", "a_type", "m_type"),
+				new ArrayList<String>(data.experiments[0].switchbackClusters.keySet()));
+		assertNull(data.experiments[0].switchbackClusterValues);
+	}
+
+	@Test
+	void deserializeWithoutSwitchbackFieldsLeavesThemNull() {
+		final byte[] bytes = getResourceBytes("context.json");
+
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		for (final Experiment experiment : data.experiments) {
+			assertNull(experiment.randomizationType);
+			assertNull(experiment.switchbackClusters);
+			assertNull(experiment.switchbackClusterValues);
+			assertNull(experiment.switchbackStartAt);
+			assertNull(experiment.switchbackPeriodMs);
+			assertNull(experiment.switchbackCarryoverDurationMs);
+			assertNull(experiment.switchbackBurnInDurationMs);
+			assertNull(experiment.switchbackBurnOutDurationMs);
+			assertNull(experiment.switchbackDesignType);
+			assertNull(experiment.switchbackEstimand);
+		}
 	}
 
 	@Test

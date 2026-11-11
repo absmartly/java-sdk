@@ -1,10 +1,15 @@
 package com.absmartly.sdk.json;
 
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+
+import com.absmartly.sdk.java.util.Objects;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -40,6 +45,26 @@ public class Experiment {
 	// (from the top-level `holdouts` array) that cover this experiment. Null or empty means the
 	// experiment is not covered by any holdout. Absent on holdout entries themselves.
 	public int[] holdoutIds;
+
+	// Switchback configuration. randomizationType is "unit" or "switchback"; null means unit.
+	// Instants and durations are epoch/duration milliseconds. Carryover and burn windows are
+	// analysis-only and never read by assignment.
+	public String randomizationType;
+	// Unit type name -> attribute path, in the served order (unit_type_id ascending). The order is
+	// semantic: the first unit yielding a value serves the experiment, so equals compares it too.
+	@JsonDeserialize(as = LinkedHashMap.class)
+	public Map<String, String> switchbackClusters;
+	// Allow-list of cluster key values; null or empty admits every value. The Collector serves an
+	// experiment that has no allow-list rows with this field absent, and builds its filter set only
+	// when the list is non-empty.
+	public String[] switchbackClusterValues;
+	public Long switchbackStartAt;
+	public Long switchbackPeriodMs;
+	public Long switchbackCarryoverDurationMs;
+	public Long switchbackBurnInDurationMs;
+	public Long switchbackBurnOutDurationMs;
+	public String switchbackDesignType;
+	public String switchbackEstimand;
 
 	public Experiment() {}
 
@@ -88,7 +113,63 @@ public class Experiment {
 			return false;
 		if (holdoutType != null ? !holdoutType.equals(that.holdoutType) : that.holdoutType != null)
 			return false;
-		return Arrays.equals(holdoutIds, that.holdoutIds);
+		if (!Arrays.equals(holdoutIds, that.holdoutIds))
+			return false;
+		if (!Objects.equals(randomizationType, that.randomizationType))
+			return false;
+		if (!orderedEquals(switchbackClusters, that.switchbackClusters))
+			return false;
+		if (!Arrays.equals(switchbackClusterValues, that.switchbackClusterValues))
+			return false;
+		if (!Objects.equals(switchbackStartAt, that.switchbackStartAt))
+			return false;
+		if (!Objects.equals(switchbackPeriodMs, that.switchbackPeriodMs))
+			return false;
+		if (!Objects.equals(switchbackCarryoverDurationMs, that.switchbackCarryoverDurationMs))
+			return false;
+		if (!Objects.equals(switchbackBurnInDurationMs, that.switchbackBurnInDurationMs))
+			return false;
+		if (!Objects.equals(switchbackBurnOutDurationMs, that.switchbackBurnOutDurationMs))
+			return false;
+		if (!Objects.equals(switchbackDesignType, that.switchbackDesignType))
+			return false;
+		return Objects.equals(switchbackEstimand, that.switchbackEstimand);
+	}
+
+	// Consistent with orderedEquals: the hash depends on the iteration order.
+	private static int orderedHash(final Map<String, String> map) {
+		if (map == null) {
+			return 0;
+		}
+		int result = 1;
+		for (final Map.Entry<String, String> entry : map.entrySet()) {
+			result = 31 * result + hash(entry.getKey());
+			result = 31 * result + hash(entry.getValue());
+		}
+		return result;
+	}
+
+	public static boolean orderedEquals(final Map<String, String> a, final Map<String, String> b) {
+		if (a == b) {
+			return true;
+		}
+		if ((a == null) || (b == null) || (a.size() != b.size())) {
+			return false;
+		}
+		final Iterator<Map.Entry<String, String>> ia = a.entrySet().iterator();
+		final Iterator<Map.Entry<String, String>> ib = b.entrySet().iterator();
+		while (ia.hasNext()) {
+			final Map.Entry<String, String> ea = ia.next();
+			final Map.Entry<String, String> eb = ib.next();
+			if (!Objects.equals(ea.getKey(), eb.getKey()) || !Objects.equals(ea.getValue(), eb.getValue())) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static int hash(Object o) {
+		return (o != null) ? o.hashCode() : 0;
 	}
 
 	@Override
@@ -112,6 +193,16 @@ public class Experiment {
 		result = 31 * result + (assignmentRules != null ? assignmentRules.hashCode() : 0);
 		result = 31 * result + (holdoutType != null ? holdoutType.hashCode() : 0);
 		result = 31 * result + Arrays.hashCode(holdoutIds);
+		result = 31 * result + hash(randomizationType);
+		result = 31 * result + orderedHash(switchbackClusters);
+		result = 31 * result + Arrays.hashCode(switchbackClusterValues);
+		result = 31 * result + hash(switchbackStartAt);
+		result = 31 * result + hash(switchbackPeriodMs);
+		result = 31 * result + hash(switchbackCarryoverDurationMs);
+		result = 31 * result + hash(switchbackBurnInDurationMs);
+		result = 31 * result + hash(switchbackBurnOutDurationMs);
+		result = 31 * result + hash(switchbackDesignType);
+		result = 31 * result + hash(switchbackEstimand);
 		return result;
 	}
 
@@ -137,6 +228,16 @@ public class Experiment {
 				", assignmentRules='" + assignmentRules + '\'' +
 				", holdoutType='" + holdoutType + '\'' +
 				", holdoutIds=" + Arrays.toString(holdoutIds) +
+				", randomizationType='" + randomizationType + '\'' +
+				", switchbackClusters=" + switchbackClusters +
+				", switchbackClusterValues=" + Arrays.toString(switchbackClusterValues) +
+				", switchbackStartAt=" + switchbackStartAt +
+				", switchbackPeriodMs=" + switchbackPeriodMs +
+				", switchbackCarryoverDurationMs=" + switchbackCarryoverDurationMs +
+				", switchbackBurnInDurationMs=" + switchbackBurnInDurationMs +
+				", switchbackBurnOutDurationMs=" + switchbackBurnOutDurationMs +
+				", switchbackDesignType='" + switchbackDesignType + '\'' +
+				", switchbackEstimand='" + switchbackEstimand + '\'' +
 				'}';
 	}
 }
