@@ -213,7 +213,9 @@ miss: variant 0, `eligible=false`. Its publish path records it whenever the clus
 key at exposedAt. This SDK deliberately sends nothing in that case. A pre-anchor exposure has no
 period, so analysis cannot place it on the schedule. The choice carries over from the approved
 Phase 1B design. The check runs before traffic, so a pre-anchor traffic miss is silent too. A
-traffic miss inside a period is still recorded.
+traffic miss inside a period is still recorded. It runs after the audience check, so a strict
+audience mismatch before the anchor or with an unservable schedule is still recorded, as in the
+Collector (variant 0, `assigned=false`, `eligible=true`, `audienceMismatch=true`).
 
 ### Refresh and epochs
 

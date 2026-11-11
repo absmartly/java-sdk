@@ -780,6 +780,36 @@ class ContextSwitchbackTest {
 	// An audience the default context never matches (no "tier" attribute).
 	static final String STRICT_GOLD_AUDIENCE = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
 
+	static Exposure strictMismatchExposure(long exposedAt) {
+		return new Exposure(1, "exp_sb", UNIT_TYPE, 0, exposedAt, false, true, false, false, false, true, false);
+	}
+
+	// The audience check comes before the period check (as in the Collector, whose strict branch returns
+	// before the switchback variant is consulted), so a strict mismatch before the anchor is recorded.
+	@Test
+	void audienceStrictMismatchBeforeTheAnchorIsRecorded() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.audience = STRICT_GOLD_AUDIENCE;
+		experiment.audienceStrict = true;
+		clock.now = ANCHOR - 1;
+		final Context context = createContext(dataOf(experiment));
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR - 1)}, publishExposures(context));
+	}
+
+	// Likewise with an unservable schedule (no anchor): the strict mismatch is recorded.
+	@Test
+	void audienceStrictMismatchWithAnUnservableScheduleIsRecorded() {
+		final Experiment experiment = switchback(2, HOUR);
+		experiment.audience = STRICT_GOLD_AUDIENCE;
+		experiment.audienceStrict = true;
+		experiment.switchbackStartAt = null;
+		clock.now = ANCHOR + HOUR + 3;
+		final Context context = createContext(dataOf(experiment));
+		assertEquals(0, context.getTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR + HOUR + 3)}, publishExposures(context));
+	}
+
 	// The branches of the SWITCHBACK.md "Exposure flags" table: every branch an eligible-cluster
 	// switchback shares with a unit experiment.
 	enum ParityBranch {
