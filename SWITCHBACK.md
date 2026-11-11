@@ -123,8 +123,12 @@ asserts this table.
 | Custom assignment | Custom | true | true | false | false | true | false | false |
 | Schedule draw (unit: split draw) | Drawn | true | true | false | false | false | false | false |
 
-Every row records exactly one exposure. The switchback-only branches record none: an ineligible
-cluster, a pre-start or unservable draw, and a switchback with no linked unit.
+Through `getTreatment`, every row records exactly one exposure. The switchback-only branches record
+none: an ineligible cluster, a pre-start or unservable draw, and a switchback with no linked unit.
+
+Through a variable key (`getVariableValue`, `peekVariableValue`), a strict-mismatched switchback,
+like a unit experiment, is not assigned, so the next experiment that declares the key wins and only
+it is exposed; with none, the default value is returned and nothing is recorded.
 
 ### Anchor
 

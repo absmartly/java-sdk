@@ -810,6 +810,45 @@ class ContextSwitchbackTest {
 		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR + HOUR + 3)}, publishExposures(context));
 	}
 
+	// A strict-mismatched switchback is not assigned, so on a shared variable key it gives way to the
+	// next experiment that declares the key, as a unit experiment does. Only that experiment is exposed.
+	@Test
+	void strictMismatchedSwitchbackGivesWayOnASharedVariableKey() {
+		final Experiment sb = switchback(2, HOUR);
+		sb.audience = STRICT_GOLD_AUDIENCE;
+		sb.audienceStrict = true;
+		final Experiment unit = switchback(2, "exp_unit", 2, HOUR);
+		unit.randomizationType = null;
+		unit.switchbackClusters = null;
+		unit.switchbackStartAt = null;
+		unit.switchbackPeriodMs = null;
+		unit.variants[0] = new ExperimentVariant("A", "{\"sb.arm\":10}");
+		unit.variants[1] = new ExperimentVariant("B", "{\"sb.arm\":11}");
+		unit.fullOnVariant = 1;
+		clock.now = ANCHOR + HOUR + 3;
+		final Context context = createContext(dataOf(sb, unit));
+		assertEquals(TestUtils.mapOf("sb.arm", TestUtils.listOf("exp_sb", "exp_unit")), context.getVariableKeys());
+
+		assertEquals(11, context.peekVariableValue("sb.arm", -1));
+		assertEquals(0, context.getPendingCount());
+		assertEquals(11, context.getVariableValue("sb.arm", -1));
+		assertArrayEquals(new Exposure[]{new Exposure(2, "exp_unit", UNIT_TYPE, 1, ANCHOR + HOUR + 3, true, true,
+				false, true, false, false, false)}, publishExposures(context));
+	}
+
+	// Alone on the key, a strict-mismatched switchback yields the default value and records nothing.
+	@Test
+	void strictMismatchedSwitchbackAloneOnAVariableKeyReturnsTheDefault() {
+		final Experiment sb = switchback(2, HOUR);
+		sb.audience = STRICT_GOLD_AUDIENCE;
+		sb.audienceStrict = true;
+		clock.now = ANCHOR + HOUR + 3;
+		final Context context = createContext(dataOf(sb));
+		assertEquals(-1, context.peekVariableValue("sb.arm", -1));
+		assertEquals(-1, context.getVariableValue("sb.arm", -1));
+		assertEquals(0, context.getPendingCount());
+	}
+
 	// The branches of the SWITCHBACK.md "Exposure flags" table: every branch an eligible-cluster
 	// switchback shares with a unit experiment.
 	enum ParityBranch {
