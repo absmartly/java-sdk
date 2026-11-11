@@ -3404,7 +3404,7 @@ class ContextTest extends TestUtils {
 		when(eventHandler.publish(any(), any())).thenReturn(publish);
 		final CompletableFuture<Void> first = context.closeAsync();
 		final CompletableFuture<Void> second = context.closeAsync();
-		first.completeAsync(() -> null).join();
+		first.completeAsync(() -> null, Runnable::run).join();
 		assertFalse(second.isDone());
 		assertFalse(context.closeAsync().isDone());
 		publish.complete(null);

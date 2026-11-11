@@ -16,6 +16,8 @@ import javax.annotation.Nonnull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.absmartly.sdk.internal.AsyncExecutor;
+import com.absmartly.sdk.internal.SdkFuture;
 import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
@@ -98,8 +100,8 @@ public class Client implements Closeable {
 	}
 
 	CompletableFuture<ContextData> getContextData() {
-		final CompletableFuture<ContextData> dataFuture = new CompletableFuture<ContextData>();
-		final Executor executor = executor_ != null ? executor_ : dataFuture.defaultExecutor();
+		final CompletableFuture<ContextData> dataFuture = new SdkFuture<ContextData>();
+		final Executor executor = executor_ != null ? executor_ : AsyncExecutor.get();
 
 		CompletableFuture
 				.runAsync(new Runnable() {
@@ -142,8 +144,8 @@ public class Client implements Closeable {
 	}
 
 	CompletableFuture<Void> publish(@Nonnull final PublishEvent event) {
-		final CompletableFuture<Void> publishFuture = new CompletableFuture<Void>();
-		final Executor executor = executor_ != null ? executor_ : publishFuture.defaultExecutor();
+		final CompletableFuture<Void> publishFuture = new SdkFuture<Void>();
+		final Executor executor = executor_ != null ? executor_ : AsyncExecutor.get();
 
 		CompletableFuture
 				.supplyAsync(new Supplier<byte[]>() {

@@ -9,6 +9,7 @@ import java8.util.concurrent.CompletableFuture;
 
 import javax.annotation.Nonnull;
 
+import com.absmartly.sdk.internal.SdkFuture;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.ContextData;
 
@@ -129,7 +130,7 @@ public class ABSmartly implements Closeable {
 
 	public Context createContextWith(@Nonnull ContextConfig config, ContextData data) {
 		checkNotClosed();
-		return Context.create(Clock.systemUTC(), config, scheduler_, CompletableFuture.completedFuture(data),
+		return Context.create(Clock.systemUTC(), config, scheduler_, SdkFuture.completed(data),
 				contextDataProvider_, contextEventHandler_, contextEventLogger_, variableParser_,
 				new AudienceMatcher(audienceDeserializer_), configClient_);
 	}

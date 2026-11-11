@@ -25,7 +25,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.absmartly.sdk.internal.Algorithm;
+import com.absmartly.sdk.internal.AsyncExecutor;
 import com.absmartly.sdk.internal.Concurrency;
+import com.absmartly.sdk.internal.SdkFuture;
 import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
@@ -137,7 +139,7 @@ public class Context implements Closeable {
 				}
 			});
 		} else {
-			final CompletableFuture<Void> newReadyFuture = new CompletableFuture<Void>();
+			final CompletableFuture<Void> newReadyFuture = new SdkFuture<Void>();
 			readyFuture_.set(newReadyFuture);
 			dataFuture.thenAccept(new Consumer<ContextData>() {
 				@Override
@@ -205,7 +207,7 @@ public class Context implements Closeable {
 				}
 			});
 		}
-		return CompletableFuture.completedFuture(this);
+		return SdkFuture.completed(this);
 	}
 
 	public Context waitUntilReady() {
@@ -786,11 +788,11 @@ public class Context implements Closeable {
 		checkNotClosed();
 
 		if (failed_) {
-			return CompletableFuture.completedFuture(null);
+			return SdkFuture.completed(null);
 		}
 
 		if (refreshing_.compareAndSet(false, true)) {
-			final CompletableFuture<Void> newRefreshFuture = new CompletableFuture<Void>();
+			final CompletableFuture<Void> newRefreshFuture = new SdkFuture<Void>();
 			refreshFuture_.set(newRefreshFuture);
 
 			dataProvider_.getContextData().thenAccept(new Consumer<ContextData>() {
@@ -819,7 +821,7 @@ public class Context implements Closeable {
 			return future;
 		}
 
-		return CompletableFuture.completedFuture(null);
+		return SdkFuture.completed(null);
 	}
 
 	public void refresh() {
@@ -836,13 +838,13 @@ public class Context implements Closeable {
 			if (closing_.get() || closed_.get()) {
 				final CompletableFuture<Void> current = closingFuture_;
 				if ((current == null) || (closed_.get() && current.isCompletedExceptionally())) {
-					return CompletableFuture.completedFuture(null);
+					return SdkFuture.completed(null);
 				}
 				return closeCallerFuture(current);
 			}
 
 			closing_.set(true);
-			attempt = new CompletableFuture<Void>();
+			attempt = new SdkFuture<Void>();
 			closingFuture_ = attempt;
 		}
 
@@ -912,8 +914,8 @@ public class Context implements Closeable {
 				Exposure[] exposures = null;
 				GoalAchievement[] achievements = null;
 				int eventCount;
-				final CompletableFuture<Void> result = new CompletableFuture<Void>();
-				final CompletableFuture<Void> callerResult = new CompletableFuture<Void>();
+				final CompletableFuture<Void> result = new SdkFuture<Void>();
+				final CompletableFuture<Void> callerResult = new SdkFuture<Void>();
 				result.handle(new BiFunction<Void, Throwable, Void>() {
 					@Override
 					public Void apply(Void ignoredResult, Throwable exception) {
@@ -1026,7 +1028,7 @@ public class Context implements Closeable {
 								result.complete(null);
 							}
 						}
-					});
+					}, AsyncExecutor.get());
 
 					publishResult.exceptionally(onPublishFailure);
 
@@ -1044,7 +1046,7 @@ public class Context implements Closeable {
 			}
 		}
 
-		return CompletableFuture.completedFuture(null);
+		return SdkFuture.completed(null);
 	}
 
 	private void checkNotClosed() {
@@ -2124,7 +2126,7 @@ public class Context implements Closeable {
 	private final AtomicBoolean closed_ = new AtomicBoolean(false);
 	private final AtomicBoolean refreshing_ = new AtomicBoolean(false);
 
-	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = CompletableFuture.completedFuture(null);
+	private static final CompletableFuture<Void> COMPLETED_VOID_FUTURE = SdkFuture.completed(null);
 	private final AtomicReference<CompletableFuture<Void>> readyFuture_ = new AtomicReference<CompletableFuture<Void>>();
 	private final Object closeLock_ = new Object();
 	// Guarded by closeLock_.

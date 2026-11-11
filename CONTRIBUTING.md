@@ -35,6 +35,12 @@ All tests can be run at once with the following command:
 ./gradlew test
 ```
 
+`./gradlew check` and `./gradlew build` also run the tests on a JDK 25 runtime (`testJdk25`). Gradle downloads JDK 25 on the first run if it is not installed. To skip it, for example when offline, pass `-PskipJdk25`:
+
+```
+./gradlew build -PskipJdk25
+```
+
 ### Formatting and static analysis checks
 
 You can run all formatting and static analysis checks at once with the following command:
