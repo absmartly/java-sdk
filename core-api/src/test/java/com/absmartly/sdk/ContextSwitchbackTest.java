@@ -780,7 +780,7 @@ class ContextSwitchbackTest {
 	// The branches of the SWITCHBACK.md "Exposure flags" table: every branch an eligible-cluster
 	// switchback shares with a unit experiment.
 	enum ParityBranch {
-		OVERRIDE, OVERRIDE_OVER_STRICT_MISMATCH, RULE, RULE_OVER_STRICT_MISMATCH, STRICT_MISMATCH, STRICT_MISMATCH_OVER_FULL_ON, NON_STRICT_MISMATCH, FULL_ON, TRAFFIC_MISS, CUSTOM, DRAW;
+		OVERRIDE, OVERRIDE_OVER_STRICT_MISMATCH, RULE, RULE_OVER_STRICT_MISMATCH, STRICT_MISMATCH, STRICT_MISMATCH_OVER_FULL_ON, STRICT_MISMATCH_OVER_TRAFFIC_MISS, NON_STRICT_MISMATCH, FULL_ON, TRAFFIC_MISS, CUSTOM, DRAW;
 
 		void configure(Experiment experiment) {
 			switch (this) {
@@ -794,6 +794,11 @@ class ContextSwitchbackTest {
 				experiment.audience = STRICT_GOLD_AUDIENCE;
 				experiment.audienceStrict = true;
 				experiment.fullOnVariant = 1;
+				break;
+			case STRICT_MISMATCH_OVER_TRAFFIC_MISS:
+				experiment.audience = STRICT_GOLD_AUDIENCE;
+				experiment.audienceStrict = true;
+				experiment.trafficSplit = new double[]{1.0, 0.0};
 				break;
 			case NON_STRICT_MISMATCH:
 				experiment.audience = STRICT_GOLD_AUDIENCE;
@@ -833,6 +838,8 @@ class ContextSwitchbackTest {
 				flags(false, true, false, false, false, false, true));
 		EXPOSURE_FLAGS.put(ParityBranch.STRICT_MISMATCH, flags(false, true, false, false, false, true, false));
 		EXPOSURE_FLAGS.put(ParityBranch.STRICT_MISMATCH_OVER_FULL_ON,
+				flags(false, true, false, false, false, true, false));
+		EXPOSURE_FLAGS.put(ParityBranch.STRICT_MISMATCH_OVER_TRAFFIC_MISS,
 				flags(false, true, false, false, false, true, false));
 		EXPOSURE_FLAGS.put(ParityBranch.NON_STRICT_MISMATCH, flags(true, true, false, false, false, true, false));
 		EXPOSURE_FLAGS.put(ParityBranch.FULL_ON, flags(true, true, false, true, false, false, false));
