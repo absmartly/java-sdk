@@ -83,11 +83,12 @@ public class ClientConfig {
 	}
 
 	/**
-	 * Sets the application version, sent as the X-Application-Version request header when it is a whole number (the
-	 * collector rejects anything else, so other versions, such as a semantic version like "2.4.1", are sent as "0").
-	 * Surrounding whitespace is removed; a null, empty or whitespace-only value means no version is set, which is sent
-	 * as "0". This version is not exposed to audiences or rules as app_version; set an app_version attribute yourself
-	 * if you want to target on it.
+	 * Sets the application version, sent as the X-Application-Version request header when it is a whole number of at
+	 * most 18 digits (the collector rejects anything else, so other versions are sent as "0"). Any value that is longer
+	 * than 18 digits, negative, or non-numeric (such as a semantic version like "2.4.1") is sent as "0". Surrounding
+	 * whitespace is removed; a null, empty or whitespace-only value means no version is set, which is sent as "0". This
+	 * version is not exposed to audiences or rules as app_version; set an app_version attribute yourself if you want to
+	 * target on it.
 	 */
 	public ClientConfig setApplicationVersion(@Nullable final String applicationVersion) {
 		applicationVersion_ = normalizeApplicationVersion(applicationVersion);
@@ -96,6 +97,7 @@ public class ClientConfig {
 
 	/**
 	 * Sets a numeric application version, sent as the X-Application-Version request header. 0 means no version is set.
+	 * Negative values and values with more than 18 digits are rejected by the collector and sent as "0".
 	 */
 	public ClientConfig setApplicationVersion(final long applicationVersion) {
 		applicationVersion_ = Long.toString(applicationVersion);
