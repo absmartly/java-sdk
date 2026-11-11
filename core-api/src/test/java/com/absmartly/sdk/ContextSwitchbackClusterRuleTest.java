@@ -534,6 +534,7 @@ class ContextSwitchbackClusterRuleTest {
 	void contextMatchesTheSdkSwitchbackWireRuleParityGrid() {
 		int eligible = 0;
 		int ineligible = 0;
+		int trafficMisses = 0;
 		final long[] anchors = {ANCHOR, ANCHOR + 7 * HOUR};
 		final long[] periods = {HOUR, 2 * HOUR, 24 * HOUR};
 		for (final ClusterCase cluster : ClusterCase.values()) {
@@ -570,6 +571,10 @@ class ContextSwitchbackClusterRuleTest {
 										++eligible;
 									} else {
 										++ineligible;
+										// From the anchor on, an ineligible keyed cluster is a traffic miss.
+										if (now >= anchor) {
+											++trafficMisses;
+										}
 									}
 								}
 							}
@@ -580,6 +585,8 @@ class ContextSwitchbackClusterRuleTest {
 		}
 		assertTrue(eligible > 100);
 		assertTrue(ineligible > 100);
+		// Pre-anchor cases alone meet the guard above; this one needs the recorded traffic-miss branch.
+		assertTrue(trafficMisses > 0);
 
 		// The deliberate divergence: an anchor off the hour is unservable in the SDK (as in the
 		// Collector's Registry), while the transcribed oracle would re-ceil it and draw.
