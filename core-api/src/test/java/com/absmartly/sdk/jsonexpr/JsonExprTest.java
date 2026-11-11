@@ -118,6 +118,42 @@ class JsonExprTest extends TestUtils {
 	}
 
 	@Test
+	void testNumericOperandIsLocaleIndependent() throws InterruptedException {
+		final Map<String, Object> vars = mapOf("version", 2.5);
+		final AtomicReference<Throwable> failure = new AtomicReference<Throwable>();
+		final Locale previous = Locale.getDefault();
+		Locale.setDefault(Locale.GERMANY);
+		try {
+			// A new thread, so the evaluator's thread-local number format is created under the German locale. Under a
+			// comma-decimal locale a numeric 2.5 would otherwise convert to "2,5" and never match its string form.
+			final Thread thread = new Thread(new Runnable() {
+				@Override
+				public void run() {
+					try {
+						assertTrue(jsonExpr.evaluateBooleanExpr(
+								binaryOp("eq", varFor("version"), valueFor("2.5")), vars));
+						assertFalse(jsonExpr.evaluateBooleanExpr(
+								binaryOp("eq", varFor("version"), valueFor("2,5")), vars));
+						assertTrue(jsonExpr.evaluateBooleanExpr(
+								binaryOp("in", valueFor("value is 2.5 here"), varFor("version")), vars));
+						assertTrue(jsonExpr.evaluateBooleanExpr(
+								binaryOp("match", varFor("version"), valueFor("^2\\.5$")), vars));
+					} catch (Throwable t) {
+						failure.set(t);
+					}
+				}
+			});
+			thread.start();
+			thread.join();
+		} finally {
+			Locale.setDefault(previous);
+		}
+		if (failure.get() != null) {
+			throw new AssertionError(failure.get());
+		}
+	}
+
+	@Test
 	void testSemverNumericOperandIsLocaleIndependent() throws InterruptedException {
 		final Map<String, Object> vars = mapOf("version", 2.5);
 		final AtomicReference<Throwable> failure = new AtomicReference<Throwable>();
