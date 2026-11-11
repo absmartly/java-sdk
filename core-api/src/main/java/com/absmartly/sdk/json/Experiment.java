@@ -54,9 +54,9 @@ public class Experiment {
 	// semantic: the first unit yielding a value serves the experiment, so equals compares it too.
 	@JsonDeserialize(as = LinkedHashMap.class)
 	public Map<String, String> switchbackClusters;
-	// Allow-list of cluster key values; null or empty admits every value. The Collector's Registry
-	// (Registry.java:449-455) treats an empty persisted list like null, because Prisma stores "every
-	// value" as '{}', and builds its filter set only when the list is non-empty.
+	// Allow-list of cluster key values; null or empty admits every value. The Collector serves an
+	// experiment that has no allow-list rows with this field absent, and builds its filter set only
+	// when the list is non-empty.
 	public String[] switchbackClusterValues;
 	public Long switchbackStartAt;
 	public Long switchbackPeriodMs;

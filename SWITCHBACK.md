@@ -24,7 +24,7 @@ every experiment a unit experiment for this SDK.
 | --- | --- |
 | `randomizationType` | `"unit"` or `"switchback"`. Absent means `"unit"`. |
 | `switchbackClusters` | Object mapping a unit type name to an attribute path, in the order served (unit type id ascending). The order is significant and is preserved, so `Experiment.equals` and `hashCode` compare it: two experiments whose maps hold the same entries in a different order are not equal. |
-| `switchbackClusterValues` | Allowed cluster values. Null or empty (`[]`) allows every value, as in the Collector: its Registry builds the filter only for a non-empty list, because Prisma stores "every value" as `'{}'` (`Registry.java:449-455`). |
+| `switchbackClusterValues` | Allowed cluster values. Null or empty (`[]`) allows every value, as in the Collector: it serves an experiment that has no allow-list rows with this field absent, and builds its filter only for a non-empty list. |
 | `switchbackStartAt` | Grid start (anchor), epoch milliseconds. Must be hour aligned and in `[0, 10000-01-01T00:00:00Z)`; see *Anchor*. Null before the experiment starts. |
 | `switchbackPeriodMs` | Period length in milliseconds. |
 | `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs` | Analysis-only windows. The SDK carries them but does not use them. |
