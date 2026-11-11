@@ -1760,8 +1760,9 @@ public class Context implements Closeable {
 		final boolean ruleOverride;
 		// Whether the resolution records an exposure when exposed.
 		final boolean silent;
-		// Whether the switchback applies (its serving status is not ABSENT), i.e. the Collector lists an
-		// assignment. Unlike !assigned, a strict audience mismatch or a rule win does not clear it.
+		// Meaningful for switchbacks only (always false for a unit experiment): whether the switchback
+		// applies (its serving status is not ABSENT), i.e. the Collector lists an assignment. Unlike
+		// !assigned, a strict audience mismatch or a rule win does not clear it.
 		final boolean applies;
 
 		SwitchbackResolution(final Assignment assignment) {
