@@ -1433,10 +1433,10 @@ class ContextSwitchbackTest {
 		assertEquals(0, context.getPendingCount());
 
 		// Contrast: at the anchor the cluster is eligible and the draw can run, so the traffic miss
-		// is recorded.
+		// is recorded, as eligible=false (period 0 draws 0, so the variant alone cannot show the miss).
 		clock.now = ANCHOR;
 		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", 0, ANCHOR, true, false)}, publishExposures(context));
 	}
 
 	// An override on a switchback with no serving unit is exposed under the declared unitType when the
