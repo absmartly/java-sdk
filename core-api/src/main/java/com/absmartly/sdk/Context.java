@@ -1256,21 +1256,23 @@ public class Context implements Closeable {
 	// Switchback identity: id, iteration, the ordered cluster map, the cluster value allow-list,
 	// startAt, periodMs and design, i.e. every input to the period grid and the cluster key, plus
 	// unitType when either side takes the legacy path. Seed, split and analysis-only fields are
-	// excluded. Absent and unit experiments have no identity.
-	private static boolean sameSwitchbackIdentity(final ContextExperiment a, final ContextExperiment b) {
-		final boolean aSwitchback = (a != null) && isSwitchback(a.data);
-		final boolean bSwitchback = (b != null) && isSwitchback(b.data);
-		if (!aSwitchback || !bSwitchback) {
-			return aSwitchback == bSwitchback;
+	// excluded. installed is always a switchback; an absent or unit-experiment previous definition
+	// has no identity to keep.
+	private static boolean sameSwitchbackIdentity(final ContextExperiment previous,
+			final ContextExperiment installed) {
+		if ((previous == null) || !isSwitchback(previous.data)) {
+			return false;
 		}
-		return (a.data.id == b.data.id) && (a.data.iteration == b.data.iteration)
-				&& Experiment.orderedEquals(a.data.switchbackClusters, b.data.switchbackClusters)
-				&& Arrays.equals(a.data.switchbackClusterValues, b.data.switchbackClusterValues)
-				&& Objects.equals(a.data.switchbackStartAt, b.data.switchbackStartAt)
-				&& Objects.equals(a.data.switchbackPeriodMs, b.data.switchbackPeriodMs)
-				&& Objects.equals(a.data.switchbackDesignType, b.data.switchbackDesignType)
-				&& (((a.switchbackSourcePaths != null) && (b.switchbackSourcePaths != null))
-						|| Objects.equals(a.data.unitType, b.data.unitType));
+		final Experiment a = previous.data;
+		final Experiment b = installed.data;
+		return (a.id == b.id) && (a.iteration == b.iteration)
+				&& Experiment.orderedEquals(a.switchbackClusters, b.switchbackClusters)
+				&& Arrays.equals(a.switchbackClusterValues, b.switchbackClusterValues)
+				&& Objects.equals(a.switchbackStartAt, b.switchbackStartAt)
+				&& Objects.equals(a.switchbackPeriodMs, b.switchbackPeriodMs)
+				&& Objects.equals(a.switchbackDesignType, b.switchbackDesignType)
+				&& (((previous.switchbackSourcePaths != null) && (installed.switchbackSourcePaths != null))
+						|| Objects.equals(a.unitType, b.unitType));
 	}
 
 	// Lifecycle of one switchback experiment's cache slots: the bare-name slot (pre-anchor or an
