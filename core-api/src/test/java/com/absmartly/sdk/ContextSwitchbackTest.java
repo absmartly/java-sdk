@@ -811,6 +811,22 @@ class ContextSwitchbackTest {
 		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR + HOUR + 3)}, publishExposures(context));
 	}
 
+	// A missing or unreadable cluster map takes the Collector's legacy path, which returns an
+	// ineligible control before the audience is evaluated, so a strict mismatch there records nothing.
+	@Test
+	void audienceStrictMismatchWithAMissingOrUnreadableClusterMapRecordsNothing() {
+		for (final Map<String, String> clusters : TestUtils.listOf(null, clusters(UNIT_TYPE, "'geo"))) {
+			final Experiment experiment = switchback(2, HOUR);
+			experiment.audience = STRICT_GOLD_AUDIENCE;
+			experiment.audienceStrict = true;
+			experiment.switchbackClusters = clusters;
+			clock.now = ANCHOR + HOUR + 3;
+			final Context context = createContext(dataOf(experiment));
+			assertEquals(0, context.getTreatment("exp_sb"), String.valueOf(clusters));
+			assertEquals(0, context.getPendingCount(), String.valueOf(clusters));
+		}
+	}
+
 	// A strict-mismatched switchback is not assigned, so on a shared variable key it gives way to the
 	// next experiment that declares the key, as a unit experiment does. Only that experiment is exposed.
 	@Test
