@@ -745,8 +745,7 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(experiment));
 		clock.now = ANCHOR + HOUR;
 		assertEquals(0, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, 0, ANCHOR + HOUR, false, true, false,
-				false, false, true, false)}, publishExposures(context));
+		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR + HOUR)}, publishExposures(context));
 	}
 
 	// Exact wire form of a switchback strict audience mismatch: assigned=false, audienceMismatch=true,
