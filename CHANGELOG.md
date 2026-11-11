@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.8.0 (unreleased)
+## 1.8.0 (2026-11-11)
 
 ### Breaking change
 
@@ -13,7 +13,11 @@
 
 - With `core-api`, `*Async` stages and the static `CompletableFuture` methods work on Java 24 and later without an explicit executor. The futures `core-api` returns are plain JDK futures whose default executor is the JDK's common pool. The restrictions on Java 24 and later described under 1.7.0 now only apply to `core-api-java6`.
 
-## 1.7.0 (unreleased)
+## 1.7.0 (2026-11-11)
+
+### Release signing
+
+- Releases are now signed with a new key, `7BFDD7D4127C4C99B779DCBA009F94BC0D0D92F8` (Absmartly <sdks@absmartly.com>, published on keys.openpgp.org). The key that signed 1.6.3, `E06D1BDE151F5F9A79E44DC74D51393871C0131A`, expired on 2026-11-05. If you verify signatures against a pinned key, add the new one.
 
 ### Added
 
