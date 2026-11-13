@@ -43,7 +43,8 @@ class ClientFixTest extends TestUtils {
 		final ContextData actual = dataFuture.join();
 
 		assertSame(expected, actual);
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, sdkHeaders());
+		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+				sdkHeaders());
 	}
 
 	@Test

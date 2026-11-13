@@ -106,7 +106,8 @@ class ClientTest extends TestUtils {
 			client.publish(event);
 			assertDoesNotThrow(client::close);
 
-			verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, sdkHeaders());
+			verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+					sdkHeaders());
 			verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null,
 					expectedHeaders, publishBytes);
 			verify(httpClient, Mockito.timeout(5000).times(1)).close();
@@ -246,7 +247,8 @@ class ClientTest extends TestUtils {
 		assertTrue(actual.getCause() instanceof Exception);
 		assertEquals("Internal Server Error", actual.getCause().getMessage());
 
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, sdkHeaders());
+		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+				sdkHeaders());
 		verify(deser, Mockito.timeout(5000).times(0)).deserialize(any(), anyInt(), anyInt());
 	}
 
@@ -275,7 +277,8 @@ class ClientTest extends TestUtils {
 		final CompletionException actual = assertThrows(CompletionException.class, dataFuture::join);
 		assertSame(actual.getCause(), failure);
 
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, sdkHeaders());
+		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+				sdkHeaders());
 		verify(deser, Mockito.timeout(5000).times(0)).deserialize(any(), anyInt(), anyInt());
 	}
 
