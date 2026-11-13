@@ -36,7 +36,7 @@ public class ClientConfig {
 
 	/**
 	 * Whether an application version counts as set: not null and not "0". "0" is what the X-Application-Version header
-	 * carries when no version is configured, so it is treated as unset for the app_version system attribute.
+	 * carries when no version is configured, so it is treated as unset.
 	 */
 	static boolean isApplicationVersionSet(final String applicationVersion) {
 		return applicationVersion != null && !applicationVersion.trim().isEmpty() && !"0".equals(applicationVersion);
@@ -83,11 +83,12 @@ public class ClientConfig {
 	}
 
 	/**
-	 * Sets the application version, sent as the X-Application-Version header when it is a whole number (the collector
-	 * rejects anything else, so other versions are sent as "0") and, when system attributes are enabled, in full as the
-	 * app_version attribute, for example a semantic version such as "2.4.1". Surrounding whitespace is removed;
-	 * a null, empty or whitespace-only value means no version is set, which is sent as "0". A version of "0" is
-	 * treated as unset, so app_version is then left out.
+	 * Sets the application version, sent as the X-Application-Version request header when it is a whole number of at
+	 * most 18 digits (the collector rejects anything else, so other versions are sent as "0"). Any value that is longer
+	 * than 18 digits, negative, or non-numeric (such as a semantic version like "2.4.1") is sent as "0". Surrounding
+	 * whitespace is removed; a null, empty or whitespace-only value means no version is set, which is sent as "0". This
+	 * version is not exposed to audiences or rules as app_version; set an app_version attribute yourself if you want to
+	 * target on it.
 	 */
 	public ClientConfig setApplicationVersion(@Nullable final String applicationVersion) {
 		applicationVersion_ = normalizeApplicationVersion(applicationVersion);
@@ -95,7 +96,8 @@ public class ClientConfig {
 	}
 
 	/**
-	 * Sets a numeric application version. 0 means no version is set: it is sent as "0" and app_version is left out.
+	 * Sets a numeric application version, sent as the X-Application-Version request header. 0 means no version is set.
+	 * Negative values and values with more than 18 digits are rejected by the collector and sent as "0".
 	 */
 	public ClientConfig setApplicationVersion(final long applicationVersion) {
 		applicationVersion_ = Long.toString(applicationVersion);

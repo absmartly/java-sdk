@@ -50,6 +50,7 @@ class LocalHttpServerIntegrationTest {
 	private HttpServer server;
 	private String endpoint;
 	private final LinkedBlockingQueue<RecordedRequest> requests = new LinkedBlockingQueue<RecordedRequest>();
+	private volatile String contextResponse = "{\"experiments\":[]}";
 
 	@BeforeEach
 	void startServer() throws IOException {
@@ -60,8 +61,8 @@ class LocalHttpServerIntegrationTest {
 
 			final byte[] responseBody;
 			if ("GET".equals(recorded.method)) {
-				// Minimal valid ContextData so the context reaches "ready".
-				responseBody = "{\"experiments\":[]}".getBytes(StandardCharsets.UTF_8);
+				// Configurable ContextData so the context reaches "ready".
+				responseBody = contextResponse.getBytes(StandardCharsets.UTF_8);
 			} else {
 				responseBody = "{}".getBytes(StandardCharsets.UTF_8);
 			}
@@ -158,10 +159,12 @@ class LocalHttpServerIntegrationTest {
 			assertEquals(application, query.get("application"));
 			assertEquals(environment, query.get("environment"));
 
-			// Per the wire contract: Java sends NO auth headers on GET (auth via query params).
-			assertFalse(get.headers.containsKey("x-api-key"), "GET must not carry X-API-Key");
-			assertFalse(get.headers.containsKey("x-application"), "GET must not carry X-Application");
-			assertFalse(get.headers.containsKey("x-environment"), "GET must not carry X-Environment");
+			// The GET carries the same SDK headers as the publish PUT, as javascript-sdk does on every request.
+			assertEquals("test-api-key", get.headers.get("x-api-key"));
+			assertEquals(application, get.headers.get("x-application"));
+			assertEquals(environment, get.headers.get("x-environment"));
+			assertEquals("0", get.headers.get("x-application-version"));
+			assertEquals("absmartly-java-sdk/" + SdkVersion.VERSION, get.headers.get("x-agent"));
 
 			// --- Queue an exposure + a goal, then publish ---
 			context.getTreatment("an_experiment");
@@ -215,6 +218,80 @@ class LocalHttpServerIntegrationTest {
 			assertTrue(body.get("exposures").isArray());
 			assertTrue(body.get("exposures").size() > 0, "exposures must be non-empty");
 			assertEquals("an_experiment", body.get("exposures").get(0).get("name").asText());
+		} finally {
+			sdk.close();
+		}
+	}
+
+	// A strict environment+application audience matches (variant 1, no mismatch) and the serialized PUT body carries
+	// no application/environment/app_version attribute, only the user's attribute (plus sdk_name/sdk_version when
+	// includeSystemAttributes is on). This pins the Serko regression and §4.7 against the real wire payload.
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.CsvSource({"false,", "true,sdk_name;sdk_version"})
+	void matchesEnvironmentAudienceWithoutPublishingSystemAttributes(boolean includeSystemAttributes,
+			String systemNamesCsv) throws Exception {
+		contextResponse = "{\"experiments\":[{"
+				+ "\"id\":1,\"name\":\"exp_environment\",\"iteration\":1,\"unitType\":\"session_id\","
+				+ "\"seedHi\":3603515,\"seedLo\":233373850,\"split\":[0.5,0.5],"
+				+ "\"trafficSeedHi\":449867249,\"trafficSeedLo\":455443629,\"trafficSplit\":[0.0,1.0],"
+				+ "\"fullOnVariant\":1,\"applications\":[{\"name\":\"www\"}],"
+				+ "\"variants\":[{\"name\":\"A\",\"config\":null},{\"name\":\"B\",\"config\":null}],"
+				+ "\"audienceStrict\":true,\"audience\":\"{\\\"filter\\\":["
+				+ "{\\\"eq\\\":[{\\\"var\\\":\\\"environment\\\"},{\\\"value\\\":\\\"development\\\"}]},"
+				+ "{\\\"eq\\\":[{\\\"var\\\":\\\"application\\\"},{\\\"value\\\":\\\"www\\\"}]}]}\"}]}";
+
+		final ABSmartly sdk = ABSmartly.builder()
+				.endpoint(endpoint)
+				.apiKey("test-api-key")
+				.application("www")
+				.environment("development")
+				.build();
+
+		try {
+			final ContextConfig contextConfig = ContextConfig.create()
+					.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
+					.setIncludeSystemAttributes(includeSystemAttributes);
+
+			final Context context = sdk.createContext(contextConfig);
+			context.waitUntilReady();
+
+			context.setAttribute("user_type", "vip");
+			assertEquals(1, context.getTreatment("exp_environment"));
+			context.publish();
+
+			RecordedRequest put = null;
+			RecordedRequest recorded;
+			while ((recorded = requests.poll(5, TimeUnit.SECONDS)) != null) {
+				if ("PUT".equals(recorded.method)) {
+					put = recorded;
+					break;
+				}
+			}
+			assertNotNull(put, "expected a PUT /context request");
+
+			final JsonNode body = MAPPER.readTree(put.body);
+			final JsonNode exposures = body.get("exposures");
+			assertEquals(1, exposures.size());
+			assertEquals("exp_environment", exposures.get(0).get("name").asText());
+			assertEquals(1, exposures.get(0).get("variant").asInt());
+			assertFalse(exposures.get(0).get("audienceMismatch").asBoolean());
+
+			final java.util.List<String> expectedNames = new java.util.ArrayList<String>();
+			if (systemNamesCsv != null && !systemNamesCsv.isEmpty()) {
+				for (final String name : systemNamesCsv.split(";")) {
+					expectedNames.add(name);
+				}
+			}
+			expectedNames.add("user_type");
+
+			final java.util.List<String> actualNames = new java.util.ArrayList<String>();
+			final JsonNode attributes = body.get("attributes");
+			if (attributes != null) {
+				for (final JsonNode attribute : attributes) {
+					actualNames.add(attribute.get("name").asText());
+				}
+			}
+			assertEquals(expectedNames, actualNames);
 		} finally {
 			sdk.close();
 		}

@@ -94,7 +94,7 @@ class ClientTest extends TestUtils {
 					"X-Application-Version", "0",
 					"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 
-			when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+			when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 					.thenReturn(getByteResponse(dataBytes));
 			when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, publishBytes))
 					.thenReturn(getByteResponse(publishBytes));
@@ -106,7 +106,8 @@ class ClientTest extends TestUtils {
 			client.publish(event);
 			assertDoesNotThrow(client::close);
 
-			verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, null);
+			verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+					sdkHeaders());
 			verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null,
 					expectedHeaders, publishBytes);
 			verify(httpClient, Mockito.timeout(5000).times(1)).close();
@@ -138,7 +139,7 @@ class ClientTest extends TestUtils {
 				"application", "website",
 				"environment", "dev");
 
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 				.thenReturn(getByteResponse(bytes));
 
 		final ContextData expected = new ContextData();
@@ -149,6 +150,53 @@ class ClientTest extends TestUtils {
 
 		assertEquals(expected, actual);
 		assertSame(expected, actual);
+	}
+
+	@Test
+	void getContextDataSendsSameSDKHeadersAsPublish() {
+		// cross-sdk scenario 320: the context GET carries the SDK headers, including X-Agent, like the publish PUT
+		final HTTPClient httpClient = mock(HTTPClient.class);
+		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
+		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
+		final Client client = Client.create(ClientConfig.create()
+				.setEndpoint("https://localhost/v1")
+				.setAPIKey("test-api-key")
+				.setApplication("website")
+				.setApplicationVersion("1004")
+				.setEnvironment("dev")
+				.setContextDataDeserializer(deser)
+				.setContextEventSerializer(ser), httpClient);
+
+		final byte[] bytes = "{}".getBytes(StandardCharsets.UTF_8);
+		when(deser.deserialize(bytes, 0, bytes.length)).thenReturn(new ContextData());
+		when(httpClient.get(any(), any(), any())).thenReturn(getByteResponse(bytes));
+
+		final PublishEvent event = new PublishEvent();
+		when(ser.serialize(event)).thenReturn(new byte[]{0});
+		when(httpClient.put(any(), any(), any(), any())).thenReturn(getByteResponse(new byte[]{0}));
+
+		client.getContextData().join();
+		client.publish(event).join();
+
+		final org.mockito.ArgumentCaptor<Map<String, String>> getHeaders = org.mockito.ArgumentCaptor
+				.forClass(Map.class);
+		verify(httpClient, Mockito.timeout(5000).times(1)).get(eq("https://localhost/v1/context"),
+				eq(mapOf("application", "website", "environment", "dev")), getHeaders.capture());
+
+		final org.mockito.ArgumentCaptor<Map<String, String>> putHeaders = org.mockito.ArgumentCaptor
+				.forClass(Map.class);
+		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), putHeaders.capture(), any());
+
+		assertNotNull(getHeaders.getValue());
+		assertTrue(getHeaders.getValue().get("X-Agent")
+				.matches("^absmartly-[a-z0-9]+-sdk/[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+-]*)?$"));
+		assertEquals(mapOf(
+				"X-API-Key", "test-api-key",
+				"X-Application", "website",
+				"X-Environment", "dev",
+				"X-Application-Version", "1004",
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION), getHeaders.getValue());
+		assertEquals(putHeaders.getValue(), getHeaders.getValue());
 	}
 
 	private CompletableFuture<HTTPClient.Response> getByteResponse(byte[] bytes) {
@@ -190,7 +238,7 @@ class ClientTest extends TestUtils {
 				"application", "website",
 				"environment", "dev");
 
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 				.thenReturn(CompletableFuture.completedFuture(
 						new DefaultHTTPClient.DefaultResponse(500, "Internal Server Error", null, null)));
 
@@ -199,7 +247,8 @@ class ClientTest extends TestUtils {
 		assertTrue(actual.getCause() instanceof Exception);
 		assertEquals("Internal Server Error", actual.getCause().getMessage());
 
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, null);
+		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+				sdkHeaders());
 		verify(deser, Mockito.timeout(5000).times(0)).deserialize(any(), anyInt(), anyInt());
 	}
 
@@ -221,14 +270,15 @@ class ClientTest extends TestUtils {
 		final Exception failure = new Exception("FAILED");
 		final CompletableFuture<HTTPClient.Response> responseFuture = failedFuture(failure);
 
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 				.thenReturn(responseFuture);
 
 		final CompletableFuture<ContextData> dataFuture = client.getContextData();
 		final CompletionException actual = assertThrows(CompletionException.class, dataFuture::join);
 		assertSame(actual.getCause(), failure);
 
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, null);
+		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+				sdkHeaders());
 		verify(deser, Mockito.timeout(5000).times(0)).deserialize(any(), anyInt(), anyInt());
 	}
 
@@ -448,5 +498,14 @@ class ClientTest extends TestUtils {
 		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), headers.capture(), any());
 		assertEquals("0", headers.getValue().get("X-Application-Version"));
 		assertEquals("2.4.1", client.getApplicationVersion());
+	}
+
+	private static Map<String, String> sdkHeaders() {
+		return mapOf(
+				"X-API-Key", "test-api-key",
+				"X-Application", "website",
+				"X-Environment", "dev",
+				"X-Application-Version", "0",
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 	}
 }

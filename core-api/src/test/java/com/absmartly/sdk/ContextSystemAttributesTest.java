@@ -17,41 +17,80 @@ import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.java.time.Clock;
 import com.absmartly.sdk.json.Attribute;
 import com.absmartly.sdk.json.ContextData;
+import com.absmartly.sdk.json.Exposure;
 import com.absmartly.sdk.json.PublishEvent;
 
 class ContextSystemAttributesTest extends TestUtils {
+	static final String EXP = "exp_test_ab";
+	static final String SESSION_ID = "e791e240fcd3df7d238cfc285f475e8152fcc0ec";
+
 	final Clock clock = Clock.fixed(1_620_000_000_000L);
-	ContextData audienceData;
 	ContextDataProvider dataProvider;
 	ContextEventHandler eventHandler;
 	ScheduledExecutorService scheduler;
 
 	@BeforeEach
 	void setUp() {
-		final byte[] bytes = getResourceBytes("audience_context.json");
-		audienceData = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
 		dataProvider = mock(ContextDataProvider.class);
 		eventHandler = mock(ContextEventHandler.class);
 		scheduler = mock(ScheduledExecutorService.class);
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 	}
 
-	Client client(String applicationVersion) {
+	ContextData audienceData() {
+		final byte[] bytes = getResourceBytes("audience_context.json");
+		return new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+	}
+
+	// A copy of audience_context.json with exp_test_ab made a strict 0/100 split to variant 1 (B) gated by the
+	// given audience filter, so the audience decides the variant.
+	ContextData strictAudience(String filter) {
+		final ContextData data = audienceData();
+		data.experiments[0].audienceStrict = true;
+		data.experiments[0].trafficSplit = new double[]{0.0, 1.0};
+		data.experiments[0].split = new double[]{0.0, 1.0};
+		data.experiments[0].audience = "{\"filter\":" + filter + "}";
+		return data;
+	}
+
+	Client client() {
+		return client("website", "production", null);
+	}
+
+	Client client(String application, String environment, String applicationVersion) {
 		final ClientConfig config = ClientConfig.create()
 				.setEndpoint("https://localhost/v1")
-				.setAPIKey("key")
-				.setApplication("website")
-				.setEnvironment("production");
+				.setAPIKey("key");
+		if (application != null) {
+			config.setApplication(application);
+		}
+		if (environment != null) {
+			config.setEnvironment(environment);
+		}
 		if (applicationVersion != null) {
 			config.setApplicationVersion(applicationVersion);
 		}
 		return Client.create(config, mock(HTTPClient.class));
 	}
 
+	// Client.create rejects an empty application or environment, so a context whose client has no such configuration
+	// is built with a stubbed client that reports the missing value.
+	Client stubbedClient(String application, String environment, String applicationVersion) {
+		final Client client = mock(Client.class);
+		when(client.getApplication()).thenReturn(application);
+		when(client.getEnvironment()).thenReturn(environment);
+		when(client.getApplicationVersion()).thenReturn(applicationVersion);
+		return client;
+	}
+
 	Context createContext(ContextConfig config, Client client, ContextData data) {
 		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, null, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
 				client);
+	}
+
+	ContextConfig config() {
+		return ContextConfig.create().setUnit("session_id", SESSION_ID);
 	}
 
 	PublishEvent publishAndCapture(Context context) {
@@ -61,12 +100,188 @@ class ContextSystemAttributesTest extends TestUtils {
 		return captor.getValue();
 	}
 
+	Exposure exposureOf(PublishEvent event, String name) {
+		for (final Exposure exposure : event.exposures) {
+			if (exposure.name.equals(name)) {
+				return exposure;
+			}
+		}
+		return null;
+	}
+
+	// §4.1: a strict audience on the configured environment matches and gives the full-on variant, not variant 0.
 	@Test
-	void disabledByDefault() {
-		final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc");
+	void strictAudienceOnEnvironmentMatches() {
+		final Context context = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
+		assertEquals(1, context.getTreatment(EXP));
+		assertEquals("large", context.getVariableValue("banner.size", "default"));
+
+		final Exposure exposure = exposureOf(publishAndCapture(context), EXP);
+		assertEquals(1, exposure.variant);
+		assertFalse(exposure.audienceMismatch);
+	}
+
+	// §4.2: a strict audience on the configured application matches.
+	@Test
+	void strictAudienceOnApplicationMatches() {
+		final Context context = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]}]"));
+		assertEquals(1, context.getTreatment(EXP));
+
+		final Exposure exposure = exposureOf(publishAndCapture(context), EXP);
+		assertFalse(exposure.audienceMismatch);
+	}
+
+	// §4.3: a strict audience naming another environment/application gives variant 0 and audienceMismatch.
+	@Test
+	void strictAudienceOnAnotherEnvironmentGivesVariantZero() {
+		final Context context = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]"));
+		assertEquals(0, context.getTreatment(EXP));
+
+		final Exposure exposure = exposureOf(publishAndCapture(context), EXP);
+		assertEquals(0, exposure.variant);
+		assertTrue(exposure.audienceMismatch);
+	}
+
+	@Test
+	void strictAudienceOnAnotherApplicationGivesVariantZero() {
+		final Context context = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"mobile\"}]}]"));
+		assertEquals(0, context.getTreatment(EXP));
+		assertTrue(exposureOf(publishAndCapture(context), EXP).audienceMismatch);
+	}
+
+	// §4.4: a user value set after creation wins; the cached assignment is re-checked.
+	@Test
+	void userSetEnvironmentWinsSetAfterCreation() {
+		final Context staging = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]"));
+		staging.setAttribute("environment", "staging");
+		assertEquals(1, staging.getTreatment(EXP));
+
+		final Context production = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
+		production.setAttribute("environment", "staging");
+		assertEquals(0, production.getTreatment(EXP));
+		assertTrue(exposureOf(publishAndCapture(production), EXP).audienceMismatch);
+	}
+
+	@Test
+	void invalidatesAssignmentCachedBeforeUserSetEnvironment() {
+		final Context context = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]"));
+		assertEquals(0, context.peekTreatment(EXP));
+
+		context.setAttribute("environment", "staging");
+		assertEquals(1, context.peekTreatment(EXP));
+		assertEquals(1, context.getTreatment(EXP));
+		assertFalse(exposureOf(publishAndCapture(context), EXP).audienceMismatch);
+	}
+
+	@Test
+	void invalidatesMatchingAssignmentOnceUserOverridesEnvironment() {
+		final Context context = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
+		assertEquals(1, context.peekTreatment(EXP));
+
+		context.setAttribute("environment", "staging");
+		assertEquals(0, context.getTreatment(EXP));
+		assertTrue(exposureOf(publishAndCapture(context), EXP).audienceMismatch);
+	}
+
+	@Test
+	void userSetApplicationWins() {
+		final Context context = createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"mobile\"}]}]"));
+		context.setAttribute("application", "mobile");
+		assertEquals(1, context.getTreatment(EXP));
+	}
+
+	// §4.6: no environment configured means no key in the map, no crash, and a filter on environment does not match
+	// while a null-check on it does.
+	@Test
+	void missingEnvironmentLeavesKeyOutOfMap() {
+		for (final String environment : new String[]{null, ""}) {
+			final Context matching = createContext(config(), stubbedClient("website", environment, null),
+					strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
+			assertEquals(0, matching.getTreatment(EXP));
+
+			final Context absent = createContext(config(), stubbedClient("website", environment, null),
+					strictAudience("[{\"null\":{\"var\":\"environment\"}}]"));
+			assertEquals(1, absent.getTreatment(EXP));
+			final Map<String, Object> attrs = absent.buildAttributesMapForTest();
+			assertEquals(1, attrs.size());
+			assertEquals("website", attrs.get("application"));
+		}
+	}
+
+	@Test
+	void missingApplicationLeavesKeyOutOfMap() {
+		final Context context = createContext(config(), stubbedClient("", "production", null),
+				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"\"}]}]"));
+		assertEquals(0, context.getTreatment(EXP));
+		final Map<String, Object> attrs = context.buildAttributesMapForTest();
+		assertEquals(1, attrs.size());
+		assertEquals("production", attrs.get("environment"));
+	}
+
+	// §4.8: app_version is never provided to audiences, even with an application version configured, whatever the flag.
+	@Test
+	void appVersionIsNotAnAudienceVariable() {
+		for (final String version : new String[]{"3", "1.2.3"}) {
+			for (final boolean include : new boolean[]{false, true}) {
+				final Context context = createContext(config().setIncludeSystemAttributes(include),
+						client("website", "production", version),
+						strictAudience("[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"" + version + "\"}]}]"));
+				assertEquals(0, context.getTreatment(EXP));
+				final Map<String, Object> attrs = context.buildAttributesMapForTest();
+				assertEquals(2, attrs.size());
+				assertEquals("website", attrs.get("application"));
+				assertEquals("production", attrs.get("environment"));
+			}
+		}
+	}
+
+	@Test
+	void userSetAppVersionIsStillEvaluated() {
+		final Context context = createContext(config(), client("website", "production", "1.2.3"),
+				strictAudience("[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"1.2.3\"}]}]"));
+		context.setAttribute("app_version", "1.2.3");
+		assertEquals(1, context.getTreatment(EXP));
+	}
+
+	// §4.5: system attributes are not real attributes; getAttributes/getAttribute do not return them.
+	@Test
+	void systemAttributesAreNotReportedAsUserAttributes() {
+		final Context context = createContext(config(), client(), audienceData());
+		context.setAttribute("age", 25);
+		final Map<String, Object> attrs = context.getAttributes();
+		assertEquals(1, attrs.size());
+		assertEquals(25, attrs.get("age"));
+		assertNull(context.getAttribute("environment"));
+		assertNull(context.getAttribute("application"));
+	}
+
+	// Flag compatibility: evaluation uses the system attributes whether the flag is unset, false or true.
+	@Test
+	void evaluationUsesSystemAttributesRegardlessOfFlag() {
+		assertEquals(1, createContext(config(), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).getTreatment(EXP));
+		assertEquals(1, createContext(config().setIncludeSystemAttributes(false), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).getTreatment(EXP));
+		assertEquals(1, createContext(config().setIncludeSystemAttributes(true), client(),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).getTreatment(EXP));
+	}
+
+	// §4.7 (in-memory): publishing adds no application/environment/app_version, with the flag unset.
+	@Test
+	void publishAddsNothingByDefault() {
+		final ContextConfig config = config();
 		assertFalse(config.getIncludeSystemAttributes());
 
-		final Context context = createContext(config, client("2.4.1"), audienceData);
+		final Context context = createContext(config, client("website", "production", "2.4.1"), audienceData());
 		context.setAttribute("age", 21);
 		context.track("goal", null);
 
@@ -74,52 +289,29 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertArrayEquals(new Attribute[]{new Attribute("age", 21, clock.millis())}, event.attributes);
 	}
 
+	// §4.7 (in-memory): with the flag on, only sdk_name and sdk_version are prepended; no application/environment/
+	// app_version even after they were used for evaluation.
 	@Test
-	void publishPrependsSystemAttributes() {
-		final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
-				.setIncludeSystemAttributes(true);
-		final Context context = createContext(config, client("2.4.1"), audienceData);
+	void publishPrependsOnlySdkAttributesWhenEnabled() {
+		final ContextConfig config = config().setIncludeSystemAttributes(true);
+		final Context context = createContext(config, client("website", "production", "2.4.1"),
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
 		context.setAttribute("age", 21);
-		context.track("goal", null);
+		assertEquals(1, context.getTreatment(EXP));
 
 		final PublishEvent event = publishAndCapture(context);
 		final long now = clock.millis();
 		assertArrayEquals(new Attribute[]{
 				new Attribute("sdk_name", "absmartly-java-sdk", now),
 				new Attribute("sdk_version", SdkVersion.VERSION, now),
-				new Attribute("application", "website", now),
-				new Attribute("environment", "production", now),
-				new Attribute("app_version", "2.4.1", now),
 				new Attribute("age", 21, now),
 		}, event.attributes);
 	}
 
 	@Test
-	void publishOmitsAppVersionWhenNotSet() {
-		for (final String version : new String[]{null, "", "  ", "0"}) {
-			reset(eventHandler);
-			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
-
-			final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
-					.setIncludeSystemAttributes(true);
-			final Context context = createContext(config, client(version), audienceData);
-			context.track("goal", null);
-
-			final PublishEvent event = publishAndCapture(context);
-			assertEquals(4, event.attributes.length);
-			for (final Attribute attr : event.attributes) {
-				assertNotEquals("app_version", attr.name);
-			}
-		}
-	}
-
-	// Without a client only the SDK's own name and version are known; the client-supplied values are
-	// left out instead of being published (or evaluated) as null.
-	@Test
 	void publishWithoutClientSendsOnlySdkAttributes() {
-		final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
-				.setIncludeSystemAttributes(true);
-		final Context context = createContext(config, null, audienceData);
+		final ContextConfig config = config().setIncludeSystemAttributes(true);
+		final Context context = createContext(config, null, audienceData());
 		context.setAttribute("age", 21);
 		context.track("goal", null);
 
@@ -145,21 +337,21 @@ class ContextSystemAttributesTest extends TestUtils {
 		}
 	}
 
-	// The collector only applies attributes set at or before an event, so system attributes take the time of the
-	// earliest event in the publish, not the publish time.
+	// The collector only applies attributes set at or before an event, so the published system attributes take the
+	// time of the earliest event in the publish, not the publish time.
 	@Test
 	void publishStampsSystemAttributesWithEarliestEvent() {
 		final MovingClock movingClock = new MovingClock(100);
-		final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
-				.setIncludeSystemAttributes(true);
+		final ContextConfig config = config().setIncludeSystemAttributes(true);
 		final Context context = Context.create(movingClock, config, scheduler,
-				CompletableFuture.completedFuture(audienceData), dataProvider, eventHandler, null,
-				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), client("2.4.1"));
+				CompletableFuture.completedFuture(audienceData()), dataProvider, eventHandler, null,
+				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
+				client("website", "production", "2.4.1"));
 		context.setAttribute("age", 21);
 		movingClock.now = 250;
 		context.track("goal", null);
 		movingClock.now = 200;
-		context.getTreatment("exp_test_ab");
+		context.getTreatment(EXP);
 		movingClock.now = 300;
 
 		final PublishEvent event = publishAndCapture(context);
@@ -167,41 +359,33 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertArrayEquals(new Attribute[]{
 				new Attribute("sdk_name", "absmartly-java-sdk", 200),
 				new Attribute("sdk_version", SdkVersion.VERSION, 200),
-				new Attribute("application", "website", 200),
-				new Attribute("environment", "production", 200),
-				new Attribute("app_version", "2.4.1", 200),
 				new Attribute("age", 21, 100),
 		}, event.attributes);
 	}
 
-	// A system attribute the user set themselves is sent only as the user's value, whether the event is earlier
-	// than the publish or happens at publish time, so the collector cannot prefer the synthetic one.
+	// A user-set system-named attribute is published only as the user's value, whether the event is earlier than the
+	// publish or happens at publish time, so the collector cannot prefer a synthetic one.
 	@Test
-	void publishSkipsSystemAttributesTheUserSet() {
+	void publishSkipsSdkAttributesTheUserSet() {
 		for (final long eventAt : new long[]{200, 300}) {
 			reset(eventHandler);
 			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 
 			final MovingClock movingClock = new MovingClock(100);
-			final ContextConfig config = ContextConfig.create().setUnit("session_id", "abc")
-					.setIncludeSystemAttributes(true);
+			final ContextConfig config = config().setIncludeSystemAttributes(true);
 			final Context context = Context.create(movingClock, config, scheduler,
-					CompletableFuture.completedFuture(audienceData), dataProvider, eventHandler, null,
+					CompletableFuture.completedFuture(audienceData()), dataProvider, eventHandler, null,
 					new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
-					client("2.4.1"));
-			context.setAttribute("environment", "staging");
-			context.setAttribute("app_version", "9.9.9");
+					client("website", "production", "2.4.1"));
+			context.setAttribute("sdk_name", "custom-wrapper");
 			movingClock.now = eventAt;
-			context.getTreatment("exp_test_ab");
+			context.getTreatment(EXP);
 			movingClock.now = 300;
 
 			final PublishEvent event = publishAndCapture(context);
 			assertArrayEquals(new Attribute[]{
-					new Attribute("sdk_name", "absmartly-java-sdk", eventAt),
 					new Attribute("sdk_version", SdkVersion.VERSION, eventAt),
-					new Attribute("application", "website", eventAt),
-					new Attribute("environment", "staging", 100),
-					new Attribute("app_version", "9.9.9", 100),
+					new Attribute("sdk_name", "custom-wrapper", 100),
 			}, event.attributes);
 		}
 	}
@@ -209,65 +393,9 @@ class ContextSystemAttributesTest extends TestUtils {
 	@Test
 	void noClientWarningIsLoggedOncePerJvm() {
 		final ContextConfig config = ContextConfig.create().setIncludeSystemAttributes(true);
-		createContext(config, null, audienceData);
+		createContext(config, null, audienceData());
 		assertTrue(Context.noClientWarningLogged());
-		createContext(config, null, audienceData);
+		createContext(config, null, audienceData());
 		assertTrue(Context.noClientWarningLogged());
-	}
-
-	@Test
-	void systemAttributesAreAudienceVariables() {
-		final ContextData data = new DefaultContextDataDeserializer().deserialize(
-				getResourceBytes("audience_context.json"), 0, getResourceBytes("audience_context.json").length);
-		data.experiments[0].audienceStrict = true;
-		data.experiments[0].audience = "{\"filter\":[{\"and\":[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]},"
-				+ "{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]},"
-				+ "{\"semver_gte\":[{\"var\":\"app_version\"},{\"value\":\"2.0.0\"}]}]}]}";
-
-		final ContextConfig enabled = ContextConfig.create()
-				.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
-				.setIncludeSystemAttributes(true);
-		assertEquals(1, createContext(enabled, client("2.4.1"), data).getTreatment("exp_test_ab"));
-		assertEquals(0, createContext(enabled, client("1.9.9"), data).getTreatment("exp_test_ab"));
-
-		final ContextConfig disabled = ContextConfig.create().setUnit("session_id",
-				"e791e240fcd3df7d238cfc285f475e8152fcc0ec");
-		assertEquals(0, createContext(disabled, client("2.4.1"), data).getTreatment("exp_test_ab"));
-	}
-
-	@Test
-	void userAttributesOverrideSystemAttributesInEvaluation() {
-		final ContextData data = new DefaultContextDataDeserializer().deserialize(
-				getResourceBytes("audience_context.json"), 0, getResourceBytes("audience_context.json").length);
-		data.experiments[0].audienceStrict = true;
-		data.experiments[0].audience = "{\"filter\":[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]}";
-
-		final ContextConfig config = ContextConfig.create()
-				.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
-				.setIncludeSystemAttributes(true);
-		final Context context = createContext(config, client("2.4.1"), data);
-		assertEquals(0, context.getTreatment("exp_test_ab"));
-
-		context.setAttribute("environment", "staging");
-		final Map<String, Object> attrs = context.getAttributes();
-		assertEquals(1, attrs.size());
-		assertEquals(1, context.getTreatment("exp_test_ab"));
-	}
-
-	@Test
-	void absmartlyPassesConfiguredClientToContext() throws Exception {
-		final ABSmartly absmartly = ABSmartly.create(ABSmartlyConfig.create()
-				.setClient(client("3.0.0"))
-				.setContextDataProvider(dataProvider)
-				.setContextEventHandler(eventHandler)
-				.setScheduler(scheduler));
-		final Context context = absmartly.createContextWith(
-				ContextConfig.create().setUnit("session_id", "abc").setIncludeSystemAttributes(true), audienceData);
-		context.track("goal", null);
-
-		final PublishEvent event = publishAndCapture(context);
-		assertEquals(new Attribute("environment", "production", clock.millis()).name, event.attributes[3].name);
-		assertEquals("production", event.attributes[3].value);
-		assertEquals("3.0.0", event.attributes[4].value);
 	}
 }

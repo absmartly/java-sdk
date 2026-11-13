@@ -467,16 +467,43 @@ class ContextAssignmentRulesTest extends TestUtils {
 				"{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]}", "[]", 1));
 		final String envRule = rules(assign("Production",
 				"{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}", "[]", 1));
-		final String versionRule = rules(assign("New app",
-				"{\"semver_gte\":[{\"var\":\"app_version\"},{\"value\":\"2.4.0\"}]}", "[]", 1));
 
+		// application and environment are always available to rule conditions, regardless of the flag.
 		final ContextConfig enabled = ContextConfig.create().setUnit("session_id", SESSION_ID)
 				.setIncludeSystemAttributes(true);
 		final ContextConfig disabled = ContextConfig.create().setUnit("session_id", SESSION_ID);
-		for (final String rules : new String[]{appRule, envRule, versionRule}) {
+		final ContextConfig explicitlyOff = ContextConfig.create().setUnit("session_id", SESSION_ID)
+				.setIncludeSystemAttributes(false);
+		for (final String rules : new String[]{appRule, envRule}) {
 			assertEquals(1, create(enabled, data(rules)).getTreatment(EXP));
-			assertEquals(NORMAL_VARIANT, create(disabled, data(rules)).getTreatment(EXP));
+			assertEquals(1, create(disabled, data(rules)).getTreatment(EXP));
+			assertEquals(1, create(explicitlyOff, data(rules)).getTreatment(EXP));
 		}
+	}
+
+	@Test
+	void appVersionIsNotARuleCondition() {
+		final String versionRule = rules(assign("New app",
+				"{\"semver_gte\":[{\"var\":\"app_version\"},{\"value\":\"2.4.0\"}]}", "[]", 1));
+
+		// app_version is no longer provided to rule conditions even with an application version configured.
+		for (final boolean include : new boolean[]{false, true}) {
+			final ContextConfig config = ContextConfig.create().setUnit("session_id", SESSION_ID)
+					.setIncludeSystemAttributes(include);
+			assertEquals(NORMAL_VARIANT, create(config, data(versionRule)).getTreatment(EXP));
+		}
+	}
+
+	@Test
+	void userAttributeOverridesSystemAttributeInRuleConditions() {
+		final String envRule = rules(assign("Staging",
+				"{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}", "[]", 1));
+
+		final Context context = create(data(envRule));
+		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+
+		context.setAttribute("environment", "staging");
+		assertEquals(1, context.getTreatment(EXP));
 	}
 
 	@Test

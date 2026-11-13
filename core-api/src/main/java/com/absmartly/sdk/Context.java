@@ -51,8 +51,9 @@ public class Context implements Closeable {
 
 	/**
 	 * Creates a context with no client. Equivalent to the client-aware overload with a null client: the environment
-	 * is unknown, so assignment rules scoped to environments never match, and system attributes (when enabled) carry
-	 * only sdk_name and sdk_version.
+	 * is unknown, so assignment rules scoped to environments never match, audiences and rule conditions see no
+	 * application or environment attribute, and the publish-only system attributes (when enabled) carry only
+	 * sdk_name and sdk_version.
 	 */
 	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
@@ -66,8 +67,8 @@ public class Context implements Closeable {
 	/**
 	 * @param client
 	 *            the client whose configuration supplies the environment that assignment rules are scoped to, and the
-	 *            application and application version used as system attributes. It need not be the source of the
-	 *            context's data. May be null; see the overload without a client.
+	 *            application and environment names always made available to audiences and rule conditions. It need not
+	 *            be the source of the context's data. May be null; see the overload without a client.
 	 */
 	static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
 			@Nonnull final ScheduledExecutorService scheduler,
@@ -87,7 +88,6 @@ public class Context implements Closeable {
 		includeSystemAttributes_ = config.getIncludeSystemAttributes();
 		environmentName_ = client != null ? client.getEnvironment() : null;
 		applicationName_ = client != null ? client.getApplication() : null;
-		applicationVersion_ = client != null ? client.getApplicationVersion() : null;
 		if (includeSystemAttributes_ && client == null && noClientWarningLogged_.compareAndSet(false, true)) {
 			log.warn("System attributes are enabled but the context has no client: only sdk_name and sdk_version "
 					+ "are included, and environment-scoped assignment rules never match");
@@ -1998,17 +1998,15 @@ public class Context implements Closeable {
 		}
 	}
 
-	// Variables available to audience filters and assignment-rule conditions. System attributes come first so
-	// that a user attribute of the same name overrides them. Called with contextLock_ held.
+	// Variables available to audience filters and assignment-rule conditions. The configured application and
+	// environment names (which the collector also attaches to every exposure server-side) are always available,
+	// regardless of includeSystemAttributes, and are put first so a user attribute of the same name overrides
+	// them, including one set after an assignment was cached (the attrsSeq_ bump invalidates it). Empty or unset
+	// names are left out. Called with contextLock_ held.
 	private Map<String, Object> buildAttributesMap() {
-		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size() + 3);
-		if (includeSystemAttributes_) {
-			putIfNotNull(attrs, "application", applicationName_);
-			putIfNotNull(attrs, "environment", environmentName_);
-			if (ClientConfig.isApplicationVersionSet(applicationVersion_)) {
-				attrs.put("app_version", applicationVersion_);
-			}
-		}
+		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size() + 2);
+		putIfNotEmpty(attrs, "application", applicationName_);
+		putIfNotEmpty(attrs, "environment", environmentName_);
 		for (final Attribute attr : attributes_) {
 			attrs.put(attr.name, attr.value);
 		}
@@ -2035,8 +2033,9 @@ public class Context implements Closeable {
 
 	// System attributes the user has set themselves are left out: the collector picks the latest setAt among
 	// duplicates, which would otherwise let a synthetic value supersede the user's. Called with contextLock_ held.
+	// Only sdk_name and sdk_version are published here; the collector adds application and environment server-side.
 	private Attribute[] buildPublishAttributes(final long systemSetAt) {
-		final List<Attribute> attrs = new ArrayList<Attribute>(attributes_.size() + 5);
+		final List<Attribute> attrs = new ArrayList<Attribute>(attributes_.size() + 2);
 		if (includeSystemAttributes_) {
 			final Set<String> userNames = new HashSet<String>();
 			for (final Attribute attr : attributes_) {
@@ -2044,11 +2043,6 @@ public class Context implements Closeable {
 			}
 			addSystemAttribute(attrs, userNames, "sdk_name", SdkVersion.NAME, systemSetAt);
 			addSystemAttribute(attrs, userNames, "sdk_version", SdkVersion.VERSION, systemSetAt);
-			addSystemAttribute(attrs, userNames, "application", applicationName_, systemSetAt);
-			addSystemAttribute(attrs, userNames, "environment", environmentName_, systemSetAt);
-			if (ClientConfig.isApplicationVersionSet(applicationVersion_)) {
-				addSystemAttribute(attrs, userNames, "app_version", applicationVersion_, systemSetAt);
-			}
 		}
 		attrs.addAll(attributes_);
 		return attrs.isEmpty() ? null : attrs.toArray(new Attribute[0]);
@@ -2061,8 +2055,18 @@ public class Context implements Closeable {
 		}
 	}
 
-	private static void putIfNotNull(final Map<String, Object> map, final String key, final Object value) {
-		if (value != null) {
+	// Exposes the evaluation attribute map (system attributes overlaid with user attributes) to tests in this package.
+	Map<String, Object> buildAttributesMapForTest() {
+		try {
+			contextLock_.readLock().lock();
+			return buildAttributesMap();
+		} finally {
+			contextLock_.readLock().unlock();
+		}
+	}
+
+	private static void putIfNotEmpty(final Map<String, Object> map, final String key, final String value) {
+		if (value != null && value.length() > 0) {
 			map.put(key, value);
 		}
 	}
@@ -2071,7 +2075,6 @@ public class Context implements Closeable {
 	private final boolean includeSystemAttributes_;
 	private final String environmentName_;
 	private final String applicationName_;
-	private final String applicationVersion_;
 	private final long publishDelay_;
 	private final long refreshInterval_;
 	private final ContextEventHandler eventHandler_;
