@@ -7,23 +7,20 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import java8.util.concurrent.CompletableFuture;
-import java8.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import com.absmartly.sdk.internal.AsyncExecutor;
-import com.absmartly.sdk.internal.SdkFuture;
 import com.absmartly.sdk.json.ContextData;
 
-// streamsupport's default async pool cannot initialize on JDK 24+ (TLR reflects on the removed
-// Thread.inheritedAccessControlContext), so the SDK must never fall back to it.
+// In core-api-java6, streamsupport's default async pool cannot initialize on JDK 24+ (TLR reflects on the
+// removed Thread.inheritedAccessControlContext), so the SDK must never fall back to it.
 @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class AsyncExecutorCompatibilityTest extends TestUtils {
 	static class FakeHTTPClient implements HTTPClient {
@@ -160,59 +157,30 @@ class AsyncExecutorCompatibilityTest extends TestUtils {
 	}
 
 	@Test
-	void returnedFuturesDefaultToSdkExecutor() {
+	void returnedFuturesUseVariantDefaultExecutor() {
 		sdk = createSDK(ClientConfig.create());
 		final Context context = createContext();
 
-		assertSdkFuture(context.waitUntilReadyAsync());
+		assertReturnedFuture(context.waitUntilReadyAsync());
 		context.waitUntilReady();
-		assertSdkFuture(context.waitUntilReadyAsync());
-		assertSdkFuture(context.waitUntilReadyAsync().thenApply(ctx -> ctx));
-		assertSdkFuture(context.waitUntilReadyAsync().copy());
+		assertReturnedFuture(context.waitUntilReadyAsync());
+		assertReturnedFuture(context.waitUntilReadyAsync().thenApply(ctx -> ctx));
+		assertReturnedFuture(context.waitUntilReadyAsync().copy());
 		final ContextData data = context.getData();
 
 		context.track("goal1", null);
-		assertSdkFuture(context.publishAsync());
-		assertSdkFuture(context.publishAsync());
-		assertSdkFuture(context.refreshAsync());
-		assertSdkFuture(context.closeAsync());
-		assertSdkFuture(context.finalizeAsync());
+		assertReturnedFuture(context.publishAsync());
+		assertReturnedFuture(context.publishAsync());
+		assertReturnedFuture(context.refreshAsync());
+		assertReturnedFuture(context.closeAsync());
+		assertReturnedFuture(context.finalizeAsync());
 
-		assertSdkFuture(sdk.getContextData());
-		assertSdkFuture(sdk.createContextWith(ContextConfig.create(), data).waitUntilReadyAsync());
+		assertReturnedFuture(sdk.getContextData());
+		assertReturnedFuture(sdk.createContextWith(ContextConfig.create(), data).waitUntilReadyAsync());
 	}
 
-	@Test
-	void eitherStagesWithCompletedPlainFutureDefaultToSdkExecutor() {
-		final CompletableFuture<String> pending = new SdkFuture<String>();
-		final CompletableFuture<String> completed = CompletableFuture.completedFuture("other");
-		final ExecutorService executor = Executors.newSingleThreadExecutor();
-		try {
-			assertSdkFuture(pending.applyToEither(completed, value -> value));
-			assertSdkFuture(pending.applyToEitherAsync(completed, value -> value));
-			assertSdkFuture(pending.applyToEitherAsync(completed, value -> value, executor));
-			assertSdkFuture(pending.acceptEither(completed, value -> {}));
-			assertSdkFuture(pending.acceptEitherAsync(completed, value -> {}));
-			assertSdkFuture(pending.acceptEitherAsync(completed, value -> {}, executor));
-			assertSdkFuture(pending.runAfterEither(completed, () -> {}));
-			assertSdkFuture(pending.runAfterEitherAsync(completed, () -> {}));
-			assertSdkFuture(pending.runAfterEitherAsync(completed, () -> {}, executor));
-
-			assertEquals("other",
-					pending.applyToEither(completed, value -> value).thenApplyAsync(value -> value).join());
-
-			final CompletableFuture<String> failed = new CompletableFuture<String>();
-			failed.completeExceptionally(new IllegalStateException("failed"));
-			final CompletionException exception = assertThrows(CompletionException.class,
-					() -> pending.applyToEither(failed, value -> value).join());
-			assertTrue(exception.getCause() instanceof IllegalStateException);
-		} finally {
-			executor.shutdownNow();
-		}
-	}
-
-	private static void assertSdkFuture(CompletableFuture<?> future) {
-		assertSame(AsyncExecutor.get(), future.defaultExecutor());
+	private static void assertReturnedFuture(CompletableFuture<?> future) {
+		ReturnedFutures.assertDefaultExecutor(future);
 		future.join();
 	}
 }

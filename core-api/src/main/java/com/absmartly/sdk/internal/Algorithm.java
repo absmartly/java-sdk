@@ -1,7 +1,7 @@
 package com.absmartly.sdk.internal;
 
 import java.util.Set;
-import java8.util.function.Function;
+import java.util.function.Function;
 
 public class Algorithm {
 	@SuppressWarnings("unchecked")

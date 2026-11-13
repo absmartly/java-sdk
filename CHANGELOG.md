@@ -1,6 +1,23 @@
 # Changelog
 
-## 1.7.0 (unreleased)
+## 1.8.0 (2026-11-11)
+
+### Breaking change
+
+- `core-api` now uses `java.util.concurrent.CompletableFuture`, `CompletionStage` and `CompletionException` and the `java.util.function` interfaces in its API instead of their `java8.util` backports from streamsupport, and no longer depends on streamsupport. It requires Java 8 or later, or Android API level 24 or later.
+  - Affected: code that names `java8.util.concurrent.*` or `java8.util.function.*` types from the SDK API, for example `CompletableFuture<Context> f = context.waitUntilReadyAsync()`, and code that implements `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`.
+  - What to do: replace those imports with the `java.util.concurrent` and `java.util.function` types of the same name. Code that only uses the blocking API just needs to be recompiled.
+  - Java 6 and 7, and Android below API level 24: depend on the new `com.absmartly.sdk:core-api-java6` artifact instead of `core-api`. It has the same API with the backport types, so no code changes are needed.
+
+### Changed
+
+- With `core-api`, `*Async` stages and the static `CompletableFuture` methods work on Java 24 and later without an explicit executor. The futures `core-api` returns are plain JDK futures whose default executor is the JDK's common pool. The restrictions on Java 24 and later described under 1.7.0 now only apply to `core-api-java6`.
+
+## 1.7.0 (2026-11-11)
+
+### Release signing
+
+- Releases are now signed with a new key, `7BFDD7D4127C4C99B779DCBA009F94BC0D0D92F8` (Absmartly <sdks@absmartly.com>, published on keys.openpgp.org). The key that signed 1.6.3, `E06D1BDE151F5F9A79E44DC74D51393871C0131A`, expired on 2026-11-05. If you verify signatures against a pinned key, add the new one.
 
 ### Added
 
