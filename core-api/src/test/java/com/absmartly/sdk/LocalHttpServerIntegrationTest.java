@@ -159,10 +159,12 @@ class LocalHttpServerIntegrationTest {
 			assertEquals(application, query.get("application"));
 			assertEquals(environment, query.get("environment"));
 
-			// Per the wire contract: Java sends NO auth headers on GET (auth via query params).
-			assertFalse(get.headers.containsKey("x-api-key"), "GET must not carry X-API-Key");
-			assertFalse(get.headers.containsKey("x-application"), "GET must not carry X-Application");
-			assertFalse(get.headers.containsKey("x-environment"), "GET must not carry X-Environment");
+			// The GET carries the same SDK headers as the publish PUT, as javascript-sdk does on every request.
+			assertEquals("test-api-key", get.headers.get("x-api-key"));
+			assertEquals(application, get.headers.get("x-application"));
+			assertEquals(environment, get.headers.get("x-environment"));
+			assertEquals("0", get.headers.get("x-application-version"));
+			assertEquals("absmartly-java-sdk/" + SdkVersion.VERSION, get.headers.get("x-agent"));
 
 			// --- Queue an exposure + a goal, then publish ---
 			context.getTreatment("an_experiment");

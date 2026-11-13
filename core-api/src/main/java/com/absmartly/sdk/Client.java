@@ -107,7 +107,7 @@ public class Client implements Closeable {
 				.runAsync(new Runnable() {
 					@Override
 					public void run() {
-						httpClient_.get(url_, query_, null).thenAccept(new Consumer<HTTPClient.Response>() {
+						httpClient_.get(url_, query_, headers_).thenAccept(new Consumer<HTTPClient.Response>() {
 							@Override
 							public void accept(HTTPClient.Response response) {
 								final int code = response.getStatusCode();
