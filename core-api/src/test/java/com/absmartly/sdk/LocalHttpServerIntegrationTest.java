@@ -296,4 +296,46 @@ class LocalHttpServerIntegrationTest {
 			sdk.close();
 		}
 	}
+	// A context payload carrying fields this SDK does not know (scalars, objects and arrays at the root and in
+	// experiments, applications, variants, custom field values and holdouts) still loads, and its experiments still
+	// assign, expose and read custom fields exactly as without them.
+	@Test
+	void toleratesUnknownContextFields() throws Exception {
+		final String unknown = "\"futureScalar\":1,\"futureObject\":{\"a\":[1,{\"b\":null}]},"
+				+ "\"futureArray\":[\"x\",{}]";
+		contextResponse = "{" + unknown + ",\"experiments\":[{" + unknown + ","
+				+ "\"id\":1,\"name\":\"exp_ordinary\",\"iteration\":1,\"unitType\":\"session_id\","
+				+ "\"seedHi\":3603515,\"seedLo\":233373850,\"split\":[0.5,0.5],"
+				+ "\"trafficSeedHi\":449867249,\"trafficSeedLo\":455443629,\"trafficSplit\":[0.0,1.0],"
+				+ "\"fullOnVariant\":1,\"applications\":[{" + unknown + ",\"name\":\"www\"}],"
+				+ "\"variants\":[{" + unknown + ",\"name\":\"A\",\"config\":null},"
+				+ "{" + unknown + ",\"name\":\"B\",\"config\":\"{\\\"color\\\":\\\"red\\\"}\"}],"
+				+ "\"customFieldValues\":[{" + unknown + ",\"name\":\"owner\",\"value\":\"team\",\"type\":\"string\"}],"
+				+ "\"audience\":null}],"
+				+ "\"holdouts\":[{" + unknown + ",\"id\":11,\"name\":\"holdout_future\",\"iteration\":1,"
+				+ "\"unitType\":\"session_id\",\"seedHi\":13,\"seedLo\":111,\"split\":[0.5,0.5],"
+				+ "\"trafficSplit\":[0.0,1.0],\"fullOnVariant\":0,"
+				+ "\"variants\":[{" + unknown + ",\"name\":\"A\",\"config\":null},{\"name\":\"B\",\"config\":null}]}]}";
+
+		final ABSmartly sdk = ABSmartly.builder()
+				.endpoint(endpoint)
+				.apiKey("test-api-key")
+				.application("www")
+				.environment("development")
+				.build();
+
+		try {
+			final Context context = sdk.createContext(ContextConfig.create()
+					.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec"));
+			context.waitUntilReady();
+
+			assertFalse(context.isFailed());
+			assertArrayEquals(new String[]{"exp_ordinary"}, context.getExperiments());
+			assertEquals(1, context.getTreatment("exp_ordinary"));
+			assertEquals("red", context.getVariableValue("color", "blue"));
+			assertEquals("team", context.getCustomFieldValue("exp_ordinary", "owner"));
+		} finally {
+			sdk.close();
+		}
+	}
 }

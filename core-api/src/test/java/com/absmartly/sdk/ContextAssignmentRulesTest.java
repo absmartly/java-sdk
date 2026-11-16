@@ -506,6 +506,22 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.getTreatment(EXP));
 	}
 
+	// A user environment attribute overrides the condition variable, but rule scope stays the configured environment.
+	@Test
+	void userEnvironmentAttributeDoesNotChangeRuleScope() {
+		final String stagingCondition = "{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}";
+		final String productionScoped = rules(assign("Production", stagingCondition, "[\"production\"]", 1));
+		final String stagingScoped = rules(assign("Staging", stagingCondition, "[\"staging\"]", 1));
+
+		final Context production = create(data(productionScoped));
+		production.setAttribute("environment", "staging");
+		assertEquals(1, production.getTreatment(EXP));
+
+		final Context staging = create(data(stagingScoped));
+		staging.setAttribute("environment", "staging");
+		assertEquals(NORMAL_VARIANT, staging.getTreatment(EXP));
+	}
+
 	@Test
 	void refreshWithChangedRulesInvalidates() {
 		final ContextData before = data(rules(assign("US", US, "[]", 1)));

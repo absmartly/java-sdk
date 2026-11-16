@@ -3,6 +3,12 @@ package com.absmartly.sdk;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
@@ -349,5 +355,43 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		assertNotNull(fullResult);
 		assertNotNull(fullResult.experiments);
 		assertTrue(fullResult.experiments.length > 0);
+	}
+	// Fields a future collector may add, at every level of the payload (root, experiments, holdouts, applications,
+	// variants and custom field values), are ignored and leave the known data unchanged.
+	@ParameterizedTest
+	@ValueSource(strings = {"context.json", "holdouts_context.json", "custom_fields_context.json"})
+	void ignoresUnknownFieldsAtEveryLevel(String resource) throws Exception {
+		final byte[] bytes = getResourceBytes(resource);
+		final ContextDataDeserializer deser = new DefaultContextDataDeserializer();
+		final ContextData expected = deser.deserialize(bytes, 0, bytes.length);
+		assertNotNull(expected);
+
+		final ObjectMapper mapper = new ObjectMapper();
+		final JsonNode tree = mapper.readTree(bytes);
+		final int[] injected = {0};
+		addUnknownFields(tree, injected);
+		assertTrue(injected[0] > 1);
+
+		final byte[] withUnknown = mapper.writeValueAsBytes(tree);
+		final ContextData data = deser.deserialize(withUnknown, 0, withUnknown.length);
+		assertNotNull(data);
+		assertEquals(expected, data);
+	}
+
+	static void addUnknownFields(JsonNode node, int[] injected) {
+		if (node.isObject()) {
+			final ObjectNode object = (ObjectNode) node;
+			for (final JsonNode child : object) {
+				addUnknownFields(child, injected);
+			}
+			object.put("futureScalar", 42);
+			object.putObject("futureObject").put("nested", "value").putArray("list").add(1);
+			object.putArray("futureArray").add("a").addObject().put("b", true);
+			++injected[0];
+		} else if (node.isArray()) {
+			for (final JsonNode child : node) {
+				addUnknownFields(child, injected);
+			}
+		}
 	}
 }

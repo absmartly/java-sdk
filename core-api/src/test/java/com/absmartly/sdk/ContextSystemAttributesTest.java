@@ -390,6 +390,40 @@ class ContextSystemAttributesTest extends TestUtils {
 		}
 	}
 
+	// The SDK no longer injects app_version, application or environment into publishes, but values the user set with
+	// those names are ordinary attributes and are still published, with or without the flag.
+	@Test
+	void publishKeepsUserSetAppVersionApplicationAndEnvironment() {
+		for (final boolean include : new boolean[]{false, true}) {
+			reset(eventHandler);
+			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
+
+			final ContextConfig config = config().setIncludeSystemAttributes(include);
+			final Context context = createContext(config, client("website", "production", "2.4.1"), audienceData());
+			context.setAttribute("app_version", "9.9.9");
+			context.setAttribute("application", "mobile");
+			context.setAttribute("environment", "staging");
+			context.track("goal", null);
+
+			final PublishEvent event = publishAndCapture(context);
+			final long now = clock.millis();
+			final Attribute[] user = new Attribute[]{
+					new Attribute("app_version", "9.9.9", now),
+					new Attribute("application", "mobile", now),
+					new Attribute("environment", "staging", now),
+			};
+			if (include) {
+				assertArrayEquals(new Attribute[]{
+						new Attribute("sdk_name", "absmartly-java-sdk", now),
+						new Attribute("sdk_version", SdkVersion.VERSION, now),
+						user[0], user[1], user[2],
+				}, event.attributes);
+			} else {
+				assertArrayEquals(user, event.attributes);
+			}
+		}
+	}
+
 	@Test
 	void noClientWarningIsLoggedOncePerJvm() {
 		final ContextConfig config = ContextConfig.create().setIncludeSystemAttributes(true);
