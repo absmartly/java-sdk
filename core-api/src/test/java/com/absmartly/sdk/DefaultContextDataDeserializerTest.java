@@ -356,6 +356,7 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		assertNotNull(fullResult.experiments);
 		assertTrue(fullResult.experiments.length > 0);
 	}
+
 	// Fields a future collector may add, at every level of the payload (root, experiments, holdouts, applications,
 	// variants and custom field values), are ignored and leave the known data unchanged.
 	@ParameterizedTest
