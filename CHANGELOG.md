@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0 (unreleased)
+
+### Changed
+
+- **This changes assignment for running experiments.** Audiences and assignment-rule conditions now always evaluate against the configured `application` and `environment` names, regardless of `ContextConfig.setIncludeSystemAttributes`. In 1.7.0 and 1.8.0, an `application` or `environment` condition was evaluated against a missing value unless `includeSystemAttributes` was enabled or you set that attribute yourself. How a condition treats a missing value depends on the condition. A condition such as an equality check never matches a missing value, so with the default settings and Audience enforced (`audienceStrict`), a unit got variant 0 even when its application or environment matched the condition, and even when the experiment was full-on. After upgrading, such a unit is randomized normally (or gets the full-on variant). A condition that does match a missing value, such as a `null` check, matched before and may no longer match. In both cases, exposures for these experiments can change.
+  - An attribute you set with the same name, at any time (including after the context is created, which re-checks cached assignments), takes precedence in conditions. It does not change the environment that assignment rules are scoped to, which is always the configured one. Names that are unset or empty are left out.
+  - These names are not real attributes: they are not published (the collector adds `application` and `environment` to every event server-side) and `getAttributes()`/`getAttribute()` do not return them.
+  - Contexts created with the public `Context.create`, or through an `ABSmartly` with no client configured, have no configured `application` or `environment`, so conditions only see attributes that you set with these names.
+- **The SDK no longer provides `app_version`.** `ClientConfig.setApplicationVersion` only sets the `X-Application-Version` request header. In 1.7.0 and 1.8.0, with `includeSystemAttributes` enabled, it was also available to audiences and rule conditions as `app_version`; conditions on `app_version` now evaluate against a missing value unless you set `app_version` yourself, so their outcome can change. An `app_version` attribute you set yourself is still used and published like any other attribute.
+- `ContextConfig.setIncludeSystemAttributes(true)` now adds only `sdk_name` and `sdk_version` to every publish, no longer `application`, `environment` or `app_version`. Attributes you set yourself with those names are still published. The option is still accepted so existing code compiles and runs unchanged. Disabled by default.
+
+### Fixed
+
+- The context `GET` request now sends the same SDK headers as the publish (`X-API-Key`, `X-Application`, `X-Environment`, `X-Application-Version` and `X-Agent`). Query parameters are unchanged.
+
 ## 1.8.0 (2026-11-11)
 
 ### Breaking change

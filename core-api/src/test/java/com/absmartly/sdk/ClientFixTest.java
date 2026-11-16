@@ -8,11 +8,15 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
 
+import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
 
+// A request the mocked HTTP client was not stubbed for never completes, so bound every wait.
+@Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class ClientFixTest extends TestUtils {
 
 	@Test
@@ -33,7 +37,7 @@ class ClientFixTest extends TestUtils {
 				"application", "website",
 				"environment", "dev");
 
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 				.thenReturn(CompletableFuture.completedFuture(new DefaultHTTPClient.DefaultResponse(200, "OK",
 						"application/json", bytes)));
 		when(deser.deserialize(bytes, 0, bytes.length)).thenReturn(expected);
@@ -42,7 +46,8 @@ class ClientFixTest extends TestUtils {
 		final ContextData actual = dataFuture.join();
 
 		assertSame(expected, actual);
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery, null);
+		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
+				sdkHeaders());
 	}
 
 	@Test
@@ -63,7 +68,7 @@ class ClientFixTest extends TestUtils {
 				"application", "website",
 				"environment", "dev");
 
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 				.thenReturn(CompletableFuture.completedFuture(new DefaultHTTPClient.DefaultResponse(200, "OK",
 						"application/json", bytes)));
 		when(deser.deserialize(bytes, 0, bytes.length)).thenReturn(expected);
@@ -115,7 +120,7 @@ class ClientFixTest extends TestUtils {
 				"application", "website",
 				"environment", "dev");
 
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 				.thenReturn(CompletableFuture.completedFuture(new DefaultHTTPClient.DefaultResponse(200, "OK",
 						"application/json", bytes)));
 		when(deser.deserialize(bytes, 0, bytes.length)).thenReturn(null);
@@ -141,12 +146,21 @@ class ClientFixTest extends TestUtils {
 				"application", "website",
 				"environment", "dev");
 
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, null))
+		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
 				.thenReturn(CompletableFuture.completedFuture(new DefaultHTTPClient.DefaultResponse(200, "OK",
 						"application/json", new byte[0])));
 
 		final CompletableFuture<ContextData> dataFuture = client.getContextData();
 		final CompletionException actual = assertThrows(CompletionException.class, dataFuture::join);
 		assertTrue(actual.getCause() instanceof IllegalStateException);
+	}
+
+	private static Map<String, String> sdkHeaders() {
+		return mapOf(
+				"X-API-Key", "test-api-key",
+				"X-Application", "website",
+				"X-Environment", "dev",
+				"X-Application-Version", "0",
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
 	}
 }
