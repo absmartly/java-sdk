@@ -36,6 +36,10 @@ The `android.permission.INTERNET` permission is required. To add this permission
 If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
 
 
+## Upgrading to 1.9.0
+
+1.9.0 changes targeting, so assignments for running experiments can change. Audiences and assignment rule conditions always see the configured `application` and `environment` names, whatever `includeSystemAttributes` is set to. The SDK no longer provides `app_version`, so set an `app_version` attribute yourself if you target on it. With `includeSystemAttributes` enabled, a publish now adds only `sdk_name` and `sdk_version`. See [System Attributes](#system-attributes) and the [changelog](CHANGELOG.md).
+
 ## Upgrading to 1.8.0
 
 1.8.0 moves the asynchronous API of `core-api` from the streamsupport backport to the JDK. If your code names `java8.util.concurrent.*` or `java8.util.function.*` types from the SDK API, or implements `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, replace those imports with the `java.util.concurrent` and `java.util.function` types of the same name. If you only use the blocking API, recompile.
