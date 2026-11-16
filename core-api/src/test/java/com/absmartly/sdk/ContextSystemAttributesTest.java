@@ -42,8 +42,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		return new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
 	}
 
-	// A copy of audience_context.json with exp_test_ab made a strict 0/100 split to variant 1 (B) gated by the
-	// given audience filter, so the audience decides the variant.
 	ContextData strictAudience(String filter) {
 		final ContextData data = audienceData();
 		data.experiments[0].audienceStrict = true;
@@ -109,7 +107,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		return null;
 	}
 
-	// §4.1: a strict audience on the configured environment matches and gives the full-on variant, not variant 0.
 	@Test
 	void strictAudienceOnEnvironmentMatches() {
 		final Context context = createContext(config(), client(),
@@ -122,7 +119,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertFalse(exposure.audienceMismatch);
 	}
 
-	// §4.2: a strict audience on the configured application matches.
 	@Test
 	void strictAudienceOnApplicationMatches() {
 		final Context context = createContext(config(), client(),
@@ -133,7 +129,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertFalse(exposure.audienceMismatch);
 	}
 
-	// §4.3: a strict audience naming another environment/application gives variant 0 and audienceMismatch.
 	@Test
 	void strictAudienceOnAnotherEnvironmentGivesVariantZero() {
 		final Context context = createContext(config(), client(),
@@ -153,7 +148,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertTrue(exposureOf(publishAndCapture(context), EXP).audienceMismatch);
 	}
 
-	// §4.4: a user value set after creation wins; the cached assignment is re-checked.
 	@Test
 	void userSetEnvironmentWinsSetAfterCreation() {
 		final Context staging = createContext(config(), client(),
@@ -199,8 +193,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertEquals(1, context.getTreatment(EXP));
 	}
 
-	// §4.6: no environment configured means no key in the map, no crash, and a filter on environment does not match
-	// while a null-check on it does.
 	@Test
 	void missingEnvironmentLeavesKeyOutOfMap() {
 		for (final String environment : new String[]{null, ""}) {
@@ -227,7 +219,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertEquals("production", attrs.get("environment"));
 	}
 
-	// §4.8: app_version is never provided to audiences, even with an application version configured, whatever the flag.
 	@Test
 	void appVersionIsNotAnAudienceVariable() {
 		for (final String version : new String[]{"3", "1.2.3"}) {
@@ -252,7 +243,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertEquals(1, context.getTreatment(EXP));
 	}
 
-	// §4.5: system attributes are not real attributes; getAttributes/getAttribute do not return them.
 	@Test
 	void systemAttributesAreNotReportedAsUserAttributes() {
 		final Context context = createContext(config(), client(), audienceData());
@@ -264,7 +254,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertNull(context.getAttribute("application"));
 	}
 
-	// Flag compatibility: evaluation uses the system attributes whether the flag is unset, false or true.
 	@Test
 	void evaluationUsesSystemAttributesRegardlessOfFlag() {
 		assertEquals(1, createContext(config(), client(),
@@ -275,7 +264,6 @@ class ContextSystemAttributesTest extends TestUtils {
 				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).getTreatment(EXP));
 	}
 
-	// §4.7 (in-memory): publishing adds no application/environment/app_version, with the flag unset.
 	@Test
 	void publishAddsNothingByDefault() {
 		final ContextConfig config = config();
@@ -289,8 +277,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertArrayEquals(new Attribute[]{new Attribute("age", 21, clock.millis())}, event.attributes);
 	}
 
-	// §4.7 (in-memory): with the flag on, only sdk_name and sdk_version are prepended; no application/environment/
-	// app_version even after they were used for evaluation.
 	@Test
 	void publishPrependsOnlySdkAttributesWhenEnabled() {
 		final ContextConfig config = config().setIncludeSystemAttributes(true);
