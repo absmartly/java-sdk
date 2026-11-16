@@ -506,7 +506,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.getTreatment(EXP));
 	}
 
-	// A user environment attribute overrides the condition variable, but rule scope stays the configured environment.
 	@Test
 	void userEnvironmentAttributeDoesNotChangeRuleScope() {
 		final String stagingCondition = "{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}";

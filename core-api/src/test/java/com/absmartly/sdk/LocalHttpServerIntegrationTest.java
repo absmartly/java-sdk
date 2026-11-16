@@ -297,9 +297,6 @@ class LocalHttpServerIntegrationTest {
 		}
 	}
 
-	// A context payload carrying fields this SDK does not know (scalars, objects and arrays at the root and in
-	// experiments, applications, variants, custom field values and holdouts) still loads, and its experiments still
-	// assign, expose and read custom fields exactly as without them.
 	@Test
 	void toleratesUnknownContextFields() throws Exception {
 		final String unknown = "\"futureScalar\":1,\"futureObject\":{\"a\":[1,{\"b\":null}]},"

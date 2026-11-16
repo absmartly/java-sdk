@@ -390,8 +390,6 @@ class ContextSystemAttributesTest extends TestUtils {
 		}
 	}
 
-	// The SDK no longer injects app_version, application or environment into publishes, but values the user set with
-	// those names are ordinary attributes and are still published, with or without the flag.
 	@Test
 	void publishKeepsUserSetAppVersionApplicationAndEnvironment() {
 		for (final boolean include : new boolean[]{false, true}) {

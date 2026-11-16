@@ -357,8 +357,6 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		assertTrue(fullResult.experiments.length > 0);
 	}
 
-	// Fields a future collector may add, at every level of the payload (root, experiments, holdouts, applications,
-	// variants and custom field values), are ignored and leave the known data unchanged.
 	@ParameterizedTest
 	@ValueSource(strings = {"context.json", "holdouts_context.json", "custom_fields_context.json"})
 	void ignoresUnknownFieldsAtEveryLevel(String resource) throws Exception {
