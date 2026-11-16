@@ -10,6 +10,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -19,6 +20,8 @@ import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.json.ContextData;
 import com.absmartly.sdk.json.PublishEvent;
 
+// A request the mocked HTTP client was not stubbed for never completes, so bound every wait.
+@Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class ClientTest extends TestUtils {
 	@Test
 	void createThrowsWithInvalidConfig() {
