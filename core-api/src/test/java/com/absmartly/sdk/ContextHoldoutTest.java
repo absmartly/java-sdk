@@ -679,6 +679,16 @@ class ContextHoldoutTest extends TestUtils {
 
 		assertEquals(0, context.getTreatment("exp_non_adjacent_duplicate"));
 		assertEquals(3, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID_NOT_HELD_OUT,
+				new Exposure(1, "exp_non_adjacent_duplicate", UNIT_TYPE, 0, clock.millis(), true, true, false, false,
+						false, false),
+				holdoutExposure(11, "holdout_a", 1),
+				holdoutExposure(12, "holdout_b", 1));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
 	// A custom assignment can never override a held-out unit's variant - holdout precedence

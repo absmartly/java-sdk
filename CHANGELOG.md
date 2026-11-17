@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- A covered experiment whose `holdoutIds` lists the same holdout more than once now treats it as one holdout, as javascript-sdk does. Before, a refresh that only removed the duplicate counted as a coverage change, so the experiment was resolved again and published a second exposure.
+- `core-api` and `core-api-java6`: a covered experiment whose `holdoutIds` lists the same holdout more than once now treats it as one holdout, as javascript-sdk does. Before, a refresh that only removed the duplicate counted as a coverage change, so the experiment was resolved again and published a second exposure. Assignments do not change; affected contexts no longer publish that extra exposure, so exposure counts for those experiments can drop slightly.
 
 ## 1.9.0 (unreleased)
 
