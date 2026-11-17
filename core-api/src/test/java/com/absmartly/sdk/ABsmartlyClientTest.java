@@ -365,7 +365,10 @@ class ABsmartlyClientTest extends TestUtils {
 		context.treatment("exp_test_ab");
 		context.track("purchase", Map.of("total", 19.99, "items", 2));
 		context.publish();
+		awaitSize(contextEvents, 4);
 		context.refresh();
+		// As in 1.x, a future completes before its event is logged, so wait for each event before the next step.
+		awaitSize(contextEvents, 5);
 		context.close();
 		awaitSize(contextEvents, 6);
 		awaitSize(clientEvents, 6);
