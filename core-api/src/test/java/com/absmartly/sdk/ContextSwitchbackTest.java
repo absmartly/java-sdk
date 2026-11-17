@@ -1168,18 +1168,64 @@ class ContextSwitchbackTest {
 				publishExposures(context));
 	}
 
-	// Unit experiments keep stamping at enqueue time.
+	// Unit experiments keep stamping at enqueue time, also beside a switchback that reads the clock
+	// to resolve.
 	@Test
 	void unitExposureTimingIsUnchanged() {
 		final Experiment unit = switchback(2, HOUR);
 		unit.randomizationType = "unit";
-		final Context context = createContext(dataOf(unit));
+		final Context context = createContext(dataOf(unit, switchback(2, "exp_sb_other", 2, HOUR)));
 		clock.now = ANCHOR + HOUR;
 		clock.nextRead = ANCHOR + HOUR - 1;
 
 		final int variant = context.getTreatment("exp_sb");
 		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR, true, true)},
 				publishExposures(context));
+	}
+
+	// Without a switchback in the data, reads do not consult the clock: a cached read costs what it
+	// did in 1.9.0, and the first exposure reads it once, at enqueue time.
+	@Test
+	void readsSkipTheClockWithoutASwitchback() {
+		final Experiment unit = switchback(2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		clock.now = ANCHOR + HOUR;
+		clock.nextRead = ANCHOR + HOUR - 1;
+		final int readsBefore = clock.reads;
+
+		final int variant = context.getTreatment("exp_sb");
+		assertEquals(readsBefore + 1, clock.reads);
+		context.getTreatment("exp_sb");
+		context.peekTreatment("exp_sb");
+		context.getVariableValue("sb.arm", null);
+		context.peekVariableValue("sb.arm", null);
+		assertEquals(readsBefore + 1, clock.reads);
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR - 1, true, true)},
+				publishExposures(context));
+	}
+
+	// A refresh that installs the first switchback makes reads consult the clock again, and one that
+	// removes the last switchback stops it.
+	@Test
+	void refreshTogglesTheClockReadWithTheSwitchbacks() {
+		final Experiment unit = switchback(2, "exp_unit", 2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		context.getTreatment("exp_unit");
+
+		refreshTo(context, unit, switchback(2, HOUR));
+		clock.now = ANCHOR + 3 * HOUR;
+		assertEquals(EXPECTED_2_ARMS[3], context.peekTreatment("exp_sb"));
+		int reads = clock.reads;
+		context.peekTreatment("exp_unit");
+		assertEquals(reads + 1, clock.reads);
+
+		refreshTo(context, unit);
+		reads = clock.reads;
+		context.peekTreatment("exp_unit");
+		context.peekTreatment("exp_sb");
+		assertEquals(reads, clock.reads);
 	}
 
 	// A grid change that lowers the current index below the retained ones must not evict the

@@ -1,6 +1,26 @@
 # Changelog
 
-## 1.9.0 (unreleased)
+## 1.10.0 (unreleased)
+
+This release is backwards compatible with 1.9.0: the public API only gains members, and experiments that are not switchbacks are assigned, exposed and published exactly as in 1.9.0.
+
+### Added
+
+- Switchback experiments. An experiment served with `randomizationType: "switchback"` is assigned per cluster and time period instead of per unit: `getTreatment`, `peekTreatment`, `getVariableValue` and `peekVariableValue` return the variant of the current period, and the SDK records one exposure per period. The cluster is the value of the attribute path that the experiment's `switchbackClusters` links to one of the context's units. There is no new method to call. See [SWITCHBACK.md](SWITCHBACK.md) for the serving rules.
+- `Experiment` fields for switchbacks: `randomizationType`, `switchbackClusters`, `switchbackClusterValues`, `switchbackStartAt`, `switchbackPeriodMs`, `switchbackCarryoverDurationMs`, `switchbackBurnInDurationMs`, `switchbackBurnOutDurationMs`, `switchbackDesignType` and `switchbackEstimand`, and the static helper `Experiment.orderedEquals`. All are null on experiments that are not switchbacks.
+- The `com.absmartly.sdk.internal.Switchback*` classes that implement the serving rules. Like the rest of the `internal` package they are not part of the supported API.
+
+### Changed
+
+- Switchback experiments are now served as switchbacks. 1.9.0 ignores the switchback fields and gives a switchback experiment a sticky per-unit assignment on its `unitType` (or nothing, without one), which does not follow the experiment's schedule. Affected: only applications that receive switchback experiments; after upgrading, their units get the period's cluster variant and their exposures follow the schedule. Holdouts never apply to a switchback.
+- `Experiment.equals` and `hashCode` also compare the switchback fields, and compare `switchbackClusters` in its declared order. Two `Experiment`s that differ only in these fields were equal in 1.9.0. Affected: code that compares or hashes `Experiment` objects from context data that carries switchback fields.
+- With a switchback in the context data, reads consult the clock once per call to find the current period; without one, they do not, as in 1.9.0.
+
+### Fixed
+
+- A switchback field of the wrong JSON shape (for example an object where a string or number is expected) is ignored with a warning instead of failing the whole context, so every payload 1.9.0 decodes also decodes in 1.10.0.
+
+## 1.9.0 (2026-11-16)
 
 ### Changed
 

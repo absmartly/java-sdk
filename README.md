@@ -36,6 +36,10 @@ The `android.permission.INTERNET` permission is required. To add this permission
 If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
 
 
+## Upgrading to 1.10.0
+
+1.10.0 is backwards compatible with 1.9.0 and needs no code changes. It adds switchback experiments (see [Switchback Experiments](#switchback-experiments)); experiments that are not switchbacks behave exactly as in 1.9.0. If your application receives switchback experiments, their assignments now follow the experiment's schedule instead of 1.9.0's sticky per-unit assignment. See the [changelog](CHANGELOG.md).
+
 ## Upgrading to 1.9.0
 
 1.9.0 changes targeting, so assignments for running experiments can change. Audiences and assignment rule conditions always see the configured `application` and `environment` names, whatever `includeSystemAttributes` is set to. The SDK no longer provides `app_version`, so set an `app_version` attribute yourself if you target on it. With `includeSystemAttributes` enabled, a publish now adds only `sdk_name` and `sdk_version`. See [System Attributes](#system-attributes) and the [changelog](CHANGELOG.md).
@@ -56,13 +60,13 @@ Context reads retain the 1.6.3 lifecycle behavior. Before ready they throw `"ABS
 
 #### Gradle
 
-To install the ABSmartly SDK, place the following in your `build.gradle` and replace {VERSION} with the latest SDK version available in MavenCentral.
+To install the ABSmartly SDK, place the following in your `build.gradle`. The latest version is 1.10.0; see Maven Central for newer releases.
 
 Java 8 and later, Android API level 24 and later:
 
 ```gradle
 dependencies {
-  implementation 'com.absmartly.sdk:core-api:{VERSION}'
+  implementation 'com.absmartly.sdk:core-api:1.10.0'
 }
 ```
 
@@ -70,13 +74,13 @@ Java 6 and 7, Android below API level 24:
 
 ```gradle
 dependencies {
-  implementation 'com.absmartly.sdk:core-api-java6:{VERSION}'
+  implementation 'com.absmartly.sdk:core-api-java6:1.10.0'
 }
 ```
 
 #### Maven
 
-To install the ABSmartly SDK, place the following in your `pom.xml` and replace {VERSION} with the latest SDK version available in MavenCentral.
+To install the ABSmartly SDK, place the following in your `pom.xml`. The latest version is 1.10.0; see Maven Central for newer releases.
 
 Java 8 and later:
 
@@ -84,7 +88,7 @@ Java 8 and later:
 <dependency>
     <groupId>com.absmartly.sdk</groupId>
     <artifactId>core-api</artifactId>
-    <version>{VERSION}</version>
+    <version>1.10.0</version>
 </dependency>
 ```
 
@@ -94,7 +98,7 @@ Java 6 and 7:
 <dependency>
     <groupId>com.absmartly.sdk</groupId>
     <artifactId>core-api-java6</artifactId>
-    <version>{VERSION}</version>
+    <version>1.10.0</version>
 </dependency>
 ```
 

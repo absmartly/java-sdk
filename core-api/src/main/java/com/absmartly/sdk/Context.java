@@ -47,6 +47,9 @@ public class Context implements Closeable {
 	private static final String RANDOMIZATION_SWITCHBACK = "switchback";
 	private static final char SWITCHBACK_KEY_SEPARATOR = '\u001f';
 	private static final long NO_SWITCHBACK_PERIOD = Long.MIN_VALUE;
+	// Passed for `now` when the installed data has no switchback: only switchbacks read the clock to
+	// resolve, so the ordinary read path skips the clock as in 1.9.0.
+	private static final long CLOCK_NOT_READ = Long.MIN_VALUE;
 	private static final int SWITCHBACK_RETAINED_PERIODS = 2;
 	// The Collector's switchback anchor bounds (Registry): an anchor must be hour aligned and in
 	// [0, 10000-01-01T00:00:00Z).
@@ -558,7 +561,7 @@ public class Context implements Closeable {
 	public int getTreatment(@Nonnull final String experimentName) {
 		checkReady(true);
 
-		final long now = clock_.millis();
+		final long now = resolutionTime();
 		return exposeTreatmentAssignment(experimentName, getAssignment(experimentName, now), now).variant;
 	}
 
@@ -590,7 +593,8 @@ public class Context implements Closeable {
 			RuntimeException failure = null;
 			try {
 				if (!assignment.suppressed && !assignment.switchbackSilent) {
-					enqueueExposure(assignment, assignment.switchback ? resolvedAt : clock_.millis());
+					enqueueExposure(assignment,
+							(assignment.switchback && (resolvedAt != CLOCK_NOT_READ)) ? resolvedAt : clock_.millis());
 				}
 			} catch (final RuntimeException e) {
 				failure = e;
@@ -694,7 +698,7 @@ public class Context implements Closeable {
 	public int peekTreatment(@Nonnull final String experimentName) {
 		checkReady(true);
 
-		return getAssignment(experimentName, clock_.millis()).variant;
+		return getAssignment(experimentName, resolutionTime()).variant;
 	}
 
 	public Map<String, List<String>> getVariableKeys() {
@@ -723,7 +727,7 @@ public class Context implements Closeable {
 	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
 		checkReady(true);
 
-		final long now = clock_.millis();
+		final long now = resolutionTime();
 		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false, now), now);
 		if (assignment != null) {
 			if (assignment.variables != null) {
@@ -757,7 +761,7 @@ public class Context implements Closeable {
 				// Exhaustion returns the attempted assignment that lost to a concurrent retirement.
 				return current;
 			}
-			now = clock_.millis();
+			now = resolutionTime();
 			current = resolver.apply(now);
 		}
 		return current;
@@ -766,7 +770,7 @@ public class Context implements Closeable {
 	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
 		checkReady(true);
 
-		final Assignment assignment = getVariableAssignment(key, true, clock_.millis());
+		final Assignment assignment = getVariableAssignment(key, true, resolutionTime());
 		if (assignment != null) {
 			if (assignment.variables != null) {
 				if (assignment.variables.containsKey(key)) {
@@ -1800,9 +1804,15 @@ public class Context implements Closeable {
 		}
 	}
 
-	// now is the caller's single clock reading for this resolution, so the cache key, the drawn
-	// period and a switchback exposure's exposedAt all agree.
-	private Assignment getAssignment(final String experimentName, final long now) {
+	// The clock reading a read resolves at, or CLOCK_NOT_READ when no switchback is installed.
+	private long resolutionTime() {
+		return hasSwitchback_ ? clock_.millis() : CLOCK_NOT_READ;
+	}
+
+	// callerNow is the caller's single clock reading for this resolution, so the cache key, the drawn
+	// period and a switchback exposure's exposedAt all agree. A switchback installed by a refresh
+	// after the caller skipped the clock reads it here; its exposure then reads it again.
+	private Assignment getAssignment(final String experimentName, final long callerNow) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		// The cached slot the read path found stale (null on a miss). The write path does not
 		// recheck that same object: a concurrent install is always a different object, while a
@@ -1814,6 +1824,7 @@ public class Context implements Closeable {
 			readLock.lock();
 
 			final ContextExperiment experiment = Context.this.getExperiment(experimentName);
+			final long now = switchbackNow(experiment, callerNow);
 			final Assignment assignment = assignmentCache_
 					.get(assignmentCacheKey(experimentName, currentSwitchbackPeriod(experiment, now)));
 
@@ -1835,6 +1846,7 @@ public class Context implements Closeable {
 			final Integer custom = cassignments_.get(experimentName);
 			final Integer override = overrides_.get(experimentName);
 			final ContextExperiment experiment = Context.this.getExperiment(experimentName);
+			final long now = switchbackNow(experiment, callerNow);
 			final long periodIndex = currentSwitchbackPeriod(experiment, now);
 			final String cacheKey = assignmentCacheKey(experimentName, periodIndex);
 
@@ -2047,6 +2059,13 @@ public class Context implements Closeable {
 	// ends up the one returned, so on the non-peek path each candidate's applicable holdouts fire
 	// as it is visited - the ordinary experiment exposure is still emitted only for the winner,
 	// by the caller. peek must stay side-effect free, so it skips triggering entirely.
+	private long switchbackNow(final ContextExperiment experiment, final long callerNow) {
+		if ((callerNow != CLOCK_NOT_READ) || (experiment == null) || !isSwitchback(experiment.data)) {
+			return callerNow;
+		}
+		return clock_.millis();
+	}
+
 	private Assignment getVariableAssignment(final String key, final boolean peek, final long now) {
 		final List<ContextExperiment> keyExperimentVariables = getVariableExperiments(key);
 
@@ -2333,11 +2352,13 @@ public class Context implements Closeable {
 			}
 		}
 
+		boolean hasSwitchback = false;
 		for (final Experiment experiment : data.experiments) {
 			final ContextExperiment contextExperiment = new ContextExperiment();
 			contextExperiment.data = experiment;
 			contextExperiment.holdouts = resolveApplicableHoldouts(experiment, holdoutsById);
 			if (isSwitchback(experiment)) {
+				hasSwitchback = true;
 				// Holdouts never apply to a switchback (see resolveSwitchbackAssignment).
 				contextExperiment.holdouts = null;
 				contextExperiment.switchbackSourceTypes = SwitchbackServing.sourceTypes(experiment.switchbackClusters);
@@ -2452,6 +2473,7 @@ public class Context implements Closeable {
 			indexVariables_ = indexVariables;
 			holdoutsById_ = holdoutsById;
 			data_ = data;
+			hasSwitchback_ = hasSwitchback;
 
 			setRefreshTimer();
 		} finally {
@@ -2470,6 +2492,7 @@ public class Context implements Closeable {
 			indexVariables_ = new HashMap<String, List<ContextExperiment>>();
 			holdoutsById_ = new HashMap<Integer, Experiment>();
 			data_ = new ContextData();
+			hasSwitchback_ = false;
 			failed_ = true;
 			readyError_ = exception;
 		} finally {
@@ -2588,6 +2611,8 @@ public class Context implements Closeable {
 	// Id-keyed view of the holdouts installed by the most recent setData, used to resolve a
 	// holdout's live definition independent of any stale Experiment reference a caller holds.
 	private Map<Integer, Experiment> holdoutsById_;
+	// Whether the installed data has a switchback experiment; see resolutionTime.
+	private volatile boolean hasSwitchback_;
 	// Source of ContextExperiment.switchbackGeneration; guarded by dataLock_ write.
 	private long switchbackGenerationCounter_;
 	private final ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();

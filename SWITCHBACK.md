@@ -10,9 +10,8 @@ Collector. There are no hashed buckets.
 
 ## Minimum SDK version
 
-Switchback serving is supported from the first release after **1.8.0** of `core-api` and
-`core-api-java6`. Every release up to and including 1.8.0 lacks it. This change does not bump
-`VERSION`; the release that ships it sets the number.
+Switchback serving is supported from **1.10.0** of `core-api` and `core-api-java6`. Every
+release up to and including 1.9.0 lacks it.
 
 ## What the SDK does
 
