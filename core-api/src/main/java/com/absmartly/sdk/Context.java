@@ -2286,7 +2286,7 @@ public class Context implements Closeable {
 		Object value;
 	}
 
-	// Missing or malformed holdout references are ignored. Sort resolved holdouts by id for
+	// Missing, malformed and repeated holdout references are ignored. Sort resolved holdouts by id for
 	// deterministic exposure ordering and stable cache matching.
 	private static Experiment[] resolveApplicableHoldouts(final Experiment experiment,
 			final Map<Integer, Experiment> holdoutsById) {
@@ -2297,7 +2297,9 @@ public class Context implements Closeable {
 		final List<Experiment> applicable = new ArrayList<Experiment>(experiment.holdoutIds.length);
 		for (final int holdoutId : experiment.holdoutIds) {
 			final Experiment holdout = holdoutsById.get(holdoutId);
-			if (holdout != null) {
+			// A repeated id is one holdout, as in javascript-sdk: a duplicate would otherwise count in
+			// holdoutSetMatches, so a refresh that only drops it would re-expose the experiment.
+			if ((holdout != null) && !applicable.contains(holdout)) {
 				applicable.add(holdout);
 			}
 		}

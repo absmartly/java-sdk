@@ -624,6 +624,39 @@ class ContextHoldoutTest extends TestUtils {
 		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_dangling_holdout_id"));
 	}
 
+	// A holdoutIds list that names one holdout more than once is one holdout, as in javascript-sdk:
+	// one holdout exposure, and a refresh that only drops the duplicate does not change coverage, so
+	// neither the covered experiment nor the holdout re-exposes.
+	@Test
+	void duplicateHoldoutIdIsOneHoldout() {
+		final Context context = createReadyContext(UID_NOT_HELD_OUT, contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				coveredBy(newExperiment(1, "exp_duplicate_holdout_id"), 11, 11)));
+
+		assertEquals(0, context.getTreatment("exp_duplicate_holdout_id"));
+		assertEquals(2, context.getPendingCount()); // own exposure + one holdout exposure
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(
+				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
+				coveredBy(newExperiment(1, "exp_duplicate_holdout_id"), 11)));
+		refreshing.join();
+
+		assertEquals(0, context.getTreatment("exp_duplicate_holdout_id"));
+		assertEquals(2, context.getPendingCount());
+
+		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+		context.publish();
+
+		final PublishEvent expected = publishedEvent(UID_NOT_HELD_OUT,
+				new Exposure(1, "exp_duplicate_holdout_id", UNIT_TYPE, 0, clock.millis(), true, true, false, false,
+						false, false),
+				holdoutExposure(11, "holdout_a", 1));
+		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
+	}
+
 	// A custom assignment can never override a held-out unit's variant - holdout precedence
 	// beats custom assignments, matching the existing audience/full-on/traffic precedence rules.
 	@Test
