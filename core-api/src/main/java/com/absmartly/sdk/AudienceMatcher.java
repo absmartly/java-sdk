@@ -9,10 +9,10 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.jsonexpr.JsonExpr;
+import java.nio.charset.StandardCharsets;
+import com.absmartly.sdk.internal.jsonexpr.JsonExpr;
 
-public class AudienceMatcher {
+class AudienceMatcher {
 	private static final Logger log = LoggerFactory.getLogger(AudienceMatcher.class);
 
 	// Same check as the backend's experiment split: the gap from 100 is rounded to two decimals before being

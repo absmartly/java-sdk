@@ -7,7 +7,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
+import java.nio.charset.StandardCharsets;
 
 class DefaultVariableParserTest extends TestUtils {
 	@Test

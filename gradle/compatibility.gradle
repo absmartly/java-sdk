@@ -1,24 +1,18 @@
-// Enforces the API floor on production sources using Animal Sniffer. Each signature is checked separately.
-// Test sources are excluded: their dependencies (JUnit 5, Mockito 5) require Java 11+ APIs.
-def signatures = [
-	"core-api": [
-		"org.codehaus.mojo.signature:java18:1.0@signature",
-		"net.sf.androidscents.signature:android-api-level-24:7.0_r2@signature",
-	],
-	// java16:1.1 is the Java 1.6 signature despite the artifact name.
-	"core-api-java6": [
-		"org.codehaus.mojo.signature:java16:1.1@signature"
-	],
-]
-
-if (signatures.containsKey(project.name)) {
+// Enforces the Android floor on the core sources using Animal Sniffer: kotlin-sdk and android-sdk load core-api on
+// Android API 24+. The src/jdk source set (the java.net.http transport) is not checked: Android never loads it.
+// Ignored: java.time, which Android provides through core library desugaring, and java.util.concurrent.Flow and
+// SubmissionPublisher (API 30), which only EventStream uses; EventStream is loaded only when events() is called, so
+// onEvent() is the event API below API 30. Test sources are excluded.
+if (project.name == "core-api") {
 	apply plugin: "ru.vyarus.animalsniffer"
 
 	animalsniffer {
 		sourceSets = [sourceSets.main]
+		ignore "java.time.*", "java.util.concurrent.Flow", "java.util.concurrent.Flow\$*",
+				"java.util.concurrent.SubmissionPublisher"
 	}
 
 	dependencies {
-		signatures[project.name].each { signature it }
+		signature "net.sf.androidscents.signature:android-api-level-24:7.0_r2@signature"
 	}
 }

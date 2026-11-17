@@ -1,9 +1,203 @@
-description = """ABSmartly Java SDK"""
+description = """ABsmartly Java SDK"""
 
-apply from: rootProject.file("gradle/sdk-module.gradle")
+apply plugin: "java-library"
+apply plugin: "com.github.johnrengelman.shadow"
 
-// Java 6 syntax keeps these sources compilable for core-api-java6.
-compileJava {
-	sourceCompatibility = "1.6"
-	targetCompatibility = "1.8"
+
+// The default java.net.http transport compiles separately from the core sources: Android, which kotlin-sdk and
+// android-sdk run core-api on, has no java.net.http, and nothing in src/main references these classes directly
+// (ABsmartlyClient loads JdkHttpTransport reflectively only when no Transport is supplied).
+sourceSets {
+	jdk {
+		compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+		runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+	}
+	test {
+		compileClasspath += sourceSets.jdk.output
+		runtimeClasspath += sourceSets.jdk.output
+	}
+}
+
+configurations {
+	jdkImplementation.extendsFrom implementation
+}
+
+afterEvaluate {
+	tasks.named("sourcesJar") { from sourceSets.jdk.allSource }
+	tasks.named("javadoc") {
+		source += sourceSets.jdk.allJava
+		classpath += sourceSets.jdk.compileClasspath
+		options.encoding = "UTF-8"
+		options.addStringOption("Xdoclint:none", "-quiet")
+	}
+}
+
+dependencies {
+	// Listed in the published POM (see shadow below). Everything in implementation is shaded into the jar.
+	compileOnly group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	compileOnly group: "org.jspecify", name: "jspecify", version: jspecifyVersion
+	shadow group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	shadow group: "org.jspecify", name: "jspecify", version: jspecifyVersion
+	jdkCompileOnly group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	jdkCompileOnly group: "org.jspecify", name: "jspecify", version: jspecifyVersion
+
+	implementation group: "com.fasterxml.jackson.core", name: "jackson-databind", version: jacksonVersion
+
+	testImplementation group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	testImplementation group: "org.jspecify", name: "jspecify", version: jspecifyVersion
+	testImplementation group: "org.junit.jupiter", name: "junit-jupiter-api", version: junitVersion
+	testImplementation group: "org.junit.jupiter", name: "junit-jupiter-params", version: junitVersion
+	testRuntimeOnly group: "org.junit.jupiter", name: "junit-jupiter-engine", version: junitVersion
+	testImplementation group: "org.mockito", name: "mockito-core", version: mockitoVersion
+	testImplementation group: "org.mockito", name: "mockito-junit-jupiter", version: mockitoVersion
+	// Mockito 5.11 ships Byte Buddy 1.14, which cannot instrument classes on a JDK 25 runtime.
+	testImplementation group: "net.bytebuddy", name: "byte-buddy", version: byteBuddyVersion
+	testImplementation group: "net.bytebuddy", name: "byte-buddy-agent", version: byteBuddyVersion
+}
+
+
+def shadedPrefix = "com.absmartly.sdk.internal.shaded"
+
+jar {
+	archiveClassifier.set("plain")
+	from sourceSets.jdk.output
+}
+
+shadowJar {
+	archiveClassifier.set("")
+	from sourceSets.jdk.output
+	configurations = [project.configurations.runtimeClasspath]
+	relocate "com.fasterxml.jackson", "${shadedPrefix}.jackson"
+	exclude "module-info.class"
+	exclude "META-INF/versions/**/module-info.class"
+	exclude "META-INF/maven/**"
+	mergeServiceFiles()
+	manifest {
+		attributes("Automatic-Module-Name": "com.absmartly.sdk", "Implementation-Version": rootProject.ext.VERSION)
+	}
+}
+
+// Fails the build if Jackson leaks into the published jar unrelocated, or if the jar does not hold the transport.
+def verifyShadedJar = tasks.register("verifyShadedJar") {
+	dependsOn shadowJar
+	def jarFile = shadowJar.archiveFile
+	inputs.file(jarFile)
+	doLast {
+		def names = new java.util.zip.ZipFile(jarFile.get().asFile).withCloseable { zip ->
+			zip.entries().collect { it.name }
+		}
+		def leaked = names.findAll { it.startsWith("com/fasterxml/") }
+		if (!leaked.isEmpty()) {
+			throw new GradleException("Unrelocated Jackson classes in ${jarFile.get().asFile.name}: ${leaked.take(5)}")
+		}
+		if (!names.contains("com/absmartly/sdk/JdkHttpTransport.class")) {
+			throw new GradleException("JdkHttpTransport is missing from ${jarFile.get().asFile.name}")
+		}
+		if (!names.any { it.startsWith("com/absmartly/sdk/internal/shaded/jackson/databind/") }) {
+			throw new GradleException("Relocated Jackson is missing from ${jarFile.get().asFile.name}")
+		}
+	}
+}
+
+assemble.dependsOn shadowJar
+check.dependsOn verifyShadedJar
+
+check.dependsOn jacocoTestCoverageVerification
+
+def jacocoExcludes = [
+	"com/absmartly/sdk/internal/json/**/*",
+	"com/absmartly/sdk/internal/SdkVersion*",
+]
+
+jacocoTestReport {
+	afterEvaluate {
+		getClassDirectories().setFrom((classDirectories.files + sourceSets.jdk.output.classesDirs.files).collect {
+			fileTree(dir: it, exclude: jacocoExcludes)
+		})
+	}
+}
+
+jacocoTestCoverageVerification {
+	violationRules {
+		rule {
+			limit {
+				counter = "CLASS"
+				value = "COVEREDRATIO"
+				minimum = 1.0
+			}
+
+			limit {
+				counter = "METHOD"
+				value = "COVEREDRATIO"
+				minimum = 0.90
+			}
+
+			limit {
+				counter = "INSTRUCTION"
+				value = "COVEREDRATIO"
+				minimum = 0.88
+			}
+		}
+	}
+
+	afterEvaluate {
+		getClassDirectories().setFrom((classDirectories.files + sourceSets.jdk.output.classesDirs.files).collect {
+			fileTree(dir: it, exclude: jacocoExcludes)
+		})
+	}
+}
+
+
+test {
+	useJUnitPlatform()
+}
+
+publishToSonatype.dependsOn check
+
+
+// Generates SdkVersion from the root project's VERSION so the X-Agent header, the sdk_version
+// system attribute and the published artifact share one source of truth.
+def generatedVersionDir = layout.buildDirectory.dir("generated/sources/sdkVersion/java")
+
+def generateSdkVersion = tasks.register("generateSdkVersion") {
+	def version = rootProject.ext.VERSION
+	def outputDir = generatedVersionDir
+	inputs.property("version", version)
+	outputs.dir(outputDir)
+	doLast {
+		def file = outputDir.get().file("com/absmartly/sdk/internal/SdkVersion.java").asFile
+		file.parentFile.mkdirs()
+		file.text = """package com.absmartly.sdk.internal;
+
+public final class SdkVersion {
+	public static final String NAME = "absmartly-java-sdk";
+	public static final String VERSION = "${version}";
+	public static final String AGENT = NAME + "/" + VERSION;
+
+	private SdkVersion() {}
+}
+"""
+	}
+}
+
+sourceSets.main.java.srcDir(generateSdkVersion)
+
+
+// The build JDK (the Java 11 floor) compiles and runs the tests; this task also runs them on the latest JDK.
+tasks.register("testJdk25", Test) {
+	description = "Runs the tests on a JDK 25 runtime."
+	group = "verification"
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+	useJUnitPlatform()
+	jacoco {
+		enabled = false
+	}
+}
+
+if (!project.hasProperty("skipJdk25")) {
+	check.dependsOn "testJdk25"
 }

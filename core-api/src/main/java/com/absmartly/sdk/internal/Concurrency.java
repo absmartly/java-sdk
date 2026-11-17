@@ -55,6 +55,26 @@ public class Concurrency {
 		}
 	}
 
+	static public <K, V> V removeRW(ReentrantReadWriteLock lock, Map<K, V> map, K key) {
+		final ReentrantReadWriteLock.WriteLock writeLock = lock.writeLock();
+		try {
+			writeLock.lock();
+			return map.remove(key);
+		} finally {
+			writeLock.unlock();
+		}
+	}
+
+	static public <K, V> Map<K, V> snapshotRW(ReentrantReadWriteLock lock, Map<K, V> map) {
+		final ReentrantReadWriteLock.ReadLock readLock = lock.readLock();
+		try {
+			readLock.lock();
+			return java.util.Collections.unmodifiableMap(new java.util.HashMap<K, V>(map));
+		} finally {
+			readLock.unlock();
+		}
+	}
+
 	static public <V> void addRW(ReentrantReadWriteLock lock, List<V> list, V value) {
 		final ReentrantReadWriteLock.WriteLock writeLock = lock.writeLock();
 		try {

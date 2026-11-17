@@ -14,7 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.absmartly.sdk.AudienceMatcher.RuleAction;
-import com.absmartly.sdk.jsonexpr.JsonExpr;
+import com.absmartly.sdk.internal.jsonexpr.JsonExpr;
 
 class AudienceMatcherTest extends TestUtils {
 	final AudienceMatcher matcher = new AudienceMatcher(new DefaultAudienceDeserializer());

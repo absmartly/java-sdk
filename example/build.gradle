@@ -3,15 +3,11 @@ plugins {
 }
 
 
-mainClassName = "com.absmartly.sdk.Example"
-description = """ABSmartly Java SDK Example"""
+mainClassName = "com.absmartly.example.Example"
+description = """ABsmartly Java SDK Example"""
 
 
 dependencies {
 	implementation project(":core-api")
 }
 
-compileJava {
-	sourceCompatibility = "1.8"
-	targetCompatibility = "1.8"
-}

@@ -34,11 +34,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.absmartly.sdk.SwitchbackTestSupport.ExposureCapture;
 import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Experiment;
-import com.absmartly.sdk.json.ExperimentApplication;
-import com.absmartly.sdk.json.ExperimentVariant;
-import com.absmartly.sdk.json.Exposure;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.Experiment;
+import com.absmartly.sdk.internal.json.ExperimentApplication;
+import com.absmartly.sdk.internal.json.ExperimentVariant;
+import com.absmartly.sdk.internal.json.ExposurePayload;
 
 // Replays the Collector's R33 switchback serving rules (ContextAPI.switchbackServing and
 // switchbackVariant, exercised by the Collector's ContextAPISwitchbackTest through its shared
@@ -95,21 +95,21 @@ class SwitchbackServerParityTest {
 
 	static final class Served {
 		final List<Integer> variants = new ArrayList<Integer>();
-		List<Exposure> exposures;
+		List<ExposurePayload> exposures;
 	}
 
 	// Serves PERIODS periods with getTreatment, one call per period.
 	static Served serve(Experiment experiment, Map<String, ?> units, Map<String, Object> attributes) {
 		final MutableClock clock = new MutableClock(ANCHOR);
 		final ExposureCapture capture = new ExposureCapture();
-		final ContextConfig config = ContextConfig.create();
+		final TestContextConfig config = TestContextConfig.create();
 		config.setUnits(units);
 		config.setEventLogger(capture);
-		final ContextData data = new ContextData();
+		final ContextPayload data = new ContextPayload();
 		data.experiments = new Experiment[]{experiment};
 		final ContextEventHandler handler = mock(ContextEventHandler.class);
 		when(handler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
-		final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
+		final Context context = TestContexts.create(clock, config, mock(ScheduledExecutorService.class),
 				CompletableFuture.completedFuture(data), mock(ContextDataProvider.class), handler, null,
 				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()));
 		if (attributes != null) {
@@ -118,7 +118,7 @@ class SwitchbackServerParityTest {
 		final Served served = new Served();
 		for (int p = 0; p < PERIODS; ++p) {
 			clock.now = ANCHOR + p * HOUR + 1;
-			served.variants.add(context.getTreatment("exp_sb"));
+			served.variants.add(context.treatment("exp_sb"));
 		}
 		served.exposures = capture.exposures;
 		return served;
@@ -135,7 +135,7 @@ class SwitchbackServerParityTest {
 		for (int p = 0; p < PERIODS; ++p) {
 			final int expected = collectorVariant(key, SEED, p, ARMS);
 			assertEquals(expected, served.variants.get(p).intValue(), message + " period " + p);
-			final Exposure exposure = served.exposures.get(p);
+			final ExposurePayload exposure = served.exposures.get(p);
 			assertEquals(servingType, exposure.unit, message);
 			assertEquals(expected, exposure.variant, message);
 			assertTrue(exposure.assigned, message);
@@ -225,12 +225,12 @@ class SwitchbackServerParityTest {
 
 	@Test
 	void sameTypeSecondUidIsRejected() {
-		final Context context = Context.create(new MutableClock(ANCHOR), ContextConfig.create(),
-				mock(ScheduledExecutorService.class), CompletableFuture.completedFuture(new ContextData()),
+		final Context context = TestContexts.create(new MutableClock(ANCHOR), TestContextConfig.create(),
+				mock(ScheduledExecutorService.class), CompletableFuture.completedFuture(new ContextPayload()),
 				mock(ContextDataProvider.class), mock(ContextEventHandler.class), null, new DefaultVariableParser(),
 				new AudienceMatcher(new DefaultAudienceDeserializer()));
 		context.setUnit(STORE, "s1");
-		assertThrows(IllegalArgumentException.class, () -> context.setUnit(STORE, "s2"));
+		assertThrows(UnitAlreadySetException.class, () -> context.setUnit(STORE, "s2"));
 		assertEligible(serve(experiment(clusters(STORE, "city")), TestUtils.mapOf(STORE, "s1"),
 				attrs("city", "Faro")), STORE, "Faro", "single unit of the type");
 	}
@@ -324,25 +324,25 @@ class SwitchbackServerParityTest {
 			twin.trafficSeedHi = 3;
 			twin.trafficSeedLo = 4;
 
-			final ContextConfig config = ContextConfig.create();
+			final TestContextConfig config = TestContextConfig.create();
 			config.setUnits(TestUtils.mapOf(STORE, "s1", DEVICE, "device-" + u));
 			final ExposureCapture capture = new ExposureCapture();
 			config.setEventLogger(capture);
-			final ContextData data = new ContextData();
+			final ContextPayload data = new ContextPayload();
 			data.experiments = new Experiment[]{switchback, twin};
 			final MutableClock clock = new MutableClock(ANCHOR);
-			final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
+			final Context context = TestContexts.create(clock, config, mock(ScheduledExecutorService.class),
 					CompletableFuture.completedFuture(data), mock(ContextDataProvider.class),
 					mock(ContextEventHandler.class), null, new DefaultVariableParser(),
 					new AudienceMatcher(new DefaultAudienceDeserializer()));
 			// Only the device unit has a value, so it serves.
 			context.setAttribute("geo", TestUtils.mapOf("city", "Porto"));
-			context.getTreatment("exp_unit");
+			context.treatment("exp_unit");
 			final boolean twinEligible = capture.exposures.get(0).eligible;
 			for (int p = 0; p < PERIODS; ++p) {
 				clock.now = ANCHOR + p * HOUR;
-				final int variant = context.getTreatment("exp_sb");
-				final Exposure exposure = capture.exposures.get(p + 1);
+				final int variant = context.treatment("exp_sb");
+				final ExposurePayload exposure = capture.exposures.get(p + 1);
 				assertEquals(DEVICE, exposure.unit);
 				assertEquals(twinEligible, exposure.eligible);
 				assertEquals(twinEligible ? collectorVariant("Porto", SEED, p, ARMS) : 0, variant);
@@ -388,19 +388,19 @@ class SwitchbackServerParityTest {
 
 		final MutableClock clock = new MutableClock(ANCHOR);
 		final ExposureCapture capture = new ExposureCapture();
-		final ContextConfig config = ContextConfig.create();
+		final TestContextConfig config = TestContextConfig.create();
 		config.setUnits(TestUtils.mapOf(STORE, "s1"));
 		config.setEventLogger(capture);
-		final ContextData data = new ContextData();
+		final ContextPayload data = new ContextPayload();
 		data.experiments = new Experiment[]{experiment(clusters(STORE, "cluster"))};
-		final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
+		final Context context = TestContexts.create(clock, config, mock(ScheduledExecutorService.class),
 				CompletableFuture.completedFuture(data), mock(ContextDataProvider.class),
 				mock(ContextEventHandler.class), null, new DefaultVariableParser(),
 				new AudienceMatcher(new DefaultAudienceDeserializer()));
 		context.setAttribute("cluster", "Lisboa");
 		context.setAttribute("cluster", "Porto");
 		clock.now = ANCHOR + 1;
-		assertEquals(collectorVariant("Porto", SEED, 0, ARMS), context.getTreatment("exp_sb"));
+		assertEquals(collectorVariant("Porto", SEED, 0, ARMS), context.treatment("exp_sb"));
 		assertTrue(capture.exposures.get(0).eligible);
 	}
 

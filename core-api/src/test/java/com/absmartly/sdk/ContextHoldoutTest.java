@@ -26,18 +26,18 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import com.absmartly.sdk.internal.hashing.Hashing;
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.Attribute;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Experiment;
-import com.absmartly.sdk.json.ExperimentApplication;
-import com.absmartly.sdk.json.ExperimentVariant;
-import com.absmartly.sdk.json.Exposure;
-import com.absmartly.sdk.json.PublishEvent;
-import com.absmartly.sdk.json.Unit;
+import java.nio.charset.StandardCharsets;
+import com.absmartly.sdk.internal.Clock;
+import com.absmartly.sdk.internal.json.AttributePayload;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.Experiment;
+import com.absmartly.sdk.internal.json.ExperimentApplication;
+import com.absmartly.sdk.internal.json.ExperimentVariant;
+import com.absmartly.sdk.internal.json.ExposurePayload;
+import com.absmartly.sdk.internal.json.PublishPayload;
+import com.absmartly.sdk.internal.json.Unit;
 
-// A holdout arrives as an ordinary experiment entry (in ContextData.holdouts, not .experiments) so
+// A holdout arrives as an ordinary experiment entry (in ContextPayload.holdouts, not .experiments) so
 // its variant semantics are: variant 0 = held out (no experimentation at all), variant 1 = exposed.
 // A covered experiment declares its coverage explicitly via holdoutIds, an array of holdout ids
 // resolved server-side; the SDK's only job is to look each id up in the installed holdouts[] and
@@ -92,23 +92,23 @@ class ContextHoldoutTest extends TestUtils {
 		scheduler = mock(ScheduledExecutorService.class);
 	}
 
-	Context createReadyContext(String uid, ContextData data) {
-		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, uid);
-		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
+	Context createReadyContext(String uid, ContextPayload data) {
+		final TestContextConfig config = TestContextConfig.create().setUnit(UNIT_TYPE, uid);
+		return TestContexts.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, eventLogger, variableParser, audienceMatcher);
 	}
 
-	Context createReadyContext(ContextData data) {
+	Context createReadyContext(ContextPayload data) {
 		return createReadyContext(UID, data);
 	}
 
-	Context createReadyContext(ContextConfig config, ContextData data) {
-		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
+	Context createReadyContext(TestContextConfig config, ContextPayload data) {
+		return TestContexts.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, eventLogger, variableParser, audienceMatcher);
 	}
 
-	Context createReadyContextWithoutUnits(ContextData data) {
-		return createReadyContext(ContextConfig.create(), data);
+	Context createReadyContextWithoutUnits(ContextPayload data) {
+		return createReadyContext(TestContextConfig.create(), data);
 	}
 
 	static Experiment newExperiment(int id, String name) {
@@ -186,23 +186,23 @@ class ContextHoldoutTest extends TestUtils {
 		return experiment;
 	}
 
-	static ContextData contextDataOf(Experiment... experiments) {
+	static ContextPayload contextDataOf(Experiment... experiments) {
 		return contextDataOf(null, experiments);
 	}
 
-	static ContextData contextDataOf(Experiment[] holdouts, Experiment... experiments) {
-		final ContextData data = new ContextData();
+	static ContextPayload contextDataOf(Experiment[] holdouts, Experiment... experiments) {
+		final ContextPayload data = new ContextPayload();
 		data.experiments = experiments;
 		data.holdouts = holdouts;
 		return data;
 	}
 
-	PublishEvent publishedEvent(String uid, Exposure... exposures) {
+	PublishPayload publishedEvent(String uid, ExposurePayload... exposures) {
 		return publishedEvent(UNIT_TYPE, uid, exposures);
 	}
 
-	PublishEvent publishedEvent(String unitType, String uid, Exposure... exposures) {
-		final PublishEvent expected = new PublishEvent();
+	PublishPayload publishedEvent(String unitType, String uid, ExposurePayload... exposures) {
+		final PublishPayload expected = new PublishPayload();
 		expected.hashed = true;
 		expected.publishedAt = clock.millis();
 		expected.units = new Unit[]{
@@ -212,12 +212,12 @@ class ContextHoldoutTest extends TestUtils {
 		return expected;
 	}
 
-	Exposure holdoutExposure(int id, String name, int variant) {
+	ExposurePayload holdoutExposure(int id, String name, int variant) {
 		return holdoutExposure(UNIT_TYPE, id, name, variant);
 	}
 
-	Exposure holdoutExposure(String unitType, int id, String name, int variant) {
-		return new Exposure(id, name, unitType, variant, clock.millis(), true, true, false, false, false, false);
+	ExposurePayload holdoutExposure(String unitType, int id, String name, int variant) {
+		return new ExposurePayload(id, name, unitType, variant, clock.millis(), true, true, false, false, false, false);
 	}
 
 	Object getAssignment(Context context, String experimentName) throws Exception {
@@ -278,11 +278,11 @@ class ContextHoldoutTest extends TestUtils {
 
 		assertEquals(0, context.peekTreatment("exp_holdout_in"));
 
-		context.getTreatment("exp_holdout_in");
+		context.treatment("exp_holdout_in");
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID, holdoutExposure(11, "holdout_a", 0));
+		final PublishPayload expected = publishedEvent(UID, holdoutExposure(11, "holdout_a", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -294,12 +294,12 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(UID_NOT_HELD_OUT, contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_holdout_out")); // UID_NOT_HELD_OUT's normal variant is 0
+		assertEquals(0, context.treatment("exp_holdout_out")); // UID_NOT_HELD_OUT's normal variant is 0
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID_NOT_HELD_OUT,
-				new Exposure(1, "exp_holdout_out", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false,
+		final PublishPayload expected = publishedEvent(UID_NOT_HELD_OUT,
+				new ExposurePayload(1, "exp_holdout_out", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false,
 						false),
 				holdoutExposure(11, "holdout_a", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -316,15 +316,15 @@ class ContextHoldoutTest extends TestUtils {
 
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, covered, notCovered));
 
-		assertEquals(0, context.getTreatment("exp_holdout_in")); // suppressed -> control
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_not_covered")); // no coverage -> unaffected
+		assertEquals(0, context.treatment("exp_holdout_in")); // suppressed -> control
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_not_covered")); // no coverage -> unaffected
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_a", 0),
-				new Exposure(2, "exp_not_covered", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+				new ExposurePayload(2, "exp_not_covered", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
 						false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -340,11 +340,11 @@ class ContextHoldoutTest extends TestUtils {
 						newHoldout(12, "holdout_b", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO), // does not hold UID out
 				}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_multi_holdout")); // union -> suppressed
+		assertEquals(0, context.treatment("exp_multi_holdout")); // union -> suppressed
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_a", 0),
 				holdoutExposure(12, "holdout_b", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -366,11 +366,11 @@ class ContextHoldoutTest extends TestUtils {
 						newHoldout(12, "holdout_high_id", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO), // holds UID out
 				}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_union_high_id_decides")); // union -> suppressed
+		assertEquals(0, context.treatment("exp_union_high_id_decides")); // union -> suppressed
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_low_id", 1),
 				holdoutExposure(12, "holdout_high_id", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -385,12 +385,12 @@ class ContextHoldoutTest extends TestUtils {
 						newHoldout(12, "holdout_b", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO),
 				}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_multi_holdout_miss")); // UID_NOT_HELD_OUT's normal variant
+		assertEquals(0, context.treatment("exp_multi_holdout_miss")); // UID_NOT_HELD_OUT's normal variant
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID_NOT_HELD_OUT,
-				new Exposure(1, "exp_multi_holdout_miss", UNIT_TYPE, 0, clock.millis(), true, true, false, false,
+		final PublishPayload expected = publishedEvent(UID_NOT_HELD_OUT,
+				new ExposurePayload(1, "exp_multi_holdout_miss", UNIT_TYPE, 0, clock.millis(), true, true, false, false,
 						false, false),
 				holdoutExposure(11, "holdout_a", 1),
 				holdoutExposure(12, "holdout_b", 1));
@@ -405,7 +405,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_fullon_holdout")); // held out despite fullOnVariant=2
+		assertEquals(0, context.treatment("exp_fullon_holdout")); // held out despite fullOnVariant=2
 	}
 
 	// --- Three-arm (all_full_on) holdouts ----------------------------------------------------
@@ -421,13 +421,13 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{holdout}, nonFullOn, fullOn));
 
-		assertEquals(0, context.getTreatment("exp_three_arm_0_non_fullon")); // held out -> control
-		assertEquals(0, context.getTreatment("exp_three_arm_0_fullon")); // held out despite fullOnVariant=2
+		assertEquals(0, context.treatment("exp_three_arm_0_non_fullon")); // held out -> control
+		assertEquals(0, context.treatment("exp_three_arm_0_fullon")); // held out despite fullOnVariant=2
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID, holdoutExposure(21, "holdout_three_arm", 0));
+		final PublishPayload expected = publishedEvent(UID, holdoutExposure(21, "holdout_three_arm", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -444,17 +444,17 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{holdout}, nonFullOn, fullOn));
 
-		assertEquals(0, context.getTreatment("exp_three_arm_1_non_fullon")); // forced to control
-		assertEquals(2, context.getTreatment("exp_three_arm_1_fullon")); // its own fullOnVariant, not suppressed
+		assertEquals(0, context.treatment("exp_three_arm_1_non_fullon")); // forced to control
+		assertEquals(2, context.treatment("exp_three_arm_1_fullon")); // its own fullOnVariant, not suppressed
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
 		// the non-full-on experiment emits no exposure of its own; the full-on one does, with
 		// fullOn=true; the holdout's own exposure fires once at variant 1.
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(21, "holdout_three_arm", 1),
-				new Exposure(2, "exp_three_arm_1_fullon", UNIT_TYPE, 2, clock.millis(), true, true, false, true,
+				new ExposurePayload(2, "exp_three_arm_1_fullon", UNIT_TYPE, 2, clock.millis(), true, true, false, true,
 						false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -471,17 +471,17 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{holdout}, nonFullOn, fullOn));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_three_arm_2_non_fullon")); // normal assignment
-		assertEquals(2, context.getTreatment("exp_three_arm_2_fullon")); // its own fullOnVariant
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_three_arm_2_non_fullon")); // normal assignment
+		assertEquals(2, context.treatment("exp_three_arm_2_fullon")); // its own fullOnVariant
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_three_arm_2_non_fullon", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_three_arm_2_non_fullon", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
 						false, false, false, false),
 				holdoutExposure(21, "holdout_three_arm", 2),
-				new Exposure(2, "exp_three_arm_2_fullon", UNIT_TYPE, 2, clock.millis(), true, true, false, true,
+				new ExposurePayload(2, "exp_three_arm_2_fullon", UNIT_TYPE, 2, clock.millis(), true, true, false, true,
 						false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -498,12 +498,12 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{twoArmHoldout, threeArmHoldout}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_union_two_arm_wins")); // union -> suppressed
+		assertEquals(0, context.treatment("exp_union_two_arm_wins")); // union -> suppressed
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_two_arm", 0),
 				holdoutExposure(22, "holdout_three_arm", 2));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -521,12 +521,12 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{twoArmHoldout, threeArmHoldout}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_union_three_arm_wins")); // union -> suppressed
+		assertEquals(0, context.treatment("exp_union_three_arm_wins")); // union -> suppressed
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_two_arm", 1),
 				holdoutExposure(22, "holdout_three_arm", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -560,30 +560,30 @@ class ContextHoldoutTest extends TestUtils {
 
 		// arm 1 (full-on only) and arm 2 (normal traffic) reach the identical verdict: audience
 		// mismatch forces control, not the full-on variant.
-		assertEquals(0, contextArm1.getTreatment("exp_three_arm_1_audience_fullon"));
-		assertEquals(0, contextArm2.getTreatment("exp_three_arm_2_audience_fullon"));
+		assertEquals(0, contextArm1.treatment("exp_three_arm_1_audience_fullon"));
+		assertEquals(0, contextArm2.treatment("exp_three_arm_2_audience_fullon"));
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		contextArm1.publish();
 		contextArm2.publish();
 
-		final PublishEvent expectedArm1 = publishedEvent(UID,
-				new Exposure(1, "exp_three_arm_1_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
+		final PublishPayload expectedArm1 = publishedEvent(UID,
+				new ExposurePayload(1, "exp_three_arm_1_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
 						false, false, true),
 				holdoutExposure(21, "holdout_three_arm", 1));
-		expectedArm1.attributes = new Attribute[]{new Attribute("age", 5, clock.millis())};
+		expectedArm1.attributes = new AttributePayload[]{new AttributePayload("age", 5, clock.millis())};
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(contextArm1, expectedArm1);
 
-		final PublishEvent expectedArm2 = publishedEvent(UID,
-				new Exposure(1, "exp_three_arm_2_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
+		final PublishPayload expectedArm2 = publishedEvent(UID,
+				new ExposurePayload(1, "exp_three_arm_2_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
 						false, false, true),
 				holdoutExposure(21, "holdout_three_arm", 2));
-		expectedArm2.attributes = new Attribute[]{new Attribute("age", 5, clock.millis())};
+		expectedArm2.attributes = new AttributePayload[]{new AttributePayload("age", 5, clock.millis())};
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(contextArm2, expectedArm2);
 	}
 
 	// The unit type an experiment/holdout uses need not have any unit configured on this context
-	// at all (ContextConfig only sets session_id here). getHoldoutAssignment must treat a missing
+	// at all (TestContextConfig only sets session_id here). getHoldoutAssignment must treat a missing
 	// unit as "not evaluable" - control values, no exception, no holdout exposure - rather than
 	// NPE on the missing units_ entry.
 	@Test
@@ -592,19 +592,19 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_user", "user_id", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO,
 				"full");
 
-		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID); // only session_id, no user_id
+		final TestContextConfig config = TestContextConfig.create().setUnit(UNIT_TYPE, UID); // only session_id, no user_id
 		final Context context = createReadyContext(config, contextDataOf(new Experiment[]{holdout}, experiment));
 
 		assertEquals(0, context.peekTreatment("exp_user_holdout"));
 
-		context.getTreatment("exp_user_holdout");
+		context.treatment("exp_user_holdout");
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		assertEquals(0, context.getPendingCount()); // neither the experiment nor the holdout fires
+		assertEquals(0, context.pendingEventCount()); // neither the experiment nor the holdout fires
 	}
 
-	// An absent holdouts key (null, the ContextData default) leaves behaviour identical to
+	// An absent holdouts key (null, the ContextPayload default) leaves behaviour identical to
 	// pre-holdout: no suppression, no NPE.
 	@Test
 	void assignsNormallyWhenHoldoutsKeyIsAbsent() {
@@ -630,7 +630,7 @@ class ContextHoldoutTest extends TestUtils {
 	void customAssignmentCannotOverrideHeldOutVariant() {
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_custom"), 11);
 
-		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID).setCustomAssignment(
+		final TestContextConfig config = TestContextConfig.create().setUnit(UNIT_TYPE, UID).setCustomAssignment(
 				"exp_holdout_custom", 3);
 		final Context context = createReadyContext(config, contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
@@ -642,23 +642,23 @@ class ContextHoldoutTest extends TestUtils {
 	void reusesCachedHeldOutAssignmentWithCustomAssignment() {
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_custom_cache"), 11);
 
-		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID).setCustomAssignment(
+		final TestContextConfig config = TestContextConfig.create().setUnit(UNIT_TYPE, UID).setCustomAssignment(
 				"exp_holdout_custom_cache", 3);
 		final Context context = createReadyContext(config, contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
 		// the custom assignment can never apply while held out; repeated calls must hit the
 		// cache and not queue duplicate exposures.
-		assertEquals(0, context.getTreatment("exp_holdout_custom_cache"));
-		assertEquals(0, context.getTreatment("exp_holdout_custom_cache"));
-		assertEquals(1, context.getPendingCount()); // one exposure: the holdout's own
+		assertEquals(0, context.treatment("exp_holdout_custom_cache"));
+		assertEquals(0, context.treatment("exp_holdout_custom_cache"));
+		assertEquals(1, context.pendingEventCount()); // one exposure: the holdout's own
 	}
 
 	@Test
 	void overrideTakesPrecedenceOverHoldout() {
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_holdout_override"), 11);
 
-		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID).setOverride(
+		final TestContextConfig config = TestContextConfig.create().setUnit(UNIT_TYPE, UID).setOverride(
 				"exp_holdout_override", 3);
 		final Context context = createReadyContext(config, contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
@@ -673,35 +673,35 @@ class ContextHoldoutTest extends TestUtils {
 	@Test
 	void getTreatmentOnOverriddenExperimentTriggersApplicableHoldoutExposureBothArms() {
 		final Experiment heldOutExperiment = coveredBy(newExperiment(1, "exp_holdout_override_held_out"), 11);
-		final ContextConfig heldOutConfig = ContextConfig.create().setUnit(UNIT_TYPE, UID)
+		final TestContextConfig heldOutConfig = TestContextConfig.create().setUnit(UNIT_TYPE, UID)
 				.setOverride("exp_holdout_override_held_out", 3);
 		final Context heldOutContext = createReadyContext(heldOutConfig, contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
 				heldOutExperiment));
 
-		assertEquals(3, heldOutContext.getTreatment("exp_holdout_override_held_out")); // override wins
+		assertEquals(3, heldOutContext.treatment("exp_holdout_override_held_out")); // override wins
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		heldOutContext.publish();
 
-		final PublishEvent expectedHeldOut = publishedEvent(UID,
-				new Exposure(1, "exp_holdout_override_held_out", UNIT_TYPE, 3, clock.millis(), false, true, true,
+		final PublishPayload expectedHeldOut = publishedEvent(UID,
+				new ExposurePayload(1, "exp_holdout_override_held_out", UNIT_TYPE, 3, clock.millis(), false, true, true,
 						false, false, false),
 				holdoutExposure(11, "holdout_a", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(heldOutContext, expectedHeldOut);
 
 		final Experiment notHeldOutExperiment = coveredBy(newExperiment(1, "exp_holdout_override_not_held_out"), 11);
-		final ContextConfig notHeldOutConfig = ContextConfig.create().setUnit(UNIT_TYPE, UID_NOT_HELD_OUT)
+		final TestContextConfig notHeldOutConfig = TestContextConfig.create().setUnit(UNIT_TYPE, UID_NOT_HELD_OUT)
 				.setOverride("exp_holdout_override_not_held_out", 3);
 		final Context notHeldOutContext = createReadyContext(notHeldOutConfig, contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
 				notHeldOutExperiment));
 
-		assertEquals(3, notHeldOutContext.getTreatment("exp_holdout_override_not_held_out")); // override wins
+		assertEquals(3, notHeldOutContext.treatment("exp_holdout_override_not_held_out")); // override wins
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		notHeldOutContext.publish();
 
-		final PublishEvent expectedNotHeldOut = publishedEvent(UID_NOT_HELD_OUT,
-				new Exposure(1, "exp_holdout_override_not_held_out", UNIT_TYPE, 3, clock.millis(), false, true, true,
+		final PublishPayload expectedNotHeldOut = publishedEvent(UID_NOT_HELD_OUT,
+				new ExposurePayload(1, "exp_holdout_override_not_held_out", UNIT_TYPE, 3, clock.millis(), false, true, true,
 						false, false, false),
 				holdoutExposure(11, "holdout_a", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(notHeldOutContext, expectedNotHeldOut);
@@ -732,13 +732,13 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experimentA,
 				experimentB));
 
-		assertEquals(0, context.getTreatment("exp_shared_a"));
-		assertEquals(0, context.getTreatment("exp_shared_b"));
+		assertEquals(0, context.treatment("exp_shared_a"));
+		assertEquals(0, context.treatment("exp_shared_b"));
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID, holdoutExposure(11, "holdout_a", 0));
+		final PublishPayload expected = publishedEvent(UID, holdoutExposure(11, "holdout_a", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -751,16 +751,16 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(UID_NOT_HELD_OUT,
 				contextDataOf(new Experiment[]{holdout}, experimentA, experimentB));
 
-		context.getTreatment("exp_shared_a");
-		context.getTreatment("exp_shared_b");
+		context.treatment("exp_shared_a");
+		context.treatment("exp_shared_b");
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID_NOT_HELD_OUT,
-				new Exposure(1, "exp_shared_a", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false, false),
+		final PublishPayload expected = publishedEvent(UID_NOT_HELD_OUT,
+				new ExposurePayload(1, "exp_shared_a", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false, false),
 				holdoutExposure(11, "holdout_a", 1),
-				new Exposure(2, "exp_shared_b", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false, false));
+				new ExposurePayload(2, "exp_shared_b", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -772,9 +772,9 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_holdout_cache"));
-		assertEquals(0, context.getTreatment("exp_holdout_cache"));
-		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure
+		assertEquals(0, context.treatment("exp_holdout_cache"));
+		assertEquals(0, context.treatment("exp_holdout_cache"));
+		assertEquals(1, context.pendingEventCount()); // only the holdout's own exposure
 	}
 
 	// A live seed edit within the same iteration must not change who is a member: naively
@@ -790,15 +790,15 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_holdout_seed_thrash")); // held out -> control
-		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure (variant 0)
+		assertEquals(0, context.treatment("exp_holdout_seed_thrash")); // held out -> control
+		assertEquals(1, context.pendingEventCount()); // only the holdout's own exposure (variant 0)
 
 		// same holdout id and iteration, but a seed edit that would flip this unit to variant 1
 		// if it were re-assigned.
 		final Experiment reseededHoldout = newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
 		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_holdout_seed_thrash"), 11);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{reseededHoldout}, refreshedExperiment));
@@ -806,8 +806,8 @@ class ContextHoldoutTest extends TestUtils {
 
 		// still variant 0 / held out: the pinned assignment from iteration 1 is reused, not
 		// recomputed against the new seed.
-		assertEquals(0, context.getTreatment("exp_holdout_seed_thrash"));
-		assertEquals(1, context.getPendingCount()); // no second, contradictory exposure in variant 1
+		assertEquals(0, context.treatment("exp_holdout_seed_thrash"));
+		assertEquals(1, context.pendingEventCount()); // no second, contradictory exposure in variant 1
 	}
 
 	// A cosmetic holdout edit - name, variants, applications - cannot change who is a member.
@@ -820,8 +820,8 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_holdout_cosmetic")); // held out
-		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure
+		assertEquals(0, context.treatment("exp_holdout_cosmetic")); // held out
+		assertEquals(1, context.pendingEventCount()); // only the holdout's own exposure
 
 		final Experiment cosmeticHoldout = newHoldout(11, "holdout_a_renamed", HOLDOUT_A_SEED_HI,
 				HOLDOUT_A_SEED_LO);
@@ -831,14 +831,14 @@ class ContextHoldoutTest extends TestUtils {
 		};
 		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_holdout_cosmetic"), 11);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{cosmeticHoldout}, refreshedExperiment));
 		refreshing.join();
 
-		assertEquals(0, context.getTreatment("exp_holdout_cosmetic")); // still held out
-		assertEquals(1, context.getPendingCount()); // no new exposure for either the holdout or the experiment
+		assertEquals(0, context.treatment("exp_holdout_cosmetic")); // still held out
+		assertEquals(1, context.pendingEventCount()); // no new exposure for either the holdout or the experiment
 	}
 
 	// The covered experiment side of the same guarantee: a non-held-out unit's own ordinary
@@ -849,21 +849,21 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(UID_NOT_HELD_OUT, contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
-		assertEquals(0, context.getTreatment("exp_holdout_cosmetic_covered")); // not held out
-		assertEquals(2, context.getPendingCount()); // own exposure + holdout exposure (variant 1)
+		assertEquals(0, context.treatment("exp_holdout_cosmetic_covered")); // not held out
+		assertEquals(2, context.pendingEventCount()); // own exposure + holdout exposure (variant 1)
 
 		final Experiment cosmeticHoldout = newHoldout(11, "holdout_a_renamed", HOLDOUT_A_SEED_HI,
 				HOLDOUT_A_SEED_LO);
 		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_holdout_cosmetic_covered"), 11);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{cosmeticHoldout}, refreshedExperiment));
 		refreshing.join();
 
-		assertEquals(0, context.getTreatment("exp_holdout_cosmetic_covered"));
-		assertEquals(2, context.getPendingCount()); // no duplicate exposure of either kind
+		assertEquals(0, context.treatment("exp_holdout_cosmetic_covered"));
+		assertEquals(2, context.pendingEventCount()); // no duplicate exposure of either kind
 	}
 
 	// An iteration bump is the one holdout edit that legitimately changes membership: it is a new
@@ -881,8 +881,8 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO)}, experiment));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_holdout_iteration"));
-		assertEquals(2, context.getPendingCount()); // normal exposure + holdout exposure (variant 1)
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_holdout_iteration"));
+		assertEquals(2, context.pendingEventCount()); // normal exposure + holdout exposure (variant 1)
 
 		// same holdout id, new iteration with holdout A's seed: a genuine new epoch that now holds
 		// the unit out.
@@ -890,21 +890,21 @@ class ContextHoldoutTest extends TestUtils {
 		newEpochHoldout.iteration = 2;
 		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_holdout_iteration"), 11);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{newEpochHoldout}, refreshedExperiment));
 		refreshing.join();
 
-		assertEquals(0, context.getTreatment("exp_holdout_iteration")); // new epoch: held out
+		assertEquals(0, context.treatment("exp_holdout_iteration")); // new epoch: held out
 		// the new epoch's own exposure (variant 0); the now-suppressed experiment emits no
 		// exposure of its own for this epoch, so exactly one exposure is added.
-		assertEquals(3, context.getPendingCount());
+		assertEquals(3, context.pendingEventCount());
 
 		// re-querying does not add a third exposure for the new epoch: exactly one arm was
 		// recorded for it, never both.
-		assertEquals(0, context.getTreatment("exp_holdout_iteration"));
-		assertEquals(3, context.getPendingCount());
+		assertEquals(0, context.treatment("exp_holdout_iteration"));
+		assertEquals(3, context.pendingEventCount());
 	}
 
 	// A same-iteration seed/split edit must not change who is suppressed, even for a covered
@@ -919,8 +919,8 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experimentA));
 
-		assertEquals(0, context.getTreatment("exp_holdout_desync_a")); // held out -> control
-		assertEquals(1, context.getPendingCount()); // holdout's own exposure (variant 0)
+		assertEquals(0, context.treatment("exp_holdout_desync_a")); // held out -> control
+		assertEquals(1, context.pendingEventCount()); // holdout's own exposure (variant 0)
 
 		// same holdout id and iteration, but a seed edit that would flip this unit to variant 1
 		// if suppression were recomputed directly - plus a brand-new covered experiment whose
@@ -929,7 +929,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment refreshedExperimentA = coveredBy(newExperiment(1, "exp_holdout_desync_a"), 11);
 		final Experiment experimentB = coveredBy(newExperiment(2, "exp_holdout_desync_b"), 11);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(
@@ -938,15 +938,15 @@ class ContextHoldoutTest extends TestUtils {
 
 		// the pinned holdout arm (variant 0) must still govern suppression for the newly
 		// evaluated experiment, not the live seed's recomputed arm (which would be variant 1).
-		assertEquals(0, context.getTreatment("exp_holdout_desync_b"));
-		assertEquals(0, context.getTreatment("exp_holdout_desync_a"));
+		assertEquals(0, context.treatment("exp_holdout_desync_b"));
+		assertEquals(0, context.treatment("exp_holdout_desync_a"));
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
 		// no new exposure at all: both experiments remain suppressed under the pinned arm, and
 		// the holdout's own exposure was already recorded before the refresh.
-		final PublishEvent expected = publishedEvent(UID, holdoutExposure(11, "holdout_a", 0));
+		final PublishPayload expected = publishedEvent(UID, holdoutExposure(11, "holdout_a", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -968,7 +968,7 @@ class ContextHoldoutTest extends TestUtils {
 				experimentA));
 
 		// arm 1 under 2 arms: not held out, deferred to normal assignment.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_2to3_a"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_arity_2to3_a"));
 
 		// same holdout id and iteration, refreshed to 3 arms; a brand-new covered experiment is
 		// evaluated only after the refresh, forcing a fresh isHeldOutBy call against the pinned
@@ -978,7 +978,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment refreshedExperimentA = coveredBy(newExperiment(1, "exp_arity_2to3_a"), 31);
 		final Experiment experimentB = coveredBy(newExperiment(2, "exp_arity_2to3_b"), 31);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(
@@ -986,16 +986,16 @@ class ContextHoldoutTest extends TestUtils {
 		refreshing.join();
 
 		// still deferred to normal assignment: the pinned arm is 1 under 2 arms, not under 3.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_2to3_b"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_arity_2to3_b"));
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_arity_2to3_a", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_arity_2to3_a", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
 						false, false, false),
 				holdoutExposure(31, "holdout_arity", 1),
-				new Exposure(2, "exp_arity_2to3_b", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+				new ExposurePayload(2, "exp_arity_2to3_b", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
 						false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -1014,8 +1014,8 @@ class ContextHoldoutTest extends TestUtils {
 				experimentA));
 
 		// arm 1 under 3 arms: full-on only, so a non-full-on experiment is held out.
-		assertEquals(0, context.getTreatment("exp_arity_3to2_a"));
-		assertEquals(1, context.getPendingCount()); // only the holdout's own exposure (variant 1)
+		assertEquals(0, context.treatment("exp_arity_3to2_a"));
+		assertEquals(1, context.pendingEventCount()); // only the holdout's own exposure (variant 1)
 
 		// same holdout id and iteration, refreshed to 2 arms; a brand-new covered experiment is
 		// evaluated only after the refresh.
@@ -1023,7 +1023,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment refreshedExperimentA = coveredBy(newExperiment(1, "exp_arity_3to2_a"), 41);
 		final Experiment experimentB = coveredBy(newExperiment(2, "exp_arity_3to2_b"), 41);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(
@@ -1031,14 +1031,14 @@ class ContextHoldoutTest extends TestUtils {
 		refreshing.join();
 
 		// still held out: the pinned arm is 1 under 3 arms, not under 2.
-		assertEquals(0, context.getTreatment("exp_arity_3to2_b"));
+		assertEquals(0, context.treatment("exp_arity_3to2_b"));
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
 		// neither covered experiment ever emits its own exposure; the holdout's own exposure
 		// fired once, before the refresh.
-		final PublishEvent expected = publishedEvent(UID, holdoutExposure(41, "holdout_arity_rev", 1));
+		final PublishPayload expected = publishedEvent(UID, holdoutExposure(41, "holdout_arity_rev", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -1054,14 +1054,14 @@ class ContextHoldoutTest extends TestUtils {
 				experimentPre));
 
 		// evaluated BEFORE the refresh: arm 1 under 2 arms, not held out.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_pre"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_arity_consistency_pre"));
 
 		final Experiment threeArmHoldout = newThreeArmHoldout(71, "holdout_arity_consistency",
 				THREE_ARM_1_SEED_HI, THREE_ARM_1_SEED_LO);
 		final Experiment refreshedExperimentPre = coveredBy(newExperiment(1, "exp_arity_consistency_pre"), 71);
 		final Experiment experimentPost = coveredBy(newExperiment(2, "exp_arity_consistency_post"), 71);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(
@@ -1071,9 +1071,9 @@ class ContextHoldoutTest extends TestUtils {
 		// evaluated ONLY AFTER the refresh, against the very same HoldoutAssignment: must agree
 		// with exp_arity_consistency_pre's own verdict rather than being re-meant under the new,
 		// live 3-arm split.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_post"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_arity_consistency_post"));
 		// the pre-refresh verdict is unchanged by the refresh.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_arity_consistency_pre"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_arity_consistency_pre"));
 	}
 
 	// A refresh landing between the suppression decision and the exposure trigger must not let
@@ -1106,19 +1106,19 @@ class ContextHoldoutTest extends TestUtils {
 
 		doAnswer(invocation -> {
 			final Object data = invocation.getArgument(2);
-			if ((data instanceof Exposure) && (((Exposure) data).id == 1)) {
+			if ((data instanceof ExposurePayload) && (((ExposurePayload) data).id == 1)) {
 				context.refreshAsync().join();
 			}
 			return null;
 		}).when(eventLogger).handleEvent(any(), any(), any());
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_epoch_race")); // not suppressed under iteration1
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_epoch_race")); // not suppressed under iteration1
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_epoch_race", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_epoch_race", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
 						false, false, false),
 				holdoutExposure(11, "holdout_h", 1)); // iteration1's arm, not iteration2's
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1156,14 +1156,14 @@ class ContextHoldoutTest extends TestUtils {
 
 		// recomputed from a coherent decision now that the unit is present: still fullOn=2 (this
 		// holdout's arm does not hold it out), but this time both exposures are owed.
-		assertEquals(2, context.getTreatment("exp_null_snapshot_fullon"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.treatment("exp_null_snapshot_fullon"));
+		assertEquals(2, context.pendingEventCount());
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
-				new Exposure(1, "exp_null_snapshot_fullon", coveredUnitType, 2, clock.millis(), true, true, false,
+		final PublishPayload expected = publishedEvent(coveredUnitType, UID,
+				new ExposurePayload(1, "exp_null_snapshot_fullon", coveredUnitType, 2, clock.millis(), true, true, false,
 						true, false, false),
 				holdoutExposure(coveredUnitType, 11, "holdout_user_id", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1189,14 +1189,14 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContextWithoutUnits(
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
-		assertEquals(2, context.getTreatment("exp_exposed_before_unit"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(2, context.treatment("exp_exposed_before_unit"));
+		assertEquals(1, context.pendingEventCount());
 		final Object exposed = getAssignment(context, "exp_exposed_before_unit");
 
 		context.setUnit(coveredUnitType, UID);
 
-		assertEquals(2, context.getTreatment("exp_exposed_before_unit"));
-		assertEquals(1, context.getPendingCount()); // unchanged: no duplicate exposure
+		assertEquals(2, context.treatment("exp_exposed_before_unit"));
+		assertEquals(1, context.pendingEventCount()); // unchanged: no duplicate exposure
 		assertSame(exposed, getAssignment(context, "exp_exposed_before_unit"));
 	}
 
@@ -1208,13 +1208,13 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO)}, experiment));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unrelated_unit"));
-		assertEquals(2, context.getPendingCount()); // experiment's own exposure + holdout's
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_unrelated_unit"));
+		assertEquals(2, context.pendingEventCount()); // experiment's own exposure + holdout's
 
 		context.setUnit("other_unit_type", "some-other-uid");
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unrelated_unit"));
-		assertEquals(2, context.getPendingCount()); // unchanged: no duplicate exposure
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_unrelated_unit"));
+		assertEquals(2, context.pendingEventCount()); // unchanged: no duplicate exposure
 	}
 
 	// Selectivity: with two cached experiments, only the one whose snapshot holds a null entry
@@ -1235,19 +1235,19 @@ class ContextHoldoutTest extends TestUtils {
 				contextDataOf(new Experiment[]{lateHoldout, presentHoldout}, lateExperiment, presentExperiment));
 
 		assertEquals(2, context.peekTreatment("exp_late_unit")); // null snapshot, not yet exposed
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_present_unit")); // resolved and exposed
-		assertEquals(2, context.getPendingCount()); // exp_present_unit + holdout_present
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_present_unit")); // resolved and exposed
+		assertEquals(2, context.pendingEventCount()); // exp_present_unit + holdout_present
 
 		context.setUnit(lateUnitType, UID);
 
 		// the affected entry recomputes and owes both of its exposures.
-		assertEquals(2, context.getTreatment("exp_late_unit"));
-		assertEquals(4, context.getPendingCount());
+		assertEquals(2, context.treatment("exp_late_unit"));
+		assertEquals(4, context.pendingEventCount());
 
 		// the unaffected entry must not be re-triggered by the eviction pass or by this
 		// unrelated getTreatment call.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_present_unit"));
-		assertEquals(4, context.getPendingCount());
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_present_unit"));
+		assertEquals(4, context.pendingEventCount());
 	}
 
 	// Defect 1 (Medium): the predicate must compare against assignment.unitType - the value
@@ -1271,8 +1271,8 @@ class ContextHoldoutTest extends TestUtils {
 
 		context.setUnit("A", UID);
 
-		assertEquals(2, context.getTreatment("exp_mismatched_unit_type"));
-		assertEquals(2, context.getPendingCount()); // both exposures owed: eviction happened
+		assertEquals(2, context.treatment("exp_mismatched_unit_type"));
+		assertEquals(2, context.pendingEventCount()); // both exposures owed: eviction happened
 	}
 
 	// Kills the "re-resolve the null live at trigger time" mutant: the late-resolved holdout's
@@ -1296,13 +1296,13 @@ class ContextHoldoutTest extends TestUtils {
 
 		context.setUnit(coveredUnitType, UID);
 
-		assertEquals(0, context.getTreatment("exp_null_snapshot_suppresses")); // now suppressed -> control
-		assertEquals(1, context.getPendingCount()); // holdout exposure only
+		assertEquals(0, context.treatment("exp_null_snapshot_suppresses")); // now suppressed -> control
+		assertEquals(1, context.pendingEventCount()); // holdout exposure only
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
+		final PublishPayload expected = publishedEvent(coveredUnitType, UID,
 				holdoutExposure(coveredUnitType, 11, "holdout_user_id_suppress", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -1319,11 +1319,11 @@ class ContextHoldoutTest extends TestUtils {
 
 		final Object retained = getAssignment(context, experimentName);
 		context.setUnit(unitType, UID);
-		assertEquals(0, context.getTreatment(experimentName));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(0, context.treatment(experimentName));
+		assertEquals(1, context.pendingEventCount());
 
 		exposeTreatmentAssignment(context, retained);
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
@@ -1345,15 +1345,15 @@ class ContextHoldoutTest extends TestUtils {
 		context.setUnit(unitType, UID);
 		exposeTreatmentAssignment(context, retained);
 
-		assertEquals(2, context.getPendingCount());
-		assertEquals(2, context.getTreatment(experimentName));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.pendingEventCount());
+		assertEquals(2, context.treatment(experimentName));
+		assertEquals(2, context.pendingEventCount());
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
 				publishedEvent(unitType, UID,
-						new Exposure(1, experimentName, unitType, 2, clock.millis(), true, true, false, true, false,
+						new ExposurePayload(1, experimentName, unitType, 2, clock.millis(), true, true, false, true, false,
 								false),
 						holdoutExposure(unitType, 11, "holdout_detached_retry", 1)));
 	}
@@ -1372,7 +1372,7 @@ class ContextHoldoutTest extends TestUtils {
 		context.setUnit(unitType, UID);
 
 		assertEquals(0, getExposedTreatmentVariant(context, retained));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
@@ -1398,7 +1398,7 @@ class ContextHoldoutTest extends TestUtils {
 
 		assertSame(settledAssignment, result);
 		assertEquals(1, assignmentVariant(result));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
@@ -1420,7 +1420,7 @@ class ContextHoldoutTest extends TestUtils {
 		});
 
 		assertEquals(2, resolutions.get());
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.pendingEventCount());
 	}
 
 	@Test
@@ -1438,7 +1438,7 @@ class ContextHoldoutTest extends TestUtils {
 
 		final Experiment winner = coveredBy(newExperiment(1, "exp_detached_variable_winner", unitType, 1), 11);
 		winner.variants[1].config = "{\"detached_var\":\"new winner\"}";
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{holdout}, winner, original));
@@ -1446,16 +1446,16 @@ class ContextHoldoutTest extends TestUtils {
 
 		final Object resolved = exposeVariableAssignment(context, "detached_var", retained);
 		assertEquals(1, assignmentVariant(resolved));
-		assertEquals(2, context.getPendingCount());
-		assertEquals("new winner", context.getVariableValue("detached_var", "default"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.pendingEventCount());
+		assertEquals("new winner", context.variableValue("detached_var", "default"));
+		assertEquals(2, context.pendingEventCount());
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
 				publishedEvent(unitType, UID,
 						holdoutExposure(unitType, 11, "holdout_detached_variable", 1),
-						new Exposure(1, winner.name, unitType, 1, clock.millis(), true, true, false, true, false,
+						new ExposurePayload(1, winner.name, unitType, 1, clock.millis(), true, true, false, true, false,
 								false)));
 	}
 
@@ -1486,18 +1486,18 @@ class ContextHoldoutTest extends TestUtils {
 		// fullOn resolves and exposes without ever needing coveredUnitType; the holdout's null
 		// snapshot entry never suppresses and, being null both here (unit absent) and under the
 		// mutant's live resolution (uid still null in units_), never fires either.
-		assertEquals(1, context.getTreatment("exp_a_mutant_pinned_null"));
-		assertEquals(1, context.getPendingCount()); // own exposure only
+		assertEquals(1, context.treatment("exp_a_mutant_pinned_null"));
+		assertEquals(1, context.pendingEventCount()); // own exposure only
 
 		context.setUnit(coveredUnitType, UID); // exposed guard: cache entry survives with pinned null
 
 		// re-evaluating the same already-exposed assignment via the variable-key path, which
 		// unconditionally re-triggers every candidate's applicable holdouts on every call.
-		assertEquals("value_from_variant", context.getVariableValue("my_var", "default"));
+		assertEquals("value_from_variant", context.variableValue("my_var", "default"));
 
 		// correct code: pinned[0] is still null, triggerHoldoutExposure(null) no-ops - no second
 		// exposure, ever, for this permanently-degraded assignment.
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	// Multiple holdouts applicable to one covered experiment, each declaring a different (and
@@ -1524,8 +1524,8 @@ class ContextHoldoutTest extends TestUtils {
 
 		context.setUnit(coveredUnitType, UID);
 
-		assertEquals(2, context.getTreatment("exp_multi_holdout_unit_types"));
-		assertEquals(4, context.getPendingCount()); // experiment + 3 holdout exposures
+		assertEquals(2, context.treatment("exp_multi_holdout_unit_types"));
+		assertEquals(4, context.pendingEventCount()); // experiment + 3 holdout exposures
 	}
 
 	// One holdout id covering experiments with two different effective unit types must keep an
@@ -1551,37 +1551,37 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_shared", unitTypeA, HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO,
 				"full");
 
-		final ContextConfig config = ContextConfig.create().setUnit(unitTypeA, UID).setUnit(unitTypeB, UID);
+		final TestContextConfig config = TestContextConfig.create().setUnit(unitTypeA, UID).setUnit(unitTypeB, UID);
 		final Context context = createReadyContext(config,
 				contextDataOf(new Experiment[]{holdout}, expA1, expB, expA2));
 
 		// A1: resolves and caches holdout_shared under (11, unitTypeA); fires its own exposure and
 		// the holdout's.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unit_a1"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_unit_a1"));
 		// B: resolves (11, unitTypeB). Pre-fix, this evicted the (11, unitTypeA) slot.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unit_b"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_unit_b"));
 		// A2: a DIFFERENT experiment also covered by holdout 11 under unitTypeA. Pre-fix, the
 		// evicted slot forces a fresh, unexposed Assignment object here, so triggering exp_unit_a2
 		// re-fires holdout_shared's exposure a second time for the same unit type.
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_unit_a2"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_unit_a2"));
 
 		// Pedro's reproduction: 3 covered-experiment exposures + 1 holdout exposure per unit type
 		// = 5 pending events, not 6.
-		assertEquals(5, context.getPendingCount());
+		assertEquals(5, context.pendingEventCount());
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
+		final ArgumentCaptor<PublishPayload> captor = ArgumentCaptor.forClass(PublishPayload.class);
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(Mockito.eq(context), captor.capture());
 
-		final Exposure[] exposures = captor.getValue().exposures;
+		final ExposurePayload[] exposures = captor.getValue().exposures;
 		assertEquals(5, exposures.length);
 
 		// holdout_shared's own exposure must be published exactly once per unit type (twice
 		// total), never once per alternation (which would be three times: A1, B, A2).
 		int holdoutExposureCount = 0;
-		for (final Exposure exposure : exposures) {
+		for (final ExposurePayload exposure : exposures) {
 			if (exposure.id == 11) {
 				++holdoutExposureCount;
 			}
@@ -1602,7 +1602,7 @@ class ContextHoldoutTest extends TestUtils {
 
 		context.setUnit(UNIT_TYPE, UID); // nothing cached yet - must not throw
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_no_prior_assignment"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_no_prior_assignment"));
 	}
 
 	// A redundant setUnit call for a unit type that is already installed with the same uid must
@@ -1614,13 +1614,13 @@ class ContextHoldoutTest extends TestUtils {
 
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experiment));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_set_unit_twice"));
-		assertEquals(2, context.getPendingCount()); // own exposure + holdout's
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_set_unit_twice"));
+		assertEquals(2, context.pendingEventCount()); // own exposure + holdout's
 
 		context.setUnit(UNIT_TYPE, UID); // same unit type, same uid: must not throw
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_set_unit_twice"));
-		assertEquals(2, context.getPendingCount()); // unchanged: no duplicate exposure, cache untouched
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_set_unit_twice"));
+		assertEquals(2, context.pendingEventCount()); // unchanged: no duplicate exposure, cache untouched
 	}
 
 	// Kills the "evict on holdoutAssignments != null alone" mutant (dropping the check that some
@@ -1644,11 +1644,11 @@ class ContextHoldoutTest extends TestUtils {
 
 		// resolved with the unit already present: holdoutAssignments holds no null entry.
 		assertEquals(NORMAL_VARIANT, context.peekTreatment("exp_redundant_set_unit"));
-		assertEquals(0, context.getPendingCount()); // peek never exposes
+		assertEquals(0, context.pendingEventCount()); // peek never exposes
 
 		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_redundant_set_unit"), 11);
 		refreshedExperiment.split = new double[]{1.0, 0.0}; // a recomputation must land in variant 0
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{holdout}, refreshedExperiment));
@@ -1656,14 +1656,14 @@ class ContextHoldoutTest extends TestUtils {
 
 		context.setUnit(UNIT_TYPE, UID); // redundant: same unit type, same uid already installed
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_redundant_set_unit"));
-		assertEquals(2, context.getPendingCount()); // own exposure + holdout's
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_redundant_set_unit"));
+		assertEquals(2, context.pendingEventCount()); // own exposure + holdout's
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_redundant_set_unit", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_redundant_set_unit", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
 						false, false, false),
 				holdoutExposure(11, "holdout_a", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1690,19 +1690,19 @@ class ContextHoldoutTest extends TestUtils {
 		// fullOn resolves without needing coveredUnitType; the holdout's null snapshot entry
 		// never suppresses, so the fullOn variant's variable value wins.
 		assertEquals("value_from_variant", context.peekVariableValue("my_var", "default"));
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.pendingEventCount());
 
 		context.setUnit(coveredUnitType, UID);
 
 		// recomputed from a coherent decision: the now-resolvable holdout holds UID out, so the
 		// experiment is suppressed and control values (no "my_var" key) are returned.
-		assertEquals("default", context.getVariableValue("my_var", "default"));
-		assertEquals(1, context.getPendingCount()); // holdout's own exposure only
+		assertEquals("default", context.variableValue("my_var", "default"));
+		assertEquals(1, context.pendingEventCount()); // holdout's own exposure only
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
+		final PublishPayload expected = publishedEvent(coveredUnitType, UID,
 				holdoutExposure(coveredUnitType, 11, "holdout_var_late", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -1723,7 +1723,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_override_late", coveredUnitType, HOLDOUT_B_SEED_HI,
 				HOLDOUT_B_SEED_LO, "full"); // not held out once resolvable
 
-		final ContextConfig config = ContextConfig.create().setOverride("exp_override_late_unit", 3);
+		final TestContextConfig config = TestContextConfig.create().setOverride("exp_override_late_unit", 3);
 		final Context context = createReadyContext(config, // no unit installed yet
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
@@ -1731,14 +1731,14 @@ class ContextHoldoutTest extends TestUtils {
 
 		context.setUnit(coveredUnitType, UID); // no snapshot to evict; override assignment untouched
 
-		assertEquals(3, context.getTreatment("exp_override_late_unit")); // override still wins
-		assertEquals(2, context.getPendingCount()); // override's own exposure + holdout's (live-resolved)
+		assertEquals(3, context.treatment("exp_override_late_unit")); // override still wins
+		assertEquals(2, context.pendingEventCount()); // override's own exposure + holdout's (live-resolved)
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
-				new Exposure(1, "exp_override_late_unit", coveredUnitType, 3, clock.millis(), false, true, true,
+		final PublishPayload expected = publishedEvent(coveredUnitType, UID,
+				new ExposurePayload(1, "exp_override_late_unit", coveredUnitType, 3, clock.millis(), false, true, true,
 						false, false, false),
 				holdoutExposure(coveredUnitType, 11, "holdout_override_late", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1758,7 +1758,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment holdout = newHoldout(11, "holdout_custom_late", coveredUnitType, HOLDOUT_B_SEED_HI,
 				HOLDOUT_B_SEED_LO, "full"); // not held out once resolvable
 
-		final ContextConfig config = ContextConfig.create().setCustomAssignment("exp_custom_late_unit", 3);
+		final TestContextConfig config = TestContextConfig.create().setCustomAssignment("exp_custom_late_unit", 3);
 		final Context context = createReadyContext(config, // no unit installed yet
 				contextDataOf(new Experiment[]{holdout}, experiment));
 
@@ -1768,14 +1768,14 @@ class ContextHoldoutTest extends TestUtils {
 
 		context.setUnit(coveredUnitType, UID); // evicts the null-snapshot cache entry
 
-		assertEquals(3, context.getTreatment("exp_custom_late_unit")); // custom applies now
-		assertEquals(2, context.getPendingCount()); // own exposure + holdout's
+		assertEquals(3, context.treatment("exp_custom_late_unit")); // custom applies now
+		assertEquals(2, context.pendingEventCount()); // own exposure + holdout's
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(coveredUnitType, UID,
-				new Exposure(1, "exp_custom_late_unit", coveredUnitType, 3, clock.millis(), true, true, false, false,
+		final PublishPayload expected = publishedEvent(coveredUnitType, UID,
+				new ExposurePayload(1, "exp_custom_late_unit", coveredUnitType, 3, clock.millis(), true, true, false, false,
 						true, false),
 				holdoutExposure(coveredUnitType, 11, "holdout_custom_late", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1798,7 +1798,7 @@ class ContextHoldoutTest extends TestUtils {
 		}
 		final Experiment experiment = coveredBy(
 				newExperiment(9, "verdict_vectors_experiment", VERDICT_UNIT_TYPE, 0), holdoutIds);
-		final ContextConfig config = ContextConfig.create().setUnit(VERDICT_UNIT_TYPE, uid);
+		final TestContextConfig config = TestContextConfig.create().setUnit(VERDICT_UNIT_TYPE, uid);
 		return createReadyContext(config, contextDataOf(holdouts, experiment));
 	}
 
@@ -1813,7 +1813,7 @@ class ContextHoldoutTest extends TestUtils {
 	// held-out unit's covered-experiment variant must be forced to control (0) and emit no
 	// exposure of its own, regardless of that experiment's independent seed.
 	void assertHeldOutBy(Context context, int holdoutId, String holdoutName) {
-		assertEquals(0, context.getTreatment("verdict_vectors_experiment"));
+		assertEquals(0, context.treatment("verdict_vectors_experiment"));
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
@@ -1824,7 +1824,7 @@ class ContextHoldoutTest extends TestUtils {
 	}
 
 	void assertNotHeldOut(Context context, int holdoutId, String holdoutName) {
-		context.getTreatment("verdict_vectors_experiment");
+		context.treatment("verdict_vectors_experiment");
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
@@ -1882,11 +1882,11 @@ class ContextHoldoutTest extends TestUtils {
 				verdictHoldout(107, 0, 42, new double[]{0.1, 0.9}),
 				verdictHoldout(108, 0, 55, new double[]{0.1, 0.9}));
 
-		assertEquals(0, context.getTreatment("verdict_vectors_experiment"));
+		assertEquals(0, context.treatment("verdict_vectors_experiment"));
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(VERDICT_UNIT_TYPE, "dual_holdout_unit_5",
+		final PublishPayload expected = publishedEvent(VERDICT_UNIT_TYPE, "dual_holdout_unit_5",
 				holdoutExposure(VERDICT_UNIT_TYPE, 107, "holdout_107", 0),
 				holdoutExposure(VERDICT_UNIT_TYPE, 108, "holdout_108", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1908,8 +1908,8 @@ class ContextHoldoutTest extends TestUtils {
 
 		// suppressed: control values only, but evaluating the variable must still trigger the
 		// holdout's own exposure.
-		assertEquals("default", heldOutContext.getVariableValue("var_a", "default"));
-		assertEquals(1, heldOutContext.getPendingCount()); // holdout exposure only
+		assertEquals("default", heldOutContext.variableValue("var_a", "default"));
+		assertEquals(1, heldOutContext.pendingEventCount()); // holdout exposure only
 
 		final Experiment experimentNotHeldOut = coveredBy(newExperiment(1, "exp_var_not_held_out"), 11);
 		experimentNotHeldOut.variants[1].config = "{\"var_a\":\"value_a\"}";
@@ -1917,8 +1917,8 @@ class ContextHoldoutTest extends TestUtils {
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)},
 				experimentNotHeldOut));
 
-		assertEquals("default", notHeldOutContext.getVariableValue("var_a", "default")); // normal variant is 0
-		assertEquals(2, notHeldOutContext.getPendingCount()); // own exposure + holdout exposure
+		assertEquals("default", notHeldOutContext.variableValue("var_a", "default")); // normal variant is 0
+		assertEquals(2, notHeldOutContext.pendingEventCount()); // own exposure + holdout exposure
 	}
 
 	// A held-out experiment must never win variable-key resolution over one the unit is
@@ -1937,7 +1937,7 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{holdout}, suppressedExperiment, assignedExperiment));
 
-		assertEquals("from_assigned", context.getVariableValue("shared", "default"));
+		assertEquals("from_assigned", context.variableValue("shared", "default"));
 
 		// the lower-id suppressed experiment was evaluated to make this resolution decision, so
 		// its applicable holdout must fire even though its own value lost the key - the assigned
@@ -1945,9 +1945,9 @@ class ContextHoldoutTest extends TestUtils {
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_a", 0),
-				new Exposure(2, "exp_var_key_assigned", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+				new ExposurePayload(2, "exp_var_key_assigned", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
 						false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -1968,7 +1968,7 @@ class ContextHoldoutTest extends TestUtils {
 				contextDataOf(new Experiment[]{holdout}, suppressedExperiment, assignedExperiment));
 
 		assertEquals("from_assigned", context.peekVariableValue("shared_peek", "default"));
-		assertEquals(0, context.getPendingCount()); // no exposure of any kind
+		assertEquals(0, context.pendingEventCount()); // no exposure of any kind
 	}
 
 	// Regression test for the logger-robustness fix: a throwing ContextEventLogger must not stop
@@ -1977,7 +1977,7 @@ class ContextHoldoutTest extends TestUtils {
 	@Test
 	void throwingLoggerDoesNotPermanentlyLoseSiblingHoldoutExposure() {
 		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(),
-				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof Exposure) && (((Exposure) o).id == 11)));
+				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof ExposurePayload) && (((ExposurePayload) o).id == 11)));
 
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_multi_holdout_throwing_logger"), 11, 12);
 		final Context context = createReadyContext(contextDataOf(
@@ -1986,30 +1986,30 @@ class ContextHoldoutTest extends TestUtils {
 						newHoldout(12, "holdout_b", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO), // does not hold UID out
 				}, experiment));
 
-		assertThrows(RuntimeException.class, () -> context.getTreatment("exp_multi_holdout_throwing_logger"));
+		assertThrows(RuntimeException.class, () -> context.treatment("exp_multi_holdout_throwing_logger"));
 
 		// both exposures were queued for publish despite holdout A's logger call throwing.
-		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.pendingEventCount());
 	}
 
 	@Test
 	void throwingLoggerDoesNotMakeExperimentOrHoldoutExposureRetryable() {
 		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(),
-				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof Exposure) && (((Exposure) o).id == 1)));
+				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof ExposurePayload) && (((ExposurePayload) o).id == 1)));
 
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_throwing_logger_terminal"), 11);
 		final Experiment holdout = newHoldout(11, "holdout_terminal", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, experiment));
 
-		assertThrows(RuntimeException.class, () -> context.getTreatment(experiment.name));
+		assertThrows(RuntimeException.class, () -> context.treatment(experiment.name));
 		Mockito.reset(eventLogger);
-		assertEquals(NORMAL_VARIANT, context.getTreatment(experiment.name));
+		assertEquals(NORMAL_VARIANT, context.treatment(experiment.name));
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
 				publishedEvent(UID,
-						new Exposure(1, experiment.name, UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						new ExposurePayload(1, experiment.name, UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
 								false, false, false),
 						holdoutExposure(11, "holdout_terminal", 1)));
 	}
@@ -2026,7 +2026,7 @@ class ContextHoldoutTest extends TestUtils {
 	// exposure is queued (pendingCount == 1) but scheduler.schedule is never invoked.
 	@Test
 	void throwingLoggerOnSuppressedExperimentsOnlyHoldoutStillSchedulesFlush() {
-		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(), any(Exposure.class));
+		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(), any(ExposurePayload.class));
 
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_stranded_flush"), 11);
 		final Context context = createReadyContext(contextDataOf(
@@ -2035,11 +2035,11 @@ class ContextHoldoutTest extends TestUtils {
 		when(scheduler.schedule((Runnable) any(), eq(100L), eq(TimeUnit.MILLISECONDS)))
 				.thenReturn(mock(java.util.concurrent.ScheduledFuture.class));
 
-		assertThrows(RuntimeException.class, () -> context.getTreatment("exp_stranded_flush"));
+		assertThrows(RuntimeException.class, () -> context.treatment("exp_stranded_flush"));
 
 		// the holdout's exposure was queued (this experiment has no exposure of its own - it is
 		// suppressed) and a flush was scheduled for it despite the throw.
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(100L),
 				eq(TimeUnit.MILLISECONDS));
 	}
@@ -2051,12 +2051,12 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment experiment = newExperiment(1, "exp_null_holdout_entry");
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{null}, experiment));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_null_holdout_entry"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_null_holdout_entry"));
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_null_holdout_entry", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_null_holdout_entry", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
 						false, false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -2071,12 +2071,12 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{malformedHoldout}, experiment));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_null_split_holdout"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_null_split_holdout"));
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_null_split_holdout", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_null_split_holdout", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
 						false, false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -2091,12 +2091,12 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(
 				contextDataOf(new Experiment[]{malformedHoldout}, experiment));
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_empty_split_holdout"));
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_empty_split_holdout"));
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_empty_split_holdout", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_empty_split_holdout", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
 						false, false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -2124,8 +2124,8 @@ class ContextHoldoutTest extends TestUtils {
 
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdoutIteration1}, f));
 
-		assertEquals(0, context.getTreatment("exp_f")); // held out by H@it1 (variant 0)
-		assertEquals(1, context.getPendingCount()); // H@it1's own exposure (variant 0)
+		assertEquals(0, context.treatment("exp_f")); // held out by H@it1 (variant 0)
+		assertEquals(1, context.pendingEventCount()); // H@it1's own exposure (variant 0)
 
 		// Refresh: H bumped to a genuine new epoch (iteration 2) with a seed that flips the
 		// verdict to variant 1, covering a new experiment G. Evaluating G installs and exposes the
@@ -2135,14 +2135,14 @@ class ContextHoldoutTest extends TestUtils {
 		final Experiment refreshedF = coveredBy(newExperiment(1, "exp_f"), 11);
 		final Experiment g = coveredBy(newExperiment(2, "exp_g"), 11);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{holdoutIteration2}, refreshedF, g));
 		refreshing.join();
 
-		assertEquals(NORMAL_VARIANT, context.getTreatment("exp_g")); // not held out by H@it2
-		assertEquals(3, context.getPendingCount()); // G's own exposure + H@it2's own exposure (variant 1)
+		assertEquals(NORMAL_VARIANT, context.treatment("exp_g")); // not held out by H@it2
+		assertEquals(3, context.pendingEventCount()); // G's own exposure + H@it2's own exposure (variant 1)
 
 		// A deliberately stale reference to H: same id, OLD iteration (1), and the OLD seed that
 		// computes the OPPOSITE arm from the live it2 definition. This is exactly what a lagging
@@ -2156,7 +2156,7 @@ class ContextHoldoutTest extends TestUtils {
 
 		// no second, contradictory exposure: the live it2 entry (already exposed, variant 1) must
 		// have been resolved and reused rather than overwritten by a fresh it1-seeded recompute.
-		assertEquals(3, context.getPendingCount());
+		assertEquals(3, context.pendingEventCount());
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
@@ -2164,9 +2164,9 @@ class ContextHoldoutTest extends TestUtils {
 		// f was suppressed under it1 and never emits an exposure of its own; H legitimately emits
 		// once per distinct epoch (it1 variant 0, it2 variant 1) - the invariant broken by the bug
 		// is a THIRD, contradictory exposure for the SAME it2 epoch, which is what is absent here.
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_h", 0),
-				new Exposure(2, "exp_g", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false, false, false,
+				new ExposurePayload(2, "exp_g", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false, false, false,
 						false),
 				holdoutExposure(11, "holdout_h", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -2182,19 +2182,19 @@ class ContextHoldoutTest extends TestUtils {
 	void holdoutBecomingApplicableAfterRefreshStillFiresForOverriddenExperiment() {
 		final Experiment experiment = newExperiment(1, "exp_override_late_holdout");
 
-		final ContextConfig config = ContextConfig.create().setUnit(UNIT_TYPE, UID)
+		final TestContextConfig config = TestContextConfig.create().setUnit(UNIT_TYPE, UID)
 				.setOverride("exp_override_late_holdout", 3);
 		// no holdouts at all initially.
 		final Context context = createReadyContext(config, contextDataOf(experiment));
 
-		assertEquals(3, context.getTreatment("exp_override_late_holdout")); // override wins, no holdout yet
-		assertEquals(1, context.getPendingCount()); // only E's own exposure
+		assertEquals(3, context.treatment("exp_override_late_holdout")); // override wins, no holdout yet
+		assertEquals(1, context.pendingEventCount()); // only E's own exposure
 
 		// refresh installs a holdout covering the same unit type/experiment for the first time.
 		final Experiment refreshedExperiment = coveredBy(newExperiment(1, "exp_override_late_holdout"), 11);
 		final Experiment holdout = newHoldout(11, "holdout_late", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO);
 
-		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		final CompletableFuture<ContextPayload> refreshFuture = new CompletableFuture<>();
 		when(dataProvider.getContextData()).thenReturn(refreshFuture);
 		final CompletableFuture<Void> refreshing = context.refreshAsync();
 		refreshFuture.complete(contextDataOf(new Experiment[]{holdout}, refreshedExperiment));
@@ -2202,15 +2202,15 @@ class ContextHoldoutTest extends TestUtils {
 
 		// re-evaluating the overridden experiment must still trigger the newly applicable
 		// holdout's own exposure.
-		assertEquals(3, context.getTreatment("exp_override_late_holdout")); // override still wins
-		assertEquals(3, context.getPendingCount()); // + E's re-fired exposure + the holdout's own
+		assertEquals(3, context.treatment("exp_override_late_holdout")); // override still wins
+		assertEquals(3, context.pendingEventCount()); // + E's re-fired exposure + the holdout's own
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final Exposure ownExposure = new Exposure(1, "exp_override_late_holdout", UNIT_TYPE, 3, clock.millis(),
+		final ExposurePayload ownExposure = new ExposurePayload(1, "exp_override_late_holdout", UNIT_TYPE, 3, clock.millis(),
 				false, true, true, false, false, false);
-		final PublishEvent expected = publishedEvent(UID, ownExposure, ownExposure,
+		final PublishPayload expected = publishedEvent(UID, ownExposure, ownExposure,
 				holdoutExposure(11, "holdout_late", 0));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -2235,7 +2235,7 @@ class ContextHoldoutTest extends TestUtils {
 		when(scheduler.schedule((Runnable) any(), eq(100L), eq(TimeUnit.MILLISECONDS)))
 				.thenReturn(mock(java.util.concurrent.ScheduledFuture.class));
 
-		assertEquals("from_assigned", context.getVariableValue("flush_key", "default"));
+		assertEquals("from_assigned", context.variableValue("flush_key", "default"));
 
 		// the suppressed candidate's applicable holdout fired an exposure that no other call path
 		// enqueued/exposed; a flush must have been scheduled for it regardless.
@@ -2257,11 +2257,11 @@ class ContextHoldoutTest extends TestUtils {
 		final Context context = createReadyContext(contextDataOf(new Experiment[]{holdout}, covered, notCovered));
 
 		// coverage still resolves correctly via id 11, and the dangling id 12 is simply ignored.
-		assertEquals(0, context.getTreatment("exp_holdout_no_mutate_in")); // suppressed -> control
+		assertEquals(0, context.treatment("exp_holdout_no_mutate_in")); // suppressed -> control
 		assertEquals(NORMAL_VARIANT,
-				context.getTreatment("exp_holdout_no_mutate_not_covered")); // no coverage -> unaffected
+				context.treatment("exp_holdout_no_mutate_not_covered")); // no coverage -> unaffected
 
-		// the caller's own array, handed in via ContextData, must remain exactly as constructed.
+		// the caller's own array, handed in via ContextPayload, must remain exactly as constructed.
 		assertArrayEquals(new int[]{12, 11}, callerArray);
 	}
 
@@ -2280,15 +2280,15 @@ class ContextHoldoutTest extends TestUtils {
 				experiment));
 		context.setAttribute("country", "US");
 
-		assertEquals(1, context.getTreatment("exp_holdout_rules"));
+		assertEquals(1, context.treatment("exp_holdout_rules"));
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
-				new Exposure(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
+		final PublishPayload expected = publishedEvent(UID,
+				new ExposurePayload(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
 						false, true),
 				holdoutExposure(11, "holdout_rules_suppression", 0));
-		expected.attributes = new Attribute[]{new Attribute("country", "US", clock.millis())};
+		expected.attributes = new AttributePayload[]{new AttributePayload("country", "US", clock.millis())};
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -2301,8 +2301,8 @@ class ContextHoldoutTest extends TestUtils {
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 
 		assertEquals(1, context.peekTreatment("exp_holdout_split_rule"));
-		assertEquals(1, context.getTreatment("exp_holdout_split_rule"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(1, context.treatment("exp_holdout_split_rule"));
+		assertEquals(2, context.pendingEventCount());
 	}
 
 	@Test
@@ -2313,12 +2313,12 @@ class ContextHoldoutTest extends TestUtils {
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 		context.setAttribute("country", "GB");
 
-		assertEquals(0, context.getTreatment("exp_holdout_rules"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(0, context.treatment("exp_holdout_rules"));
+		assertEquals(1, context.pendingEventCount());
 
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment("exp_holdout_rules"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(1, context.treatment("exp_holdout_rules"));
+		assertEquals(2, context.pendingEventCount());
 	}
 
 	@Test
@@ -2329,13 +2329,13 @@ class ContextHoldoutTest extends TestUtils {
 				new Experiment[]{newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO)}, experiment));
 		context.setAttribute("country", "US");
 
-		assertEquals(1, context.getTreatment("exp_holdout_rules"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(1, context.treatment("exp_holdout_rules"));
+		assertEquals(2, context.pendingEventCount());
 
 		context.setAttribute("country", "GB");
-		assertEquals(0, context.getTreatment("exp_holdout_rules"));
+		assertEquals(0, context.treatment("exp_holdout_rules"));
 		assertEquals(0, context.peekTreatment("exp_holdout_rules"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.pendingEventCount());
 	}
 
 	static Experiment withVariables(Experiment experiment, String key) {
@@ -2355,15 +2355,15 @@ class ContextHoldoutTest extends TestUtils {
 				experiment));
 		context.setAttribute("country", "US");
 
-		assertEquals("treatment", context.getVariableValue("color", "default"));
+		assertEquals("treatment", context.variableValue("color", "default"));
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final PublishEvent expected = publishedEvent(UID,
+		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_rules_suppression", 0),
-				new Exposure(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
+				new ExposurePayload(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
 						false, true));
-		expected.attributes = new Attribute[]{new Attribute("country", "US", clock.millis())};
+		expected.attributes = new AttributePayload[]{new AttributePayload("country", "US", clock.millis())};
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 

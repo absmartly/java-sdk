@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
 
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
+import java.nio.charset.StandardCharsets;
 
 class DefaultAudienceDeserializerTest extends TestUtils {
 	@Test

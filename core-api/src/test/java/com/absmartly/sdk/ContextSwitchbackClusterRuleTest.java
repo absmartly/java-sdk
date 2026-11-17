@@ -29,11 +29,11 @@ import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Experiment;
-import com.absmartly.sdk.json.ExperimentApplication;
-import com.absmartly.sdk.json.ExperimentVariant;
-import com.absmartly.sdk.json.Exposure;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.Experiment;
+import com.absmartly.sdk.internal.json.ExperimentApplication;
+import com.absmartly.sdk.internal.json.ExperimentVariant;
+import com.absmartly.sdk.internal.json.ExposurePayload;
 
 // Port of the Collector's ContextAPISwitchbackTest ClusterRule section (absmartly/abs 9bd2b5ca35)
 // through the public Context API. Each @Test keeps the Collector's name and fixture: switchback
@@ -154,16 +154,16 @@ class ContextSwitchbackClusterRuleTest {
 
 	Context createContext(Map<String, Object> attributes, Experiment[] experiments, String[]... units) {
 		capture = new ExposureCapture();
-		final ContextConfig config = ContextConfig.create();
+		final TestContextConfig config = TestContextConfig.create();
 		final Map<String, Object> unitMap = new LinkedHashMap<String, Object>();
 		for (final String[] unit : units) {
 			unitMap.put(unit[0], unit[1]);
 		}
 		config.setUnits(unitMap);
 		config.setEventLogger(capture);
-		final ContextData data = new ContextData();
+		final ContextPayload data = new ContextPayload();
 		data.experiments = experiments;
-		final Context context = Context.create(clock, config, mock(ScheduledExecutorService.class),
+		final Context context = TestContexts.create(clock, config, mock(ScheduledExecutorService.class),
 				CompletableFuture.completedFuture(data), mock(ContextDataProvider.class), eventHandler, null,
 				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()));
 		if (attributes != null) {
@@ -181,7 +181,7 @@ class ContextSwitchbackClusterRuleTest {
 		boolean ruleOverride;
 		boolean silent;
 		String config;
-		List<Exposure> exposures;
+		List<ExposurePayload> exposures;
 	}
 
 	Assigned sbc(Map<String, Object> attributes, String[]... units) {
@@ -194,14 +194,14 @@ class ContextSwitchbackClusterRuleTest {
 		final Context context = createContext(attributes, experiments, units);
 		for (final Experiment other : experiments) {
 			if (!other.name.equals("sbc")) {
-				context.getTreatment(other.name);
+				context.treatment(other.name);
 			}
 		}
-		final int variant = context.getTreatment("sbc");
+		final int variant = context.treatment("sbc");
 		final Context.SwitchbackResolution resolution = context.switchbackResolutionForTest("sbc");
 		assertNotNull(resolution);
-		final String config = (String) context.getVariableValue("sbc.config", null);
-		final List<Exposure> exposures = sbcExposures();
+		final String config = (String) context.variableValue("sbc.config", null);
+		final List<ExposurePayload> exposures = sbcExposures();
 		// Keyed on the serving status, not on assigned: a strict audience mismatch is not assigned yet is
 		// still an assignment the Collector lists.
 		if (!resolution.applies) {
@@ -222,9 +222,9 @@ class ContextSwitchbackClusterRuleTest {
 		return assigned;
 	}
 
-	List<Exposure> sbcExposures() {
-		final List<Exposure> exposures = new ArrayList<Exposure>();
-		for (final Exposure exposure : capture.exposures) {
+	List<ExposurePayload> sbcExposures() {
+		final List<ExposurePayload> exposures = new ArrayList<ExposurePayload>();
+		for (final ExposurePayload exposure : capture.exposures) {
 			if (exposure.name.equals("sbc")) {
 				exposures.add(exposure);
 			}
@@ -361,7 +361,7 @@ class ContextSwitchbackClusterRuleTest {
 		assertNotEquals(0, scheduled(key));
 		final Context context = createContext(attrs("session_store", key), new Experiment[]{experiment},
 				unit(SESSION, "x1"));
-		assertThrows(IllegalArgumentException.class, () -> context.setUnit(SESSION, "x2"));
+		assertThrows(UnitAlreadySetException.class, () -> context.setUnit(SESSION, "x2"));
 
 		final Assigned assignment = sbc(attrs("session_store", key), unit(SESSION, "x1"));
 		assertTrue(assignment.eligible);
@@ -429,8 +429,8 @@ class ContextSwitchbackClusterRuleTest {
 	void ineligibleClusterNeverPublishesAnExposure() {
 		final Context context = createContext(attrs("session_store", "a", "profile", store("b")),
 				new Experiment[]{experiment}, unit(USER, "u1"), unit(SESSION, "x1"));
-		assertEquals(0, context.getTreatment("sbc"));
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.treatment("sbc"));
+		assertEquals(0, context.pendingEventCount());
 		context.publish();
 		verify(eventHandler, never()).publish(any(), any());
 		assertTrue(capture.exposures.isEmpty());
@@ -573,7 +573,7 @@ class ContextSwitchbackClusterRuleTest {
 								final Context context = gridContext(cluster, uid, key);
 								final String message = cluster + "/" + anchor + "/" + periodMs + "/" + uid + "/" + key
 										+ "/" + now;
-								assertEquals(oracle[0], context.getTreatment("sbc"), message);
+								assertEquals(oracle[0], context.treatment("sbc"), message);
 								assertEquals(oracle[1] == 1, context.switchbackResolutionForTest("sbc").eligible,
 										message);
 								// Before the anchor nothing is recorded; from it, a keyed cluster records
@@ -617,7 +617,7 @@ class ContextSwitchbackClusterRuleTest {
 		assertNotEquals(SdkSwitchbackRule.NO_PERIOD, SdkSwitchbackRule.periodIndex(experiment, clock.now));
 		assertEquals(1, SdkSwitchbackRule.evaluate(experiment, "uid-0", "s-1", clock.now)[1]);
 		final Context context = gridContext(ClusterCase.SINGLE, "uid-0", "s-1");
-		assertEquals(0, context.getTreatment("sbc"));
+		assertEquals(0, context.treatment("sbc"));
 		assertFalse(context.switchbackResolutionForTest("sbc").eligible);
 		assertTrue(capture.exposures.isEmpty());
 	}

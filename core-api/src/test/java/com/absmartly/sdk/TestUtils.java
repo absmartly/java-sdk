@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 
 public abstract class TestUtils {
 	public static byte[] getResourceBytes(String resourceName) {
-		final ClassLoader classLoader = ContextDataDeserializer.class.getClassLoader();
+		final ClassLoader classLoader = TestUtils.class.getClassLoader();
 		final File resource = new File(Objects.requireNonNull(classLoader.getResource(resourceName)).getFile());
 		try (final FileInputStream inputStream = new FileInputStream(resource.getAbsolutePath())) {
 			final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
