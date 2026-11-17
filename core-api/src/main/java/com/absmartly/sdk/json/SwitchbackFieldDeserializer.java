@@ -11,7 +11,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.util.TokenBuffer;
 
 /**
  * Reads one switchback field of {@link Experiment}. A value of the wrong shape is not an error for the whole context:
@@ -29,9 +29,12 @@ public abstract class SwitchbackFieldDeserializer<T> extends JsonDeserializer<T>
 	public T deserialize(final JsonParser p, final DeserializationContext ctxt) throws IOException {
 		final String field = p.getCurrentName();
 		final Object current = p.getParsingContext().getCurrentValue();
-		final JsonNode node = p.readValueAsTree();
+		// Buffered as tokens rather than a tree: building a tree applies the mapper's duplicate-key
+		// check, which would fail the whole context on a value 1.9.0 ignored.
+		final TokenBuffer buffer = new TokenBuffer(p, ctxt);
+		buffer.copyCurrentStructure(p);
 		try {
-			final JsonParser value = node.traverse(p.getCodec());
+			final JsonParser value = buffer.asParser(p.getCodec());
 			value.nextToken();
 			return ctxt.readValue(value, type(ctxt));
 		} catch (final JsonProcessingException e) {

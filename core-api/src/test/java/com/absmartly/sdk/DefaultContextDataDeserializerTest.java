@@ -341,7 +341,9 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 			"\"switchbackStartAt\":\"abc\"", "\"switchbackStartAt\":1e30", "\"switchbackStartAt\":{}",
 			"\"switchbackStartAt\":true", "\"switchbackPeriodMs\":[]", "\"switchbackCarryoverDurationMs\":\"x\"",
 			"\"switchbackBurnInDurationMs\":{}", "\"switchbackBurnOutDurationMs\":99999999999999999999",
-			"\"switchbackDesignType\":{}", "\"switchbackEstimand\":[]"})
+			"\"switchbackDesignType\":{}", "\"switchbackEstimand\":[]",
+			"\"switchbackClusters\":{\"a\":\"x\",\"a\":{\"b\":1,\"b\":2}}",
+			"\"switchbackClusterValues\":[{\"a\":1,\"a\":2}]", "\"switchbackStartAt\":{\"a\":1,\"a\":2}"})
 	void malformedSwitchbackFieldIsIgnoredLikeIn190(final String field) throws Exception {
 		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_bad\",\"unitType\":\"session_id\","
 				+ "\"randomizationType\":\"switchback\",\"switchbackPeriodMs\":3600000,\"switchbackEstimand\":\"ate\","
@@ -388,6 +390,21 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		assertEquals(Long.valueOf(1L), experiment.switchbackStartAt);
 		assertEquals(Long.valueOf(3600000L), experiment.switchbackPeriodMs);
 		assertNull(experiment.switchbackDesignType);
+	}
+
+	// A duplicate key in a well-formed map keeps the last value, as Jackson reads any Map field.
+	@Test
+	void switchbackClustersDuplicateKeyKeepsTheLastValue() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp\","
+				+ "\"switchbackClusters\":{\"a\":\"x\",\"b\":\"y\",\"a\":\"z\"}}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertNotNull(data);
+		final Map<String, String> clusters = new LinkedHashMap<String, String>();
+		clusters.put("a", "z");
+		clusters.put("b", "y");
+		assertEquals(clusters, data.experiments[0].switchbackClusters);
 	}
 
 	@Test
