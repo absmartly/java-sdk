@@ -2286,8 +2286,8 @@ public class Context implements Closeable {
 		Object value;
 	}
 
-	// Missing, malformed and repeated holdout references are ignored. Sort resolved holdouts by id for
-	// deterministic exposure ordering and stable cache matching.
+	// Missing and malformed holdout references are ignored, and a repeated one counts once. Sort resolved
+	// holdouts by id for deterministic exposure ordering and stable cache matching.
 	private static Experiment[] resolveApplicableHoldouts(final Experiment experiment,
 			final Map<Integer, Experiment> holdoutsById) {
 		if (experiment.holdoutIds == null || experiment.holdoutIds.length == 0) {

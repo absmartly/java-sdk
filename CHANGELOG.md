@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A covered experiment whose `holdoutIds` lists the same holdout more than once now treats it as one holdout, as javascript-sdk does. Before, a refresh that only removed the duplicate counted as a coverage change, so the experiment was resolved again and published a second exposure.
+
 ## 1.9.0 (unreleased)
 
 ### Changed
@@ -13,7 +19,6 @@
 
 ### Fixed
 
-- A covered experiment whose `holdoutIds` lists the same holdout more than once now treats it as one holdout, as javascript-sdk does. Before, a refresh that only removed the duplicate counted as a coverage change, so the experiment was resolved again and published a second exposure.
 - The context `GET` request now sends the same SDK headers as the publish (`X-API-Key`, `X-Application`, `X-Environment`, `X-Application-Version` and `X-Agent`). Query parameters are unchanged.
 
 ## 1.8.0 (2026-11-11)

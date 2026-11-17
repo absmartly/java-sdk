@@ -657,6 +657,30 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
+	// The repeat need not be adjacent: {11, 12, 11} is holdouts 11 and 12.
+	@Test
+	void nonAdjacentDuplicateHoldoutIdIsOneHoldout() {
+		final Experiment[] holdouts = {
+				newHoldout(11, "holdout_a", HOLDOUT_A_SEED_HI, HOLDOUT_A_SEED_LO),
+				newHoldout(12, "holdout_b", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO)
+		};
+		final Context context = createReadyContext(UID_NOT_HELD_OUT, contextDataOf(holdouts,
+				coveredBy(newExperiment(1, "exp_non_adjacent_duplicate"), 11, 12, 11)));
+
+		assertEquals(0, context.getTreatment("exp_non_adjacent_duplicate"));
+		assertEquals(3, context.getPendingCount()); // own exposure + one per holdout
+
+		final CompletableFuture<ContextData> refreshFuture = new CompletableFuture<>();
+		when(dataProvider.getContextData()).thenReturn(refreshFuture);
+		final CompletableFuture<Void> refreshing = context.refreshAsync();
+		refreshFuture.complete(contextDataOf(holdouts,
+				coveredBy(newExperiment(1, "exp_non_adjacent_duplicate"), 11, 12)));
+		refreshing.join();
+
+		assertEquals(0, context.getTreatment("exp_non_adjacent_duplicate"));
+		assertEquals(3, context.getPendingCount());
+	}
+
 	// A custom assignment can never override a held-out unit's variant - holdout precedence
 	// beats custom assignments, matching the existing audience/full-on/traffic precedence rules.
 	@Test
