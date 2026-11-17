@@ -17,8 +17,10 @@ import com.fasterxml.jackson.databind.JsonNode;
  * Reads one switchback field of {@link Experiment}. A value of the wrong shape is not an error for the whole context:
  * the field is set to null with a warning, so 1.9.0 and earlier, which ignored these fields, and this release decode
  * the same payloads. Values of the right shape are read as Jackson reads them by default.
+ * <p>
+ * Public so that the README's ProGuard rule keeps it; uses only Jackson 2.12 API, as the 1.9.0 decoder did.
  */
-abstract class SwitchbackFieldDeserializer<T> extends JsonDeserializer<T> {
+public abstract class SwitchbackFieldDeserializer<T> extends JsonDeserializer<T> {
 	private static final Logger log = LoggerFactory.getLogger(SwitchbackFieldDeserializer.class);
 
 	abstract JavaType type(DeserializationContext ctxt);
@@ -29,7 +31,9 @@ abstract class SwitchbackFieldDeserializer<T> extends JsonDeserializer<T> {
 		final Object current = p.getParsingContext().getCurrentValue();
 		final JsonNode node = p.readValueAsTree();
 		try {
-			return ctxt.readTreeAsValue(node, type(ctxt));
+			final JsonParser value = node.traverse(p.getCodec());
+			value.nextToken();
+			return ctxt.readValue(value, type(ctxt));
 		} catch (final JsonProcessingException e) {
 			final String name = (current instanceof Experiment) ? ((Experiment) current).name : null;
 			log.warn("Ignoring {} for experiment {}: {}", field, name != null ? "'" + name + "'" : "(unknown)",
@@ -38,28 +42,28 @@ abstract class SwitchbackFieldDeserializer<T> extends JsonDeserializer<T> {
 		}
 	}
 
-	static final class ForString extends SwitchbackFieldDeserializer<String> {
+	public static final class ForString extends SwitchbackFieldDeserializer<String> {
 		@Override
 		JavaType type(final DeserializationContext ctxt) {
 			return ctxt.constructType(String.class);
 		}
 	}
 
-	static final class ForLong extends SwitchbackFieldDeserializer<Long> {
+	public static final class ForLong extends SwitchbackFieldDeserializer<Long> {
 		@Override
 		JavaType type(final DeserializationContext ctxt) {
 			return ctxt.constructType(Long.class);
 		}
 	}
 
-	static final class ForStringArray extends SwitchbackFieldDeserializer<String[]> {
+	public static final class ForStringArray extends SwitchbackFieldDeserializer<String[]> {
 		@Override
 		JavaType type(final DeserializationContext ctxt) {
 			return ctxt.constructType(String[].class);
 		}
 	}
 
-	static final class ForStringMap extends SwitchbackFieldDeserializer<LinkedHashMap<String, String>> {
+	public static final class ForStringMap extends SwitchbackFieldDeserializer<LinkedHashMap<String, String>> {
 		@Override
 		JavaType type(final DeserializationContext ctxt) {
 			return ctxt.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, String.class);

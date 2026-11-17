@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -1202,6 +1203,29 @@ class ContextSwitchbackTest {
 		context.peekVariableValue("sb.arm", null);
 		assertEquals(readsBefore + 1, clock.reads);
 		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR - 1, true, true)},
+				publishExposures(context));
+	}
+
+	// A read that skipped the clock (no switchback installed yet) and then finds a switchback that a
+	// concurrent refresh installed resolves and stamps it at a real clock reading.
+	@Test
+	void switchbackInstalledAfterTheClockWasSkippedResolvesAtARealReading() throws Exception {
+		final Experiment unit = switchback(2, "exp_unit", 2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		refreshTo(context, unit, switchback(2, HOUR));
+		clock.now = ANCHOR + 3 * HOUR;
+
+		final Method get = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
+		get.setAccessible(true);
+		final Object assignment = get.invoke(context, "exp_sb", Long.MIN_VALUE);
+		final Method expose = Context.class.getDeclaredMethod("exposeTreatmentAssignment", String.class,
+				assignment.getClass(), long.class);
+		expose.setAccessible(true);
+		expose.invoke(context, "exp_sb", assignment, Long.MIN_VALUE);
+
+		assertEquals(EXPECTED_2_ARMS[3], context.peekTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[3], ANCHOR + 3 * HOUR, true, true)},
 				publishExposures(context));
 	}
 
