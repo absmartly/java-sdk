@@ -77,6 +77,21 @@ shadowJar {
 	}
 }
 
+// The shadow plugin lists the shadow configuration (slf4j-api, jspecify) as a Class-Path manifest entry. Dependencies
+// come from the POM, and servlet containers warn about Class-Path jars they cannot find, so the shadow configuration
+// stays out of the jar task's view; it is still published through components.shadow.
+// The plugin writes the entry while it copies, so the manifest is rewritten once the jar exists.
+shadowJar.doLast {
+	def jarFile = archiveFile.get().asFile
+	def uri = URI.create("jar:" + jarFile.toURI())
+	java.nio.file.FileSystems.newFileSystem(uri, [:]).withCloseable { fs ->
+		def path = fs.getPath("META-INF/MANIFEST.MF")
+		def text = new String(java.nio.file.Files.readAllBytes(path), "UTF-8")
+		def kept = text.split("\r?\n").findAll { !it.startsWith("Class-Path:") && !it.startsWith(" ") }
+		java.nio.file.Files.write(path, (kept.join("\r\n") + "\r\n\r\n").getBytes("UTF-8"))
+	}
+}
+
 // Fails the build if Jackson leaks into the published jar unrelocated, or if the jar does not hold the transport.
 def verifyShadedJar = tasks.register("verifyShadedJar") {
 	dependsOn shadowJar
@@ -95,6 +110,12 @@ def verifyShadedJar = tasks.register("verifyShadedJar") {
 		}
 		if (!names.any { it.startsWith("com/absmartly/sdk/internal/shaded/jackson/databind/") }) {
 			throw new GradleException("Relocated Jackson is missing from ${jarFile.get().asFile.name}")
+		}
+		def manifest = new java.util.zip.ZipFile(jarFile.get().asFile).withCloseable { zip ->
+			zip.getInputStream(zip.getEntry("META-INF/MANIFEST.MF")).text
+		}
+		if (manifest.contains("Class-Path")) {
+			throw new GradleException("The jar manifest must not carry a Class-Path: ${manifest}")
 		}
 	}
 }

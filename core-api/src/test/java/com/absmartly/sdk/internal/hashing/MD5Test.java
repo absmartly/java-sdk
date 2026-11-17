@@ -2,12 +2,12 @@ package com.absmartly.sdk.internal.hashing;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.TestUtils;
-import java.nio.charset.StandardCharsets;
 
 class MD5Test extends TestUtils {
 	@Test

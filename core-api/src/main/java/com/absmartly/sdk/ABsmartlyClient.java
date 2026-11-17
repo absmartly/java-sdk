@@ -266,7 +266,10 @@ public final class ABsmartlyClient implements AutoCloseable {
 			return this;
 		}
 
-		/** The executor for the SDK's asynchronous work (decoding, encoding, event streams). Defaults to a daemon pool. */
+		/**
+		 * The executor for the SDK's asynchronous work: decoding and encoding requests, and delivering the client's and
+		 * its contexts' {@code events()} streams. Defaults to a pool of daemon threads.
+		 */
 		public Builder executor(final Executor executor) {
 			executor_ = executor;
 			return this;

@@ -2,6 +2,7 @@ package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -15,7 +16,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.internal.json.ContextPayload;
 import com.absmartly.sdk.internal.json.Experiment;
 import com.absmartly.sdk.internal.json.ExperimentApplication;
@@ -25,7 +25,8 @@ class JsonContextDecodingTest extends TestUtils {
 	@Test
 	void decodeContextThrowsDecodingException() {
 		final DecodingException truncated = assertThrows(DecodingException.class,
-				() -> com.absmartly.sdk.internal.Json.decodeContext("{\"experiments\":[".getBytes(StandardCharsets.UTF_8)));
+				() -> com.absmartly.sdk.internal.Json
+						.decodeContext("{\"experiments\":[".getBytes(StandardCharsets.UTF_8)));
 		assertTrue(truncated.getMessage().startsWith("Failed to decode context data"));
 		assertNotNull(truncated.getCause());
 		assertThrows(DecodingException.class,

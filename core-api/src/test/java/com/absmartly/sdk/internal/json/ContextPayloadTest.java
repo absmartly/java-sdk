@@ -40,7 +40,8 @@ class ContextPayloadTest {
 		assertEquals(a.hashCode(), b.hashCode());
 
 		// same experiments but different holdouts must compare unequal
-		final ContextPayload differentHoldouts = new ContextPayload(experiments, new Experiment[]{holdout(22, "session_id")});
+		final ContextPayload differentHoldouts = new ContextPayload(experiments,
+				new Experiment[]{holdout(22, "session_id")});
 		assertNotEquals(a, differentHoldouts);
 		assertNotEquals(a.hashCode(), differentHoldouts.hashCode());
 

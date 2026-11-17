@@ -19,6 +19,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -35,7 +36,6 @@ import org.mockito.Mockito;
 import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
-import java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.internal.json.ContextPayload;
 import com.absmartly.sdk.internal.json.Experiment;
 import com.absmartly.sdk.internal.json.ExposurePayload;

@@ -270,8 +270,10 @@ class ContextAssignmentRulesTest extends TestUtils {
 		context.setAttribute("country", "US");
 		assertEquals(1, context.treatment(EXP));
 
-		assertEquals(new ExposurePayload(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
-				true), publishedExposures(context).get(0));
+		assertEquals(
+				new ExposurePayload(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
+						true),
+				publishedExposures(context).get(0));
 	}
 
 	@Test
@@ -589,8 +591,10 @@ class ContextAssignmentRulesTest extends TestUtils {
 		context.setAttribute("country", "US");
 		context.treatment(EXP);
 
-		assertEquals(new ExposurePayload(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
-				true), publishedExposures(context).get(0));
+		assertEquals(
+				new ExposurePayload(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
+						true),
+				publishedExposures(context).get(0));
 	}
 
 	@Test

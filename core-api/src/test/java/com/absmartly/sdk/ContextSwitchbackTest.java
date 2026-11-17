@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -35,7 +36,6 @@ import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
-import java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.internal.json.ContextPayload;
 import com.absmartly.sdk.internal.json.Experiment;
 import com.absmartly.sdk.internal.json.ExperimentApplication;
@@ -158,8 +158,10 @@ class ContextSwitchbackTest {
 		return (exposures != null) ? exposures : new ExposurePayload[0];
 	}
 
-	static ExposurePayload exposure(int id, String name, int variant, long exposedAt, boolean assigned, boolean eligible) {
-		return new ExposurePayload(id, name, UNIT_TYPE, variant, exposedAt, assigned, eligible, false, false, false, false);
+	static ExposurePayload exposure(int id, String name, int variant, long exposedAt, boolean assigned,
+			boolean eligible) {
+		return new ExposurePayload(id, name, UNIT_TYPE, variant, exposedAt, assigned, eligible, false, false, false,
+				false);
 	}
 
 	int[] peekSchedule(Context context, String name, long periodMs, int periods) {
@@ -412,7 +414,8 @@ class ContextSwitchbackTest {
 		// Setting a linked unit later makes the experiment apply.
 		context.setUnit(UNIT_TYPE, UID);
 		assertEquals(EXPECTED_2_ARMS[2], context.treatment("exp_sb"));
-		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[2], ANCHOR + 2 * HOUR, true, true)},
+		assertArrayEquals(
+				new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[2], ANCHOR + 2 * HOUR, true, true)},
 				publishExposures(context));
 	}
 
@@ -637,7 +640,8 @@ class ContextSwitchbackTest {
 
 	// A rule win is published exactly like a unit experiment's: ruleOverride set, assigned false.
 	static ExposurePayload ruleExposure(String name, int variant, long exposedAt) {
-		return new ExposurePayload(1, name, UNIT_TYPE, variant, exposedAt, false, true, false, false, false, false, true);
+		return new ExposurePayload(1, name, UNIT_TYPE, variant, exposedAt, false, true, false, false, false, false,
+				true);
 	}
 
 	// Collector ContextAPISwitchbackTest.assignmentRuleOverridesTheSchedule: the Collector evaluates
@@ -694,8 +698,10 @@ class ContextSwitchbackTest {
 				false), exposures[0]);
 		assertEquals(new ExposurePayload(2, "sb_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false, false,
 				true), exposures[1]);
-		assertEquals(new ExposurePayload(3, "sb_unaligned_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false,
-				false, true), exposures[2]);
+		assertEquals(
+				new ExposurePayload(3, "sb_unaligned_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false,
+						false, true),
+				exposures[2]);
 	}
 
 	// Rules are evaluated only for an eligible cluster: an ineligible cluster stays a silent control
@@ -728,7 +734,8 @@ class ContextSwitchbackTest {
 			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, uid, "user_id", "fixed-user"),
 					dataOf(experiment));
 			assertEquals(expected, context.treatment("exp_sb"), uid);
-			assertArrayEquals(new ExposurePayload[]{ruleExposure("exp_sb", expected, ANCHOR)}, publishExposures(context),
+			assertArrayEquals(new ExposurePayload[]{ruleExposure("exp_sb", expected, ANCHOR)},
+					publishExposures(context),
 					uid);
 			ones += expected;
 		}
@@ -848,8 +855,10 @@ class ContextSwitchbackTest {
 		assertEquals(11, context.peekVariableValue("sb.arm", -1));
 		assertEquals(0, context.pendingEventCount());
 		assertEquals(11, context.variableValue("sb.arm", -1));
-		assertArrayEquals(new ExposurePayload[]{new ExposurePayload(2, "exp_unit", UNIT_TYPE, 1, ANCHOR + HOUR + 3, true, true,
-				false, true, false, false, false)}, publishExposures(context));
+		assertArrayEquals(
+				new ExposurePayload[]{new ExposurePayload(2, "exp_unit", UNIT_TYPE, 1, ANCHOR + HOUR + 3, true, true,
+						false, true, false, false, false)},
+				publishExposures(context));
 	}
 
 	// Alone on the key, a strict-mismatched switchback yields the default value and records nothing.
@@ -1131,7 +1140,8 @@ class ContextSwitchbackTest {
 		clock.nextRead = ANCHOR + HOUR - 1;
 
 		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
-		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
+		assertArrayEquals(
+				new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
 				publishExposures(context));
 	}
 
@@ -1150,7 +1160,8 @@ class ContextSwitchbackTest {
 		clock.nextRead = ANCHOR + HOUR - 1;
 
 		assertEquals(EXPECTED_2_ARMS[0], context.variableValue("sb.arm", -1));
-		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
+		assertArrayEquals(
+				new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
 				publishExposures(context));
 	}
 
@@ -1523,7 +1534,8 @@ class ContextSwitchbackTest {
 		// is recorded, as eligible=false (period 0 draws 0, so the variant alone cannot show the miss).
 		clock.now = ANCHOR;
 		assertEquals(0, context.treatment("exp_sb"));
-		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_sb", 0, ANCHOR, true, false)}, publishExposures(context));
+		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_sb", 0, ANCHOR, true, false)},
+				publishExposures(context));
 	}
 
 	// An override on a switchback with no serving unit is exposed under the declared unitType when the
@@ -1545,7 +1557,8 @@ class ContextSwitchbackTest {
 		assertEquals(1, context.treatment("exp_unreadable_map"));
 
 		assertArrayEquals(new ExposurePayload[]{
-				new ExposurePayload(1, "exp_missing_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false, false),
+				new ExposurePayload(1, "exp_missing_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false,
+						false),
 				new ExposurePayload(2, "exp_unreadable_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false,
 						false),
 		}, publishExposures(context));
@@ -1796,7 +1809,9 @@ class ContextSwitchbackTest {
 		assertEquals(expectedVariant, variants[0]);
 		assertEquals(expectedVariant, variants[1]);
 		assertEquals(1, context.pendingEventCount());
-		assertArrayEquals(new ExposurePayload[]{new ExposurePayload(1, "exp_sb", UNIT_TYPE, expectedVariant, ANCHOR + HOUR + 10,
-				true, true, false, false, false, true)}, publishExposures(context));
+		assertArrayEquals(
+				new ExposurePayload[]{new ExposurePayload(1, "exp_sb", UNIT_TYPE, expectedVariant, ANCHOR + HOUR + 10,
+						true, true, false, false, false, true)},
+				publishExposures(context));
 	}
 }

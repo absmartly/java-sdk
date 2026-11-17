@@ -23,7 +23,11 @@ support window.
 - Unchecked `ABsmartlyException` hierarchy (`ContextNotReadyException`, `ContextClosedException`,
   `ContextLoadException`, `UnitAlreadySetException`, `HttpStatusException`, `TransportException`,
   `RequestTimeoutException`, `DecodingException`). Blocking methods throw the cause, never `CompletionException`.
-- `Transport` replaces `HTTPClient`; the default `JdkHttpTransport` uses `java.net.http` (same retry policy as 1.x).
+- `Transport` replaces `HTTPClient`; the default `JdkHttpTransport` uses `java.net.http`. It retries like the 1.x
+  Apache client (502/503, dropped connections and connect timeouts, up to 5 times with the same back-off; a refused
+  connection is not retried) and follows redirects except https to http. Differences: when its connection is reset
+  the JDK client also retries a GET once on its own, a connect timeout that exhausts the retries raises
+  `RequestTimeoutException`, and the 1.x keep-alive, connection-pool and security-provider settings are gone.
 - The JSON model (`com.absmartly.sdk.json`) and `jsonexpr` packages are internal; the public `ContextData`, `Exposure`
   and `Goal` value types replace them in the API.
 - Dependencies: Apache HttpClient 5, jsr305 and findbugs-annotations are gone; Jackson is shaded and relocated; SLF4J
@@ -32,6 +36,8 @@ support window.
 
 ### Added
 
+- Switchback serving (cluster-defined switchbacks, see [SWITCHBACK.md](SWITCHBACK.md)), and holdouts, as on the
+  unreleased 1.x main.
 - Typed variables: `variable(key, default)` typed by the default, `variable(key, Class, default)` mapping JSON objects
   to your class, and `peekVariable` twins.
 - `clearOverride`, `clearCustomAssignment`, `overrides()`, `customAssignments()`, `track(goal)`.

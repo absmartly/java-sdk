@@ -265,6 +265,15 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void longVariablesKeepTheirFullValue() {
+		assertEquals(5_000_000_000L, VariableConverter.convert("big", 5_000_000_000L, Long.class, 0L));
+		assertEquals(5_000_000_000L, VariableConverter.convert("big", new BigInteger("5000000000"), Long.class, 0L));
+		assertEquals(0, VariableConverter.convert("big", 5_000_000_000L, Integer.class, 0));
+		assertEquals(0L, VariableConverter.convert("big", new BigInteger("99999999999999999999"), Long.class, 0L));
+		assertEquals(-5_000_000_000L, VariableConverter.convert("big", -5_000_000_000.0, Long.class, 0L));
+	}
+
+	@Test
 	void numericConversionNeverLosesPrecision() {
 		assertEquals(5, VariableConverter.convert("k", 5.0, Integer.class, 0));
 		assertEquals(0, VariableConverter.convert("k", 5.5, Integer.class, 0));
@@ -362,6 +371,9 @@ class ABsmartlyClientTest extends TestUtils {
 				.publishDelay(Duration.ofMillis(-1))
 				.eventListener(contextEvents::add)
 				.build());
+		// As in 1.x, context() can return just before READY is dispatched on the loading thread.
+		awaitSize(contextEvents, 1);
+		awaitSize(clientEvents, 1);
 		context.treatment("exp_test_ab");
 		context.track("purchase", Map.of("total", 19.99, "items", 2));
 		context.publish();
@@ -450,7 +462,11 @@ class ABsmartlyClientTest extends TestUtils {
 		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
 		final Context context = client.context(SESSION);
 		final AtomicInteger seen = new AtomicInteger();
-		final Subscription subscription = context.onEvent(event -> seen.incrementAndGet());
+		final Subscription subscription = context.onEvent(event -> {
+			if (event.type() == ContextEvent.Type.EXPOSURE) {
+				seen.incrementAndGet();
+			}
+		});
 		context.treatment("exp_test_ab");
 		subscription.close();
 		subscription.close();
@@ -472,7 +488,10 @@ class ABsmartlyClientTest extends TestUtils {
 
 			@Override
 			public void onNext(final ContextEvent item) {
-				received.add(item.type());
+				// A late READY from the load can reach a subscriber attached right after context() returned.
+				if (item.type() != ContextEvent.Type.READY) {
+					received.add(item.type());
+				}
 			}
 
 			@Override
@@ -516,12 +535,67 @@ class ABsmartlyClientTest extends TestUtils {
 				completed.countDown();
 			}
 		});
-		final Context context = client.context(SESSION);
+		final Context context = client.newContext(SESSION);
+		// The ready future can complete before READY is dispatched, so wait for the event before exposing.
+		awaitStreamed(received, 1);
 		context.treatment("exp_test_ab");
 		awaitStreamed(received, 2);
 		client.close();
 		assertTrue(completed.await(5, TimeUnit.SECONDS));
 		assertEquals(List.of(ContextEvent.Type.READY, ContextEvent.Type.EXPOSURE), received);
+	}
+
+	@Test
+	void clientClosesTheTransportItCreated() throws Exception {
+		final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+				.application("a").environment("e").build();
+		final java.lang.reflect.Field field = ABsmartlyClient.class.getDeclaredField("client_");
+		field.setAccessible(true);
+		final Client inner = (Client) field.get(client);
+		final java.lang.reflect.Field transportField = Client.class.getDeclaredField("transport_");
+		transportField.setAccessible(true);
+		final JdkHttpTransport transport = (JdkHttpTransport) transportField.get(inner);
+		final java.lang.reflect.Field httpField = JdkHttpTransport.class.getDeclaredField("closed_");
+		httpField.setAccessible(true);
+		assertFalse((Boolean) httpField.get(transport));
+		client.close();
+		assertTrue((Boolean) httpField.get(transport));
+	}
+
+	@Test
+	void slowStreamSubscriberLosesOverflowWithoutBlocking() throws InterruptedException {
+		final EventStream stream = new EventStream(Runnable::run);
+		final List<ContextEvent> received = Collections.synchronizedList(new ArrayList<>());
+		final Flow.Subscription[] holder = new Flow.Subscription[1];
+		stream.publisher().subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				holder[0] = subscription;
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {
+				received.add(item);
+			}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {}
+		});
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final int total = Flow.defaultBufferSize() * 3;
+		for (int i = 0; i < total; ++i) {
+			stream.submit(new com.absmartly.sdk.event.CloseEvent(context, i));
+		}
+		holder[0].request(Long.MAX_VALUE);
+		awaitSize(received, Flow.defaultBufferSize());
+		Thread.sleep(50);
+		assertTrue(received.size() < total, "events beyond the buffer are dropped, not queued");
+		assertTrue(received.size() >= Flow.defaultBufferSize() - 1, "the buffered events are delivered");
+		stream.close();
 	}
 
 	@Test
@@ -601,6 +675,8 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals("PUT https://x/context", request.toString());
 		assertArrayEquals(new byte[]{1}, request.body());
 		assertNotSame(request.body(), request.body());
+		final Transport lambda = r -> FakeTransport.status(200, "OK");
+		lambda.close();
 		final Transport.Response response = new Transport.Response(200, "OK", null);
 		assertNull(response.body());
 		assertEquals("Response{200 OK}", response.toString());

@@ -13,8 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
-import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.Clock;
+import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.json.AttributePayload;
 import com.absmartly.sdk.internal.json.ContextPayload;
 import com.absmartly.sdk.internal.json.ExposurePayload;

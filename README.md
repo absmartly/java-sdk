@@ -343,8 +343,9 @@ Invalid arguments throw `IllegalArgumentException`. The blocking methods (`ready
 
 ### HTTP transport
 
-The default transport is `JdkHttpTransport`, over `java.net.http.HttpClient`. It retries a request that fails with
-an I/O error or gets a 502 or 503, up to 5 times with exponential back-off. Tune it, or plug in your own HTTP stack:
+The default transport is `JdkHttpTransport`, over `java.net.http.HttpClient`. Like the 1.x transport, it retries a
+request that gets a 502 or 503, loses its connection or times out connecting, up to 5 times with exponential
+back-off, and follows redirects (never from https to http). A refused connection is not retried. Tune it, or plug in your own HTTP stack:
 
 ```java
 ABsmartlyClient client = ABsmartlyClient.builder()

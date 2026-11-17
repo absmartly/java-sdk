@@ -26,12 +26,12 @@ import com.absmartly.sdk.internal.SdkVersion;
 /**
  * Hermetic end-to-end integration test that drives the public SDK API against a real local
  * HTTP server (JDK built-in {@link HttpServer}) on an ephemeral port. This exercises the
- * SDK's real Apache HttpAsyncClient transport (no Java-level mocking) and asserts the
-	 * on-the-wire request shape documented in the ABSmartly SDK ↔ Collector wire contract:
+ * SDK's real default transport ({@link JdkHttpTransport}, no Java-level mocking) and asserts the
+ * on-the-wire request shape documented in the ABsmartly SDK ↔ Collector wire contract:
  * <ul>
- * <li>GET /context with {@code application}/{@code environment} query params and NO auth
- * headers (Java authenticates the fetch via query params).</li>
- * <li>PUT /context publish with the full auth header set and a JSON body containing
+ * <li>GET /context with {@code application}/{@code environment} query params and the SDK
+ * headers.</li>
+ * <li>PUT /context publish with the same headers and a JSON body containing
  * {@code hashed}, {@code units}, {@code publishedAt}, plus {@code exposures}/{@code goals}
  * when present.</li>
  * </ul>

@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -25,9 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
-import com.absmartly.sdk.internal.hashing.Hashing;
-import java.nio.charset.StandardCharsets;
 import com.absmartly.sdk.internal.Clock;
+import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.internal.json.AttributePayload;
 import com.absmartly.sdk.internal.json.ContextPayload;
 import com.absmartly.sdk.internal.json.Experiment;
@@ -478,7 +478,8 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 
 		final PublishPayload expected = publishedEvent(UID,
-				new ExposurePayload(1, "exp_three_arm_2_non_fullon", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+				new ExposurePayload(1, "exp_three_arm_2_non_fullon", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true,
+						true,
 						false, false, false, false),
 				holdoutExposure(21, "holdout_three_arm", 2),
 				new ExposurePayload(2, "exp_three_arm_2_fullon", UNIT_TYPE, 2, clock.millis(), true, true, false, true,
@@ -568,14 +569,16 @@ class ContextHoldoutTest extends TestUtils {
 		contextArm2.publish();
 
 		final PublishPayload expectedArm1 = publishedEvent(UID,
-				new ExposurePayload(1, "exp_three_arm_1_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
+				new ExposurePayload(1, "exp_three_arm_1_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true,
+						false,
 						false, false, true),
 				holdoutExposure(21, "holdout_three_arm", 1));
 		expectedArm1.attributes = new AttributePayload[]{new AttributePayload("age", 5, clock.millis())};
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(contextArm1, expectedArm1);
 
 		final PublishPayload expectedArm2 = publishedEvent(UID,
-				new ExposurePayload(1, "exp_three_arm_2_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true, false,
+				new ExposurePayload(1, "exp_three_arm_2_audience_fullon", UNIT_TYPE, 0, clock.millis(), false, true,
+						false,
 						false, false, true),
 				holdoutExposure(21, "holdout_three_arm", 2));
 		expectedArm2.attributes = new AttributePayload[]{new AttributePayload("age", 5, clock.millis())};
@@ -701,7 +704,8 @@ class ContextHoldoutTest extends TestUtils {
 		notHeldOutContext.publish();
 
 		final PublishPayload expectedNotHeldOut = publishedEvent(UID_NOT_HELD_OUT,
-				new ExposurePayload(1, "exp_holdout_override_not_held_out", UNIT_TYPE, 3, clock.millis(), false, true, true,
+				new ExposurePayload(1, "exp_holdout_override_not_held_out", UNIT_TYPE, 3, clock.millis(), false, true,
+						true,
 						false, false, false),
 				holdoutExposure(11, "holdout_a", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(notHeldOutContext, expectedNotHeldOut);
@@ -758,9 +762,11 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 
 		final PublishPayload expected = publishedEvent(UID_NOT_HELD_OUT,
-				new ExposurePayload(1, "exp_shared_a", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_shared_a", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false,
+						false),
 				holdoutExposure(11, "holdout_a", 1),
-				new ExposurePayload(2, "exp_shared_b", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false, false));
+				new ExposurePayload(2, "exp_shared_b", UNIT_TYPE, 0, clock.millis(), true, true, false, false, false,
+						false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
@@ -1163,7 +1169,8 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 
 		final PublishPayload expected = publishedEvent(coveredUnitType, UID,
-				new ExposurePayload(1, "exp_null_snapshot_fullon", coveredUnitType, 2, clock.millis(), true, true, false,
+				new ExposurePayload(1, "exp_null_snapshot_fullon", coveredUnitType, 2, clock.millis(), true, true,
+						false,
 						true, false, false),
 				holdoutExposure(coveredUnitType, 11, "holdout_user_id", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1353,7 +1360,8 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
 				publishedEvent(unitType, UID,
-						new ExposurePayload(1, experimentName, unitType, 2, clock.millis(), true, true, false, true, false,
+						new ExposurePayload(1, experimentName, unitType, 2, clock.millis(), true, true, false, true,
+								false,
 								false),
 						holdoutExposure(unitType, 11, "holdout_detached_retry", 1)));
 	}
@@ -1663,7 +1671,8 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 
 		final PublishPayload expected = publishedEvent(UID,
-				new ExposurePayload(1, "exp_redundant_set_unit", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+				new ExposurePayload(1, "exp_redundant_set_unit", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+						false,
 						false, false, false),
 				holdoutExposure(11, "holdout_a", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1775,7 +1784,8 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 
 		final PublishPayload expected = publishedEvent(coveredUnitType, UID,
-				new ExposurePayload(1, "exp_custom_late_unit", coveredUnitType, 3, clock.millis(), true, true, false, false,
+				new ExposurePayload(1, "exp_custom_late_unit", coveredUnitType, 3, clock.millis(), true, true, false,
+						false,
 						true, false),
 				holdoutExposure(coveredUnitType, 11, "holdout_custom_late", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -1947,7 +1957,8 @@ class ContextHoldoutTest extends TestUtils {
 
 		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_a", 0),
-				new ExposurePayload(2, "exp_var_key_assigned", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+				new ExposurePayload(2, "exp_var_key_assigned", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+						false,
 						false, false, false));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
@@ -1977,7 +1988,8 @@ class ContextHoldoutTest extends TestUtils {
 	@Test
 	void throwingLoggerDoesNotPermanentlyLoseSiblingHoldoutExposure() {
 		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(),
-				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof ExposurePayload) && (((ExposurePayload) o).id == 11)));
+				org.mockito.ArgumentMatchers
+						.argThat(o -> (o instanceof ExposurePayload) && (((ExposurePayload) o).id == 11)));
 
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_multi_holdout_throwing_logger"), 11, 12);
 		final Context context = createReadyContext(contextDataOf(
@@ -1995,7 +2007,8 @@ class ContextHoldoutTest extends TestUtils {
 	@Test
 	void throwingLoggerDoesNotMakeExperimentOrHoldoutExposureRetryable() {
 		doThrow(new RuntimeException("boom")).when(eventLogger).handleEvent(any(), any(),
-				org.mockito.ArgumentMatchers.argThat(o -> (o instanceof ExposurePayload) && (((ExposurePayload) o).id == 1)));
+				org.mockito.ArgumentMatchers
+						.argThat(o -> (o instanceof ExposurePayload) && (((ExposurePayload) o).id == 1)));
 
 		final Experiment experiment = coveredBy(newExperiment(1, "exp_throwing_logger_terminal"), 11);
 		final Experiment holdout = newHoldout(11, "holdout_terminal", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO);
@@ -2009,7 +2022,8 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context,
 				publishedEvent(UID,
-						new ExposurePayload(1, experiment.name, UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false,
+						new ExposurePayload(1, experiment.name, UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true,
+								false,
 								false, false, false),
 						holdoutExposure(11, "holdout_terminal", 1)));
 	}
@@ -2166,7 +2180,8 @@ class ContextHoldoutTest extends TestUtils {
 		// is a THIRD, contradictory exposure for the SAME it2 epoch, which is what is absent here.
 		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_h", 0),
-				new ExposurePayload(2, "exp_g", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false, false, false,
+				new ExposurePayload(2, "exp_g", UNIT_TYPE, NORMAL_VARIANT, clock.millis(), true, true, false, false,
+						false,
 						false),
 				holdoutExposure(11, "holdout_h", 1));
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
@@ -2208,7 +2223,8 @@ class ContextHoldoutTest extends TestUtils {
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 		context.publish();
 
-		final ExposurePayload ownExposure = new ExposurePayload(1, "exp_override_late_holdout", UNIT_TYPE, 3, clock.millis(),
+		final ExposurePayload ownExposure = new ExposurePayload(1, "exp_override_late_holdout", UNIT_TYPE, 3,
+				clock.millis(),
 				false, true, true, false, false, false);
 		final PublishPayload expected = publishedEvent(UID, ownExposure, ownExposure,
 				holdoutExposure(11, "holdout_late", 0));
@@ -2285,7 +2301,8 @@ class ContextHoldoutTest extends TestUtils {
 		context.publish();
 
 		final PublishPayload expected = publishedEvent(UID,
-				new ExposurePayload(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
+				new ExposurePayload(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false,
+						false,
 						false, true),
 				holdoutExposure(11, "holdout_rules_suppression", 0));
 		expected.attributes = new AttributePayload[]{new AttributePayload("country", "US", clock.millis())};
@@ -2361,7 +2378,8 @@ class ContextHoldoutTest extends TestUtils {
 
 		final PublishPayload expected = publishedEvent(UID,
 				holdoutExposure(11, "holdout_rules_suppression", 0),
-				new ExposurePayload(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false, false,
+				new ExposurePayload(1, "exp_holdout_rules", UNIT_TYPE, 1, clock.millis(), false, true, false, false,
+						false,
 						false, true));
 		expected.attributes = new AttributePayload[]{new AttributePayload("country", "US", clock.millis())};
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);

@@ -1,9 +1,9 @@
 package com.absmartly.sdk.internal.json;
 
+import java.util.Objects;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-
-import java.util.Objects;
 
 @JsonInclude(JsonInclude.Include.ALWAYS)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -25,7 +25,8 @@ public class ExposurePayload {
 
 	public ExposurePayload() {}
 
-	public ExposurePayload(int id, String name, String unit, int variant, long exposedAt, boolean assigned, boolean eligible,
+	public ExposurePayload(int id, String name, String unit, int variant, long exposedAt, boolean assigned,
+			boolean eligible,
 			boolean overridden, boolean fullOn, boolean custom, boolean audienceMismatch) {
 		this.id = id;
 		this.name = name;
@@ -40,7 +41,8 @@ public class ExposurePayload {
 		this.audienceMismatch = audienceMismatch;
 	}
 
-	public ExposurePayload(int id, String name, String unit, int variant, long exposedAt, boolean assigned, boolean eligible,
+	public ExposurePayload(int id, String name, String unit, int variant, long exposedAt, boolean assigned,
+			boolean eligible,
 			boolean overridden, boolean fullOn, boolean custom, boolean audienceMismatch, boolean ruleOverride) {
 		this(id, name, unit, variant, exposedAt, assigned, eligible, overridden, fullOn, custom, audienceMismatch);
 		this.ruleOverride = ruleOverride;

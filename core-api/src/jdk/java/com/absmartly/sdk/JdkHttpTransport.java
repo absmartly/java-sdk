@@ -1,7 +1,9 @@
 package com.absmartly.sdk;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
@@ -19,8 +21,16 @@ import org.jspecify.annotations.Nullable;
  * no {@code java.net.http}: supply another transport there.
  *
  * <p>
- * A request that fails with an I/O error or gets a 502 or 503 is retried up to {@link Builder#maxRetries(int)} times
- * with exponential back-off, bounded by {@link Builder#retryInterval(Duration)}, as in 1.x.
+ * Retries follow the 1.x Apache transport: a request that gets a 502 or 503, fails with an I/O error after connecting
+ * (for example a dropped connection) or times out while connecting is retried up to {@link Builder#maxRetries(int)}
+ * times with exponential back-off, bounded by {@link Builder#retryInterval(Duration)}. A refused connection, any
+ * other status and an expired {@link Builder#requestTimeout(Duration)} are not retried. Redirects are followed, except
+ * from https to http. The JDK client itself also retries an idempotent GET once when its connection is reset, so a
+ * GET can be sent up to twice per attempt.
+ *
+ * <p>
+ * Plain {@code http://} endpoints use HTTP/1.1 (no h2c upgrade), as in 1.x; https negotiates HTTP/2 unless
+ * {@link Builder#httpVersion(HttpClient.Version)} forces a version.
  */
 public final class JdkHttpTransport implements Transport {
 	private static final long MIN_RETRY_INTERVAL_MS = 5;
@@ -37,7 +47,7 @@ public final class JdkHttpTransport implements Transport {
 	private JdkHttpTransport(final Builder builder) {
 		final HttpClient.Builder http = HttpClient.newBuilder()
 				.connectTimeout(builder.connectTimeout_)
-				.followRedirects(HttpClient.Redirect.NEVER);
+				.followRedirects(HttpClient.Redirect.NORMAL);
 		if (builder.httpClientVersion_ != null) {
 			http.version(builder.httpClientVersion_);
 		}
@@ -45,6 +55,7 @@ public final class JdkHttpTransport implements Transport {
 			http.executor(builder.executor_);
 		}
 		httpClient_ = http.build();
+		httpVersion_ = builder.httpClientVersion_;
 		requestTimeout_ = builder.requestTimeout_;
 		maxRetries_ = builder.maxRetries_;
 		retryIntervalUs_ = Math.max(0,
@@ -53,6 +64,9 @@ public final class JdkHttpTransport implements Transport {
 
 	@Override
 	public CompletableFuture<Response> send(final Request request) {
+		if (closed_) {
+			return CompletableFuture.failedFuture(new IllegalStateException("JdkHttpTransport is closed"));
+		}
 		return attempt(build(request), 1);
 	}
 
@@ -70,6 +84,9 @@ public final class JdkHttpTransport implements Transport {
 		if (requestTimeout_ != null) {
 			http.timeout(requestTimeout_);
 		}
+		if ((httpVersion_ == null) && "http".equalsIgnoreCase(request.uri().getScheme())) {
+			http.version(HttpClient.Version.HTTP_1_1);
+		}
 		return http.build();
 	}
 
@@ -84,14 +101,16 @@ public final class JdkHttpTransport implements Transport {
 								new Response(response.statusCode(), "", response.body()));
 					}
 					final Throwable cause = unwrap(error);
-					if (cause instanceof HttpTimeoutException) {
-						return CompletableFuture.<Response>failedFuture(new RequestTimeoutException(
-								request.method() + " " + request.uri().getPath() + " timed out", cause));
-					}
-					if ((cause instanceof IOException) && (execCount <= maxRetries_)) {
+					if (isRetryableFailure(cause) && (execCount <= maxRetries_)) {
 						return retry(request, execCount);
 					}
-					return CompletableFuture.<Response>failedFuture(cause);
+					if (cause instanceof HttpTimeoutException) {
+						final String what = (cause instanceof HttpConnectTimeoutException) ? " timed out connecting"
+								: " timed out";
+						return CompletableFuture.<Response> failedFuture(new RequestTimeoutException(
+								request.method() + " " + request.uri().getPath() + what, cause));
+					}
+					return CompletableFuture.<Response> failedFuture(cause);
 				})
 				.thenCompose(future -> future);
 	}
@@ -105,6 +124,27 @@ public final class JdkHttpTransport implements Transport {
 	// The delay before retry number execCount: 5 ms plus a share of retryInterval that doubles on every retry.
 	long retryDelayMillis(final int execCount) {
 		return MIN_RETRY_INTERVAL_MS + (((1L << (execCount - 1)) * retryIntervalUs_) / 1000);
+	}
+
+	// As in 1.x: an I/O failure on an open connection and a connect timeout are retried; a refused connection and an
+	// expired request timeout are not. HttpConnectTimeoutException is an HttpTimeoutException, so it is checked first.
+	static boolean isRetryableFailure(final Throwable cause) {
+		if (cause instanceof HttpConnectTimeoutException) {
+			return true;
+		}
+		if ((cause instanceof HttpTimeoutException) || (cause instanceof ConnectException)) {
+			return false;
+		}
+		return cause instanceof IOException;
+	}
+
+	/**
+	 * Stops accepting requests. The JDK 11 {@code HttpClient} has no close method; its threads exit once idle and
+	 * unreferenced.
+	 */
+	@Override
+	public void close() {
+		closed_ = true;
 	}
 
 	static boolean isRetryableStatus(final int statusCode) {
@@ -128,8 +168,10 @@ public final class JdkHttpTransport implements Transport {
 		}
 
 		/**
-		 * A timeout for each request attempt, from send to the end of the response (default: none, as in 1.x). An
-		 * expired attempt fails the request with {@link RequestTimeoutException} and is not retried.
+		 * A timeout for each request attempt, from send to the end of the response (default: none, as in 1.x).
+		 * An expired attempt fails the request with {@link RequestTimeoutException} and is not retried. A connect
+		 * timeout ({@link #connectTimeout(Duration)}) is retried, and raises {@link RequestTimeoutException} when the
+		 * retries run out.
 		 */
 		public Builder requestTimeout(final Duration requestTimeout) {
 			requestTimeout_ = positive(requestTimeout, "requestTimeout");
@@ -154,7 +196,9 @@ public final class JdkHttpTransport implements Transport {
 			return this;
 		}
 
-		/** Forces HTTP/1.1 or HTTP/2; by default HTTP/2 is negotiated when the server supports it. */
+		/** Forces HTTP/1.1 or HTTP/2. By default https negotiates HTTP/2 when the server supports it, and plain
+		 * http uses HTTP/1.1.
+		 */
 		public Builder httpVersion(final HttpClient.Version httpVersion) {
 			httpClientVersion_ = httpVersion;
 			return this;
@@ -186,7 +230,9 @@ public final class JdkHttpTransport implements Transport {
 	}
 
 	private final HttpClient httpClient_;
+	private volatile boolean closed_;
 	private final @Nullable Duration requestTimeout_;
+	private final HttpClient.@Nullable Version httpVersion_;
 	private final int maxRetries_;
 	private final long retryIntervalUs_;
 }

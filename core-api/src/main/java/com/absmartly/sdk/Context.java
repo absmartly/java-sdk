@@ -2,7 +2,9 @@ package com.absmartly.sdk;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -19,7 +21,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.jspecify.annotations.Nullable;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +29,7 @@ import com.absmartly.sdk.event.EventListener;
 import com.absmartly.sdk.event.Subscription;
 import com.absmartly.sdk.internal.Algorithm;
 import com.absmartly.sdk.internal.AsyncExecutor;
+import com.absmartly.sdk.internal.Clock;
 import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.Futures;
 import com.absmartly.sdk.internal.SdkVersion;
@@ -36,9 +38,6 @@ import com.absmartly.sdk.internal.SwitchbackAttributePath;
 import com.absmartly.sdk.internal.SwitchbackServing;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
-import java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.internal.Clock;
-import java.util.Objects;
 import com.absmartly.sdk.internal.json.*;
 
 /**
@@ -80,7 +79,8 @@ public final class Context implements AutoCloseable {
 			final VariableParser variableParser, final AudienceMatcher audienceMatcher, final @Nullable Client client,
 			final @Nullable EventDispatcher parentEvents) {
 		clock_ = clock;
-		events_ = new EventDispatcher(parentEvents, clock, AsyncExecutor.get());
+		events_ = new EventDispatcher(parentEvents, clock,
+				(parentEvents != null) ? parentEvents.executor() : AsyncExecutor.get());
 		final EventListener listener = options.eventListener();
 		if (listener != null) {
 			events_.addListener(listener);
@@ -273,7 +273,7 @@ public final class Context implements AutoCloseable {
 		return events_.stream();
 	}
 
-		/** The names of the experiments in the loaded data. */
+	/** The names of the experiments in the loaded data. */
 	public List<String> experiments() {
 		checkReady(false);
 

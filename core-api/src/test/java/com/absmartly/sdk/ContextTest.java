@@ -1,6 +1,5 @@
 package com.absmartly.sdk;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,8 +39,8 @@ import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
-import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.internal.Clock;
+import com.absmartly.sdk.internal.hashing.Hashing;
 import com.absmartly.sdk.internal.json.AttributePayload;
 import com.absmartly.sdk.internal.json.ContextPayload;
 import com.absmartly.sdk.internal.json.Experiment;
@@ -569,7 +568,8 @@ class ContextTest extends TestUtils {
 		dataFuture.complete(data);
 		context.awaitLoad();
 
-		verify(scheduler, Mockito.timeout(5000).times(1)).scheduleWithFixedDelay(any(), eq(config.toOptions().refreshIntervalMillis()),
+		verify(scheduler, Mockito.timeout(5000).times(1)).scheduleWithFixedDelay(any(),
+				eq(config.toOptions().refreshIntervalMillis()),
 				eq(config.toOptions().refreshIntervalMillis()), eq(TimeUnit.MILLISECONDS));
 
 		verify(dataProvider, Mockito.timeout(5000).times(0)).getContextData();
@@ -612,7 +612,8 @@ class ContextTest extends TestUtils {
 		context.track("goal1", mapOf("amount", 125));
 
 		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
-		when(scheduler.schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()), eq(TimeUnit.MILLISECONDS)))
+		when(scheduler.schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()),
+				eq(TimeUnit.MILLISECONDS)))
 				.thenAnswer(invokation -> {
 					runnable.set(invokation.getArgument(0));
 					return mock(ScheduledFuture.class);
@@ -623,7 +624,8 @@ class ContextTest extends TestUtils {
 		dataFuture.complete(data);
 		context.awaitLoad();
 
-		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()),
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(),
+				eq(config.toOptions().publishDelayMillis()),
 				eq(TimeUnit.MILLISECONDS));
 		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 
@@ -665,7 +667,8 @@ class ContextTest extends TestUtils {
 		expected.publishedAt = clock.millis();
 		expected.units = publishUnits;
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1108,7 +1111,8 @@ class ContextTest extends TestUtils {
 		};
 
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1136,7 +1140,8 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						true),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1165,7 +1170,8 @@ class ContextTest extends TestUtils {
 		context.variableValue("banner.size", null);
 
 		final ExposurePayload[] exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
 		};
 
 		verify(eventLogger, Mockito.timeout(5000).times(exposures.length)).handleEvent(any(), any(), any());
@@ -1239,12 +1245,14 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
 				new ExposurePayload(2, "exp_test_abc", "session_id", 2, clock.millis(), true, true, false, false, false,
 						false),
 				new ExposurePayload(3, "exp_test_not_eligible", "user_id", 0, clock.millis(), true, false, false, false,
 						false, false),
-				new ExposurePayload(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true, false,
+				new ExposurePayload(4, "exp_test_fullon", "session_id", 2, clock.millis(), true, true, false, true,
+						false,
 						false),
 				new ExposurePayload(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
 		};
@@ -1270,7 +1278,8 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isFailed());
 
 		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
-		when(scheduler.schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()), eq(TimeUnit.MILLISECONDS)))
+		when(scheduler.schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()),
+				eq(TimeUnit.MILLISECONDS)))
 				.thenAnswer(invokation -> {
 					runnable.set(invokation.getArgument(0));
 					return mock(ScheduledFuture.class);
@@ -1281,7 +1290,8 @@ class ContextTest extends TestUtils {
 		context.treatment("exp_test_ab");
 		context.treatment("exp_test_abc");
 
-		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()),
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(),
+				eq(config.toOptions().publishDelayMillis()),
 				eq(TimeUnit.MILLISECONDS));
 		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 
@@ -1311,11 +1321,14 @@ class ContextTest extends TestUtils {
 		expected.exposures = new ExposurePayload[]{
 				new ExposurePayload(1, "exp_test_ab", "session_id", 12, clock.millis(), false, true, true, false, false,
 						false),
-				new ExposurePayload(2, "exp_test_abc", "session_id", 13, clock.millis(), false, true, true, false, false,
+				new ExposurePayload(2, "exp_test_abc", "session_id", 13, clock.millis(), false, true, true, false,
+						false,
 						false),
-				new ExposurePayload(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), false, true, true, false, false,
+				new ExposurePayload(3, "exp_test_not_eligible", "user_id", 11, clock.millis(), false, true, true, false,
+						false,
 						false),
-				new ExposurePayload(4, "exp_test_fullon", "session_id", 13, clock.millis(), false, true, true, false, false,
+				new ExposurePayload(4, "exp_test_fullon", "session_id", 13, clock.millis(), false, true, true, false,
+						false,
 						false),
 				new ExposurePayload(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false),
 		};
@@ -1381,7 +1394,8 @@ class ContextTest extends TestUtils {
 		};
 
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1409,7 +1423,8 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, true),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						true),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -1459,7 +1474,8 @@ class ContextTest extends TestUtils {
 		context.treatment("not_found");
 
 		final ExposurePayload[] exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
 				new ExposurePayload(0, "not_found", null, 0, clock.millis(), false, true, false, false, false, false),
 		};
 
@@ -1554,7 +1570,8 @@ class ContextTest extends TestUtils {
 		assertFalse(context.isFailed());
 
 		final AtomicReference<Runnable> runnable = new AtomicReference<>(null);
-		when(scheduler.schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()), eq(TimeUnit.MILLISECONDS)))
+		when(scheduler.schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()),
+				eq(TimeUnit.MILLISECONDS)))
 				.thenAnswer(invokation -> {
 					runnable.set(invokation.getArgument(0));
 					return mock(ScheduledFuture.class);
@@ -1565,7 +1582,8 @@ class ContextTest extends TestUtils {
 		context.track("goal1", mapOf("amount", 125));
 		context.track("goal2", mapOf("value", 999.0));
 
-		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(), eq(config.toOptions().publishDelayMillis()),
+		verify(scheduler, Mockito.timeout(5000).times(1)).schedule((Runnable) any(),
+				eq(config.toOptions().publishDelayMillis()),
 				eq(TimeUnit.MILLISECONDS));
 		verify(eventHandler, Mockito.timeout(5000).times(0)).publish(any(), any());
 
@@ -1668,8 +1686,10 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
-				new ExposurePayload(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
+				new ExposurePayload(2, "exp_test_abc", "session_id", 3, clock.millis(), true, true, false, false, true,
+						false),
 				new ExposurePayload(0, "not_found", null, 3, clock.millis(), false, true, true, false, false, false),
 		};
 
@@ -2284,7 +2304,8 @@ class ContextTest extends TestUtils {
 		final Context context = createReadyContext(customFieldsContextData);
 		assertTrue(context.isReady());
 
-		assertEquals(java.util.Arrays.asList(new String[]{"country", "languages", "overrides"}), context.customFieldKeys());
+		assertEquals(java.util.Arrays.asList(new String[]{"country", "languages", "overrides"}),
+				context.customFieldKeys());
 	}
 
 	@Test
@@ -2399,7 +2420,8 @@ class ContextTest extends TestUtils {
 		expected.units = publishUnits;
 
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 2, clock.millis(), true, true, false, false, true, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 2, clock.millis(), true, true, false, false, true,
+						false),
 		};
 
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
@@ -2532,7 +2554,8 @@ class ContextTest extends TestUtils {
 		expected.publishedAt = clock.millis();
 		expected.units = publishUnits;
 		expected.exposures = new ExposurePayload[]{
-				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false, false),
+				new ExposurePayload(1, "exp_test_ab", "session_id", 1, clock.millis(), true, true, false, false, false,
+						false),
 		};
 
 		when(eventHandler.publish(context, expected)).thenReturn(CompletableFuture.completedFuture(null));
@@ -3346,7 +3369,8 @@ class ContextTest extends TestUtils {
 						closeEvents.incrementAndGet();
 					}
 				};
-				final Context context = TestContexts.create(clock, TestContextConfig.create().setUnits(units), scheduler,
+				final Context context = TestContexts.create(clock, TestContextConfig.create().setUnits(units),
+						scheduler,
 						dataFutureReady, dataProvider, eventHandler, logger, variableParser, audienceMatcher);
 				final java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(3);
 				final List<java.util.concurrent.Future<Boolean>> results = new ArrayList<>();

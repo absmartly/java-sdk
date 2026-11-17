@@ -53,7 +53,8 @@ class ContextOptionsTest extends TestUtils {
 				.eventListener(listener)
 				.build();
 
-		assertEquals(Arrays.asList("session_id", "user_id", "email"), Arrays.asList(options.units().keySet().toArray()));
+		assertEquals(Arrays.asList("session_id", "user_id", "email"),
+				Arrays.asList(options.units().keySet().toArray()));
 		assertEquals(42, options.units().get("user_id"));
 		final Map<String, Object> attributes = new HashMap<>();
 		attributes.put("user_agent", "Chrome");

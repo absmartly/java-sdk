@@ -36,6 +36,7 @@ provider (logback 1.3+, log4j-slf4j2-impl, slf4j-simple 2).
 | `DefaultHTTPClientConfig.setMaxRetries(n)` / `setRetryInterval(ms)` | `.maxRetries(n)` / `.retryInterval(Duration)` |
 | `DefaultHTTPClientConfig.setHTTPVersionPolicy(p)` | `.httpVersion(HttpClient.Version)` |
 | `DefaultHTTPClientConfig.setConnectionKeepAlive`, `setConnectionRequestTimeout`, `setSecurityProvider` | removed (the JDK client manages its pool; configure TLS through the JDK) |
+| retry on 502/503, dropped connections and connect timeouts, no retry on refused connections, redirects followed | unchanged in `JdkHttpTransport`; the JDK client also retries a GET once on its own after a connection reset, and an exhausted connect timeout raises `RequestTimeoutException` |
 | (none) | `JdkHttpTransport.builder().requestTimeout(Duration)` |
 | `sdk.close()` throws `IOException` | `client.close()` throws nothing |
 
@@ -244,7 +245,9 @@ the public `ContextData` (with `toJson()`/`fromJson()`), `Exposure` and `Goal` i
 
 ### Removed with no replacement
 
-`Client.getAgent()`, `getAgentName()`, `getAgentVersion()` (the `X-Agent` header is unchanged),
+`DefaultContextDataProvider`, `DefaultContextEventHandler`, `DefaultContextDataDeserializer`,
+`DefaultContextEventSerializer`, `DefaultVariableParser`, `DefaultAudienceDeserializer`, `HTTPClient.Response` (use
+`Transport.Response`), `Client.getAgent()`, `getAgentName()`, `getAgentVersion()` (the `X-Agent` header is unchanged),
 `Context.isFinalized()`/`isFinalizing()`/`finalizeAsync()` (deprecated in 1.x), `HTTPVersionPolicy`,
 `DefaultHTTPClientRetryStrategy`, `ContextEventSerializer`, `ContextDataDeserializer`, `VariableParser`,
 `AudienceDeserializer`, `AudienceMatcher` and the `com.absmartly.sdk.java.*` backports.

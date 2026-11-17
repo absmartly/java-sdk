@@ -43,6 +43,10 @@ final class EventDispatcher {
 		executor_ = executor;
 	}
 
+	Executor executor() {
+		return executor_;
+	}
+
 	Subscription addListener(final EventListener listener) {
 		listeners_.add(listener);
 		return new Subscription() {
