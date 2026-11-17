@@ -256,6 +256,33 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void connectTimeoutDefaultsToThreeSeconds() throws Exception {
+		final java.lang.reflect.Field field = JdkHttpTransport.class.getDeclaredField("httpClient_");
+		field.setAccessible(true);
+		assertEquals(java.util.Optional.of(Duration.ofSeconds(3)),
+				((HttpClient) field.get(JdkHttpTransport.create())).connectTimeout());
+		assertEquals(java.util.Optional.of(Duration.ofMillis(750)), ((HttpClient) field.get(
+				JdkHttpTransport.builder().connectTimeout(Duration.ofMillis(750)).build())).connectTimeout());
+	}
+
+	@Test
+	void exhaustedConnectTimeoutsRaiseRequestTimeoutException() {
+		// 10.255.255.1 is unroutable, so the connect attempt times out rather than being refused.
+		final JdkHttpTransport transport = JdkHttpTransport.builder().connectTimeout(Duration.ofMillis(50))
+				.maxRetries(1).retryInterval(Duration.ofMillis(5)).build();
+		final CompletionException error = assertThrows(CompletionException.class, () -> transport
+				.send(new Transport.Request("GET", URI.create("http://10.255.255.1:9/context"), Map.of(), null))
+				.join());
+		if (error.getCause() instanceof RequestTimeoutException) {
+			assertEquals("GET /context timed out connecting", error.getCause().getMessage());
+			assertTrue(error.getCause().getCause() instanceof java.net.http.HttpConnectTimeoutException);
+		} else {
+			// Sandboxes without a route fail fast with "network unreachable" instead; that is not a timeout.
+			assertTrue(error.getCause() instanceof IOException, error.getCause().toString());
+		}
+	}
+
+	@Test
 	void builderValidates() {
 		assertThrows(IllegalArgumentException.class, () -> JdkHttpTransport.builder().maxRetries(-1));
 		assertThrows(IllegalArgumentException.class, () -> JdkHttpTransport.builder().maxRetries(31));

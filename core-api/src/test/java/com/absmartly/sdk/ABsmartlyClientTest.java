@@ -546,6 +546,85 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void contextStreamsUseTheClientExecutor() throws InterruptedException {
+		final AtomicInteger executed = new AtomicInteger();
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+		final java.util.concurrent.Executor counting = command -> {
+			executed.incrementAndGet();
+			pool.execute(command);
+		};
+		try {
+			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").transport(FakeTransport.ok(CONTEXT_JSON)).executor(counting)
+					.build();
+			closeables.add(client);
+			final Context context = client.context(SESSION);
+			final CountDownLatch received = new CountDownLatch(1);
+			context.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {
+					if (item.type() == ContextEvent.Type.EXPOSURE) {
+						received.countDown();
+					}
+				}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			final int before = executed.get();
+			context.treatment("exp_test_ab");
+			assertTrue(received.await(5, TimeUnit.SECONDS));
+			assertTrue(executed.get() > before, "the context's stream delivers on the client's executor");
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	@Test
+	void slowSubscriberNeverBlocksTheProducer() throws Exception {
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+		final EventStream stream = new EventStream(pool);
+		final CountDownLatch subscribed = new CountDownLatch(1);
+		stream.publisher().subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				subscribed.countDown();
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {}
+		});
+		assertTrue(subscribed.await(5, TimeUnit.SECONDS));
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
+			for (int i = 0; i < Flow.defaultBufferSize() * 4; ++i) {
+				stream.submit(new CloseEvent(context, i));
+			}
+		});
+		producer.get(5, TimeUnit.SECONDS);
+		// Nothing was requested, so everything past the buffer is dropped once, never retried into the buffer.
+		final int total = Flow.defaultBufferSize() * 4;
+		assertEquals(total - Flow.defaultBufferSize(), stream.droppedCount());
+		stream.close();
+		pool.shutdownNow();
+	}
+
+	@Test
 	void clientClosesTheTransportItCreated() throws Exception {
 		final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
 				.application("a").environment("e").build();

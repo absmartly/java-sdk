@@ -87,7 +87,20 @@ shadowJar.doLast {
 	java.nio.file.FileSystems.newFileSystem(uri, [:]).withCloseable { fs ->
 		def path = fs.getPath("META-INF/MANIFEST.MF")
 		def text = new String(java.nio.file.Files.readAllBytes(path), "UTF-8")
-		def kept = text.split("\r?\n").findAll { !it.startsWith("Class-Path:") && !it.startsWith(" ") }
+		// Drop the Class-Path line and only its continuation lines (those start with a space).
+		def kept = []
+		def inClassPath = false
+		text.split("\r?\n").each { line ->
+			if (line.startsWith("Class-Path:")) {
+				inClassPath = true
+			} else if (!(inClassPath && line.startsWith(" "))) {
+				inClassPath = false
+				kept << line
+			}
+		}
+		while (!kept.isEmpty() && kept.last().isEmpty()) {
+			kept.removeLast()
+		}
 		java.nio.file.Files.write(path, (kept.join("\r\n") + "\r\n\r\n").getBytes("UTF-8"))
 	}
 }

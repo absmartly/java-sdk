@@ -3,6 +3,7 @@ package com.absmartly.sdk;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,10 +30,18 @@ final class EventStream {
 		if (publisher_.isClosed()) {
 			return;
 		}
-		publisher_.offer(event, (subscriber, dropped) -> {
+		final int lost = publisher_.offer(event, (subscriber, dropped) -> {
 			log.warn("ABsmartly event stream subscriber is too slow, dropped {}", dropped.type());
 			return false;
 		});
+		if (lost < 0) {
+			droppedCount_.addAndGet(-lost);
+		}
+	}
+
+	// Events slow subscribers lost (offer() returns minus the number of drops), for tests.
+	int droppedCount() {
+		return droppedCount_.get();
 	}
 
 	void close() {
@@ -40,4 +49,5 @@ final class EventStream {
 	}
 
 	private final SubmissionPublisher<ContextEvent> publisher_;
+	private final AtomicInteger droppedCount_ = new AtomicInteger();
 }
