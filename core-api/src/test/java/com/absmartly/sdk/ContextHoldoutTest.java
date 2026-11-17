@@ -221,28 +221,33 @@ class ContextHoldoutTest extends TestUtils {
 	}
 
 	Object getAssignment(Context context, String experimentName) throws Exception {
-		final Method method = Context.class.getDeclaredMethod("getAssignment", String.class);
+		final Method method = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
 		method.setAccessible(true);
-		return method.invoke(context, experimentName);
+		return method.invoke(context, experimentName, clock.millis());
 	}
 
 	Object exposeTreatmentAssignment(Context context, Object assignment) throws Exception {
-		final Method method = Context.class.getDeclaredMethod("exposeTreatmentAssignment", assignment.getClass());
+		final Method method = Context.class.getDeclaredMethod("exposeTreatmentAssignment", String.class,
+				assignment.getClass(), long.class);
 		method.setAccessible(true);
-		return method.invoke(context, assignment);
+		return method.invoke(context, assignmentName(assignment), assignment, clock.millis());
 	}
 
 	int getExposedTreatmentVariant(Context context, Object assignment) throws Exception {
-		final Method method = Context.class.getDeclaredMethod("getExposedTreatmentVariant", assignment.getClass());
-		method.setAccessible(true);
-		return (Integer) method.invoke(context, assignment);
+		return assignmentVariant(exposeTreatmentAssignment(context, assignment));
 	}
 
 	Object exposeVariableAssignment(Context context, String key, Object assignment) throws Exception {
 		final Method method = Context.class.getDeclaredMethod("exposeVariableAssignment", String.class,
-				assignment.getClass());
+				assignment.getClass(), long.class);
 		method.setAccessible(true);
-		return method.invoke(context, key, assignment);
+		return method.invoke(context, key, assignment, clock.millis());
+	}
+
+	String assignmentName(Object assignment) throws Exception {
+		final Field field = assignment.getClass().getDeclaredField("name");
+		field.setAccessible(true);
+		return (String) field.get(assignment);
 	}
 
 	void retireAssignment(Object assignment) throws Exception {
@@ -258,9 +263,10 @@ class ContextHoldoutTest extends TestUtils {
 	}
 
 	Object settleExposure(Context context, Object assignment, Function<Object, Object> resolver) throws Exception {
-		final Method method = Context.class.getDeclaredMethod("settleExposure", assignment.getClass(), Function.class);
+		final Method method = Context.class.getDeclaredMethod("settleExposure", assignment.getClass(), long.class,
+				Function.class);
 		method.setAccessible(true);
-		return method.invoke(context, assignment, resolver);
+		return method.invoke(context, assignment, clock.millis(), resolver);
 	}
 
 	// A held-out unit gets control values and emits only the holdout exposure.
