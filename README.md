@@ -1,370 +1,232 @@
-# A/B Smartly SDK
+# ABsmartly Java SDK
 
-A/B Smartly - Java SDK
+> **Using 1.x?** This branch is the 2.x line, with a new API. The 1.x line (`ABSmartly`, `ContextConfig`,
+> `core-api-java6`) is maintained on the [`release/1.x`](https://github.com/absmartly/java-sdk/tree/release/1.x)
+> branch; see [SUPPORT.md](SUPPORT.md) for how long it gets fixes and [MIGRATING.md](MIGRATING.md) to upgrade.
 
 ## Compatibility
 
-The A/B Smartly Java SDK provides both a blocking and an asynchronous interface. It is published as two artifacts with the same version and the same API, except for the types the asynchronous functions use:
+| Platform | Supported |
+|---|---|
+| Java | 11 and later (tested on 11, 21 and 25) |
+| Android | API level 24 and later with [core library desugaring](https://developer.android.com/studio/write/java8-support#library-desugaring), through a [`Transport`](#http-transport) you supply (Android has no `java.net.http`). The [kotlin-sdk](https://github.com/absmartly/kotlin-sdk) and [android-sdk](https://github.com/absmartly/android-sdk) do this for you. |
+| Kotlin | Every public type carries [JSpecify](https://jspecify.dev) nullability, so Kotlin sees `String` and `String?`, not platform types. |
 
-| Artifact                            | Runs on                                    | Asynchronous types                                                                 |
-| :---------------------------------- | :----------------------------------------- | :--------------------------------------------------------------------------------- |
-| `com.absmartly.sdk:core-api`        | Java 8 and later, Android API level 24+    | `java.util.concurrent.CompletableFuture`, `java.util.function.*`                   |
-| `com.absmartly.sdk:core-api-java6`  | Java 6 and later, Android API level 19+    | the [streamsupport backport](https://github.com/stefan-zobel/streamsupport): `java8.util.concurrent.CompletableFuture`, `java8.util.function.*` |
-
-Use `core-api` unless you need Java 6 or 7, or Android below API level 24. Both artifacts provide the same `com.absmartly.sdk` classes, so depend on only one of them.
-
-### Java 24 and later
-
-`core-api` has no restrictions on Java 24 and later.
-
-With `core-api-java6`, the SDK runs on Java 24 and later, but the `CompletableFuture` backport's default async pool does not: it fails with `NoClassDefFoundError: Could not initialize class java8.util.concurrent.TLR`. The SDK never uses that pool. The futures the SDK returns, and the stages you chain on them with `thenApply`, `thenCompose` and the other instance methods, run `*Async` methods without an explicit executor on an SDK-owned pool of daemon threads, so `context.waitUntilReadyAsync().thenApplyAsync(fn)` is safe.
-
-With `core-api-java6`, these cases still use the backport's default pool and must be given an executor on Java 24 and later:
-- the static `CompletableFuture.supplyAsync(supplier)` and `CompletableFuture.runAsync(runnable)` calls in your own code;
-- futures that you create yourself, including those returned by a custom `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, and `ABSmartly.getContextData()` when a custom `ContextDataProvider` is configured;
-- futures derived through `minimalCompletionStage()` or the static `CompletableFuture.allOf` and `anyOf`, even when they start from an SDK future.
-
-### Android
-
-The A/B Smartly SDK is compatible with Android 4.4 and later (API level 19+). Use `core-api` on API level 24 and later, and `core-api-java6` below API level 24.
-
-The `android.permission.INTERNET` permission is required. To add this permission to your application ensure the following line is present in the `AndroidManifest.xml` file:
-```xml
-    <uses-permission android:name="android.permission.INTERNET"/>
-```
-
-If you target Android 6.0 or earlier, a few extra steps are outlined below for installation and initialization.
-
-
-## Upgrading to 1.9.0
-
-1.9.0 changes targeting, so assignments for running experiments can change. Audiences and assignment rule conditions always see the configured `application` and `environment` names, whatever `includeSystemAttributes` is set to. The SDK no longer provides `app_version`, so set an `app_version` attribute yourself if you target on it. With `includeSystemAttributes` enabled, a publish now adds only `sdk_name` and `sdk_version`. See [System Attributes](#system-attributes) and the [changelog](CHANGELOG.md).
-
-## Upgrading to 1.8.0
-
-1.8.0 moves the asynchronous API of `core-api` from the streamsupport backport to the JDK. If your code names `java8.util.concurrent.*` or `java8.util.function.*` types from the SDK API, or implements `HTTPClient`, `ContextDataProvider` or `ContextEventHandler`, replace those imports with the `java.util.concurrent` and `java.util.function` types of the same name. If you only use the blocking API, recompile.
-
-On Java 6 or 7, or Android below API level 24, depend on `core-api-java6` instead of `core-api`. It keeps the backport types, so no code changes are needed.
-
-## Upgrading from 1.6.3
-
-The public unit getters remain compatible with 1.6.3: `getUnit` returns a `String` and `getUnits` returns `Map<String, String>`. Unit UIDs may now also be numeric; numeric values are returned by the new `getUnitValue` and `getUnitValues` accessors, while the original getters return their string form.
-
-Context reads retain the 1.6.3 lifecycle behavior. Before ready they throw `"ABSmartly Context is not yet ready"`; while closing and after close they throw `"ABSmartly Context is closing"` and `"ABSmartly Context is closed"`, respectively. Custom-field reads remain available once the context is ready, including while closing and after close.
+The only runtime dependencies are `org.slf4j:slf4j-api` (logging; bring any SLF4J 2 provider) and
+`org.jspecify:jspecify` (annotations only). Jackson is shaded and relocated inside the jar, so it never conflicts with
+your own Jackson version.
 
 ## Installation
 
 #### Gradle
 
-To install the ABSmartly SDK, place the following in your `build.gradle` and replace {VERSION} with the latest SDK version available in MavenCentral.
-
-Java 8 and later, Android API level 24 and later:
-
-```gradle
+```groovy
 dependencies {
-  implementation 'com.absmartly.sdk:core-api:{VERSION}'
-}
-```
-
-Java 6 and 7, Android below API level 24:
-
-```gradle
-dependencies {
-  implementation 'com.absmartly.sdk:core-api-java6:{VERSION}'
+    implementation 'com.absmartly.sdk:core-api:2.0.0'
 }
 ```
 
 #### Maven
 
-To install the ABSmartly SDK, place the following in your `pom.xml` and replace {VERSION} with the latest SDK version available in MavenCentral.
-
-Java 8 and later:
-
 ```xml
 <dependency>
     <groupId>com.absmartly.sdk</groupId>
     <artifactId>core-api</artifactId>
-    <version>{VERSION}</version>
+    <version>2.0.0</version>
 </dependency>
-```
-
-Java 6 and 7:
-
-```xml
-<dependency>
-    <groupId>com.absmartly.sdk</groupId>
-    <artifactId>core-api-java6</artifactId>
-    <version>{VERSION}</version>
-</dependency>
-```
-
-#### Android 6.0 or earlier
-When targeting Android 6.0 or earlier, the default Java Security Provider will not work. Using [Conscrypt](https://github.com/google/conscrypt) is recommended. Follow these [instructions](https://github.com/google/conscrypt/blob/master/README.md) to install it as dependency.
-
-#### Proguard rules
-ProGuard is a command-line tool that reduces app size by shrinking bytecode and obfuscates the names of classes, fields and methods.
-It's an ideal fit for developers working with Java or Kotlin who are primarily interested in an Android optimizer.
-If you are using [Proguard](https://github.com/Guardsquare/proguard), you will need to add the following rule to your Proguard configuration file.
-This prevent proguard to change data classes used by the SDK and the missing of this rule will result in problems in the serialization/deserialization of the data.
-```proguard
--keep public class com.absmartly.sdk.json.** { *; }
 ```
 
 ## Getting Started
 
-Please follow the [installation](#installation) instructions before trying the following code:
+### Creating the client
 
-### Initialization
-
-This example assumes an Api Key, an Application, and an Environment have been created in the A/B Smartly web console.
-
-#### Quickstart
+Create one `ABsmartlyClient` per application and share it: it is thread-safe and holds the HTTP connection pool.
+Close it on shutdown.
 
 ```java
-import com.absmartly.sdk.*;
+import com.absmartly.sdk.ABsmartlyClient;
 
-final ABSmartly sdk = ABSmartly.builder()
-    .endpoint("https://your-company.absmartly.io/v1")
-    .apiKey(System.getenv("ABSMARTLY_APIKEY"))
+ABsmartlyClient client = ABsmartlyClient.builder()
+    .endpoint(URI.create("https://your-company.absmartly.io/v1"))
+    .apiKey(System.getenv("ABSMARTLY_API_KEY"))
     .application("website")
     .environment("production")
     .build();
 ```
 
-The builder pattern lets you configure the SDK with named parameters, removing the need to configure `ClientConfig` and `ABSmartlyConfig` manually.
+| Builder method | Required | Description |
+|---|---|---|
+| `endpoint(URI)` | yes | Your collector endpoint, `http` or `https` (`http` logs a warning: the API key travels in plaintext). |
+| `apiKey(String)` | yes | The SDK API key. |
+| `application(String)` | yes | The application name, as configured in ABsmartly. |
+| `environment(String)` | yes | The environment name, as configured in ABsmartly. |
+| `applicationVersion(String or long)` | no | Sent as the `X-Application-Version` header when it is a whole number of at most 18 digits, otherwise as `0`. |
+| `transport(Transport)` | no | The HTTP stack; defaults to `JdkHttpTransport`. See [HTTP transport](#http-transport). |
+| `executor(Executor)` | no | Runs the SDK's asynchronous work (decoding, encoding, the event stream). Defaults to a pool of daemon threads. |
+| `scheduler(ScheduledExecutorService)` | no | Runs automatic publishing and refreshing. Defaults to one daemon thread, shut down with the client; a scheduler you supply is left running. |
 
-#### Alternative: Using Configuration Objects
+### Creating a context
 
-For use cases where you need full control over the Client and configuration:
-
-```java
-final ClientConfig clientConfig = ClientConfig.create()
-    .setEndpoint("https://your-company.absmartly.io/v1")
-    .setAPIKey("YOUR-API-KEY")
-    .setApplication("website")
-    .setEnvironment("development");
-
-final Client absmartlyClient = Client.create(clientConfig);
-
-final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
-    .setClient(absmartlyClient);
-
-final ABSmartly sdk = ABSmartly.create(sdkConfig);
-```
-
-**SDK Options**
-
-| Config                  | Type                              | Required? |   Default   | Description                                                                                                                                                                   |
-| :---------------------- | :-------------------------------- | :-------: | :---------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| endpoint                | `String`                          |  &#9989;  | `null`      | The URL to your API endpoint. Most commonly `"https://your-company.absmartly.io/v1"`                                                                                          |
-| apiKey                  | `String`                          |  &#9989;  | `null`      | Your API key which can be found on the Web Console.                                                                                                                           |
-| environment             | `String`                          |  &#9989;  | `null`      | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
-| application             | `String`                          |  &#9989;  | `null`      | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
-| applicationVersion      | `String` or `long`                |  &#10060; | `null`      | The version of your application, e.g. `"2.4.1"`. Sent as the `X-Application-Version` request header only when it is a whole number of at most 18 digits; anything longer, negative or non-numeric (such as `"2.4.1"`) is sent as `0`. It is not exposed to targeting as `app_version`; set an `app_version` attribute yourself if you want to target on it.              |
-| timeout                 | `int`                             |  &#10060; | `3000`      | HTTP connection timeout in milliseconds                                                                                                                                        |
-| retries                 | `int`                             |  &#10060; | `5`         | Maximum number of retry attempts for failed HTTP requests                                                                                                                      |
-| contextEventLogger      | `ContextEventLogger`              |  &#10060; | `null`      | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
-| contextDataProvider     | `ContextDataProvider`             |  &#10060; | auto        | Custom provider for context data (advanced usage)                                                                                                                             |
-| contextEventHandler     | `ContextEventHandler`             |  &#10060; | auto        | Custom handler for publishing events (advanced usage)                                                                                                                         |
-| variableParser          | `VariableParser`                  |  &#10060; | auto        | Custom parser for experiment variables (advanced usage)                                                                                                                       |
-| audienceDeserializer    | `AudienceDeserializer`            |  &#10060; | auto        | Custom deserializer for audience data (advanced usage)                                                                                                                        |
-| scheduler               | `ScheduledExecutorService`        |  &#10060; | auto        | Custom scheduler for context refresh (advanced usage)                                                                                                                         |
-| httpClient              | `HTTPClient`                      |  &#10060; | auto        | Custom HTTP client implementation (advanced usage)                                                                                                                            |
-
-#### Android 6.0 or earlier
-When targeting Android 6.0 or earlier, set the default Java Security Provider for SSL to *Conscrypt* by creating the *Client* instance as follows:
+A `Context` is one user's (or request's) view of the experiments. Create it with the user's units, use it, and
+close it to publish what is pending. `Context` is `AutoCloseable`.
 
 ```java
-import com.absmartly.sdk.*;
-import org.conscrypt.Conscrypt;
-
-    // ...
-    final ClientConfig clientConfig = ClientConfig.create()
-        .setEndpoint("https://your-company.absmartly.io/v1")
-        .setAPIKey("YOUR-API-KEY")
-        .setApplication("website")
-        .setEnvironment("development");
-
-    final DefaultHTTPClientConfig httpClientConfig = DefaultHTTPClientConfig.create()
-        .setSecurityProvider(Conscrypt.newProvider());
-
-    final DefaultHTTPClient httpClient = DefaultHTTPClient.create(httpClientConfig);
-
-    final Client absmartlyClient = Client.create(clientConfig, httpClient);
-
-    final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
-        .setClient(absmartlyClient);
-
-    final ABSmartly sdk = ABSmartly.create(sdkConfig);
-    // ...
+try (Context context = client.context(ContextOptions.builder()
+        .unit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
+        .unit("user_id", 123456)
+        .build())) {
+    int variant = context.treatment("exp_checkout");
+}
 ```
 
-## Creating a New Context
-
-### Synchronously
+`client.context(options)` blocks until the experiment data is loaded and throws `ContextLoadException` if it cannot
+be fetched. The other ways to create one:
 
 ```java
-final ContextConfig contextConfig = ContextConfig.create()
-    .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
+// Asynchronously: completes when ready, or fails with ContextLoadException
+CompletableFuture<Context> future = client.contextAsync(ContextOptions.units(Map.of("session_id", sessionId)));
 
-final Context context = sdk.createContext(contextConfig)
-    .waitUntilReady();
+// Without waiting: state() is LOADING until it loads
+Context context = client.newContext(options);
+context.ready();          // or context.readyAsync()
+
+// From data fetched earlier: no request, ready immediately
+ContextData data = client.contextData();
+Context fromData = client.context(options, data);
 ```
 
-### Asynchronously
+`ContextData` also has `toJson()` and `ContextData.fromJson(String)`, for example to hand the data from a server to
+a client-side context.
+
+#### Context options
+
+| `ContextOptions.Builder` method | Default | Description |
+|---|---|---|
+| `unit(type, String or Number)`, `units(Map)` | none | The units to assign experiments to. A numeric UID is hashed and published in its canonical string form. |
+| `attribute(name, value)`, `attributes(Map)` | none | Attributes for audiences and assignment rules. |
+| `override(experiment, variant)`, `overrides(Map)` | none | Forces variants, for QA. |
+| `customAssignment(experiment, variant)`, `customAssignments(Map)` | none | Variants you assign by your own logic. |
+| `publishDelay(Duration)` | 100 ms | How long after the first queued event the context publishes on its own. Negative turns automatic publishing off. |
+| `refreshInterval(Duration)` | 0 (never) | How often the context fetches fresh experiment data in the background. |
+| `includeSystemAttributes(boolean)` | false | Adds `sdk_name` and `sdk_version` to every publish. See [System attributes](#system-attributes). |
+| `eventListener(EventListener)` | none | A listener attached before loading starts, so it also sees the load's `ReadyEvent` or `ErrorEvent`. |
+
+### Context state
+
+`context.state()` returns a `ContextState`:
+
+| State | Meaning |
+|---|---|
+| `LOADING` | The data is being fetched. Reads throw `ContextNotReadyException`. |
+| `READY` | Reads and writes work. |
+| `FAILED` | The data could not be loaded; `context.failure()` says why. The context still works with no experiments: every treatment is 0 and every variable its default, and nothing is published. |
+| `CLOSING` | `close()` is publishing the pending events. Writes throw `ContextClosedException`. |
+| `CLOSED` | Closed. Writes throw `ContextClosedException`. |
+
+### Refreshing the context
 
 ```java
-final ContextConfig contextConfig = ContextConfig.create()
-    .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
-
-final Context context = sdk.createContext(contextConfig)
-    .waitUntilReadyAsync()
-    .thenAccept(ctx -> System.out.printf("context ready!"));
+context.refresh();                    // or refreshAsync()
 ```
 
-### With Pre-fetched Data
+Or set `refreshInterval(Duration.ofHours(4))` on the options for long-lived contexts (Android activities, desktop
+apps). A context whose initial load failed is not refreshed.
 
-Creating a context involves a round-trip to the A/B Smartly event collector.
-We can avoid repeating the round-trip on the client-side by re-using data previously retrieved.
-
-```java
-final ContextConfig contextConfig = ContextConfig.create()
-    .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
-
-final Context context = sdk.createContext(contextConfig)
-    .waitUntilReady();
-
-final ContextConfig anotherContextConfig = ContextConfig.create()
-    .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
-
-final Context anotherContext = sdk.createContextWith(anotherContextConfig, context.getData());
-assert(anotherContext.isReady()); // no need to wait
-```
-
-### Refreshing the Context with Fresh Experiment Data
-
-For long-running contexts, the context is usually created once when the application is first started.
-However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-To mitigate this, we can use the `setRefreshInterval()` method on the context config.
-
-```java
-final ContextConfig contextConfig = ContextConfig.create()
-    .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
-    .setRefreshInterval(TimeUnit.HOURS.toMillis(4)); // every 4 hours
-```
-
-Alternatively, the `refresh()` method can be called manually.
-The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `getTreatment()` is called again.
-
-```java
-context.refresh();
-```
-
-### Setting Extra Units
-
-You can add additional units to a context by calling the `setUnit()` or the `setUnits()` method.
-This method may be used for example, when a user logs in to your application, and you want to use the new unit type to the context.
-Please note that **you cannot override an already set unit type** as that would be a change of identity, and will throw an exception. In this case, you must create a new context instead.
-The `setUnit()` and `setUnits()` methods can be called before the context is ready.
+### Setting extra units
 
 ```java
 context.setUnit("db_user_id", "1000013");
-
-context.setUnits(Map.of(
-    "db_user_id", "1000013"
-));
 ```
+
+A unit's UID cannot change once set: setting a different one throws `UnitAlreadySetException`, and a blank UID throws
+`IllegalArgumentException`.
 
 ## Basic Usage
 
-### Selecting a Treatment
+### Selecting a treatment
 
 ```java
-if (context.getTreatment("exp_test_experiment") == 0) {
+if (context.treatment("exp_test_experiment") == 0) {
     // user is in control group (variant 0)
 } else {
     // user is in treatment group
 }
 ```
 
-### Treatment Variables
+`treatment` queues an exposure the first time it is called for an experiment. Not running and unknown experiments
+return 0.
+
+### Treatment variables
+
+`variable` returns the value of a variable from the experiment that assigns it, typed by the default value:
 
 ```java
-final Object variable = context.getVariable("my_variable");
+String color = context.variable("button.color", "blue");
+int limit = context.variable("cart.limit", 10);
+boolean modal = context.variable("show-modal", false);
 ```
 
-### Peek at Treatment Variants
-
-Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure.
-The A/B Smartly SDK provides a `peekTreatment()` method for that.
+When no running experiment assigns the key, or the value cannot be read as the requested type (for example `"red"`
+for an `Integer` default), you get the default (a type mismatch is logged). Numbers convert between numeric types
+when nothing is lost. A JSON object variable maps to your own class:
 
 ```java
-if (context.peekTreatment("exp_test_experiment") == 0) {
-    // user is in control group (variant 0)
-} else {
-    // user is in treatment group
+public class Checkout {
+    public String layout;
+    public int steps;
 }
+
+Checkout checkout = context.variable("checkout", Checkout.class, Checkout.DEFAULT);
 ```
 
-#### Peeking at Variables
+`variableValue(key, default)` returns the raw JSON value (`String`, `Number`, `Boolean`, `Map`, `List` or `null`).
+`variableKeys()` lists every variable key with the experiments that define it.
+
+### Peeking without exposure
+
+`peekTreatment`, `peekVariable` and `peekVariableValue` return the same values without queuing an exposure:
 
 ```java
-final Object variable = context.peekVariable("my_variable");
+int variant = context.peekTreatment("exp_test_experiment");
+String color = context.peekVariable("button.color", "blue");
 ```
 
-### Overriding Treatment Variants
+### Overriding treatment variants
 
-During development, for example, it is useful to force a treatment for an experiment. This can be achieved with the `setOverride()` and/or `setOverrides()` methods.
-The `setOverride()` and `setOverrides()` methods can be called before the context is ready.
+During development it is useful to force a variant. Overridden exposures are flagged so they are excluded from
+analysis.
 
 ```java
 context.setOverride("exp_test_experiment", 1);
-context.setOverrides(Map.of(
-    "exp_test_experiment", 1,
-    "exp_another_experiment", 0
-));
+context.setOverrides(Map.of("exp_another", 0, "exp_third", 2));
+context.clearOverride("exp_third");
+Map<String, Integer> overrides = context.overrides();
 ```
 
 ## Advanced
 
-### Context Attributes
-
-The `setAttribute()` and `setAttributes()` methods can be called before the context is ready.
+### Context attributes
 
 ```java
-context.setAttribute("user_agent", req.getHeader("User-Agent"));
-
-context.setAttributes(Map.of(
-    "customer_age", "new_customer"
-));
+context.setAttribute("user_agent", userAgent);
+context.setAttributes(Map.of("customer_age", "new_customer", "plan", "pro"));
+Object plan = context.attribute("plan");
+Map<String, Object> attributes = context.attributes();
 ```
 
-### System Attributes
+### System attributes
 
-The configured `application` and `environment` names are always available as variables to audience filters and
-assignment rule conditions, regardless of any flag. An attribute you set with the same name takes precedence, even
-one set after the context is created (it re-checks cached assignments). Names that are unset or empty are left out.
-These are not real attributes: they are not published (the collector adds `application` and `environment` to every
-event server-side) and `getAttributes()`/`getAttribute()` do not return them. A context created without a client
-(with the public `Context.create`, or through an `ABSmartly` with no client configured) has no `application` or
-`environment` to expose.
+The configured `application` and `environment` names are always available to audience filters and assignment-rule
+conditions. An attribute you set with the same name takes precedence, even one set after the context is created.
+These names are not real attributes: they are not published (the collector adds them to every event) and
+`attributes()` does not return them. `app_version` is not supplied to targeting; set an `app_version` attribute
+yourself to target on it.
 
-`app_version` is no longer supplied to targeting. `ClientConfig.setApplicationVersion` only controls the
-`X-Application-Version` request header; set an `app_version` attribute yourself if you want to target on it.
+With `includeSystemAttributes(true)` the context also adds `sdk_name` and `sdk_version` to the attributes of every
+publish, stamped with the time of the earliest event in the publish. One you have set yourself is sent only as your
+value.
 
-Set `includeSystemAttributes` to also add `sdk_name` and `sdk_version` to the attributes of every publish:
-
-```java
-final ContextConfig contextConfig = ContextConfig.create()
-    .setUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8")
-    .setIncludeSystemAttributes(true);
-```
-
-They are stamped with the time of the earliest exposure or goal in the publish, and one you have set yourself with
-the same name is sent only as your value. The option no longer publishes `application`, `environment` or
-`app_version`. It is disabled by default.
-
-### Assignment Rules
+### Assignment rules
 
 Experiments can define assignment rules on the Web Console. They are evaluated in order, and the first matching rule
 decides the variant, taking precedence over holdout suppression, audience targeting, traffic allocation and custom
@@ -376,499 +238,198 @@ assignments. Holdouts are still evaluated and still record their own exposures.
   variant is re-randomized, unless it was already exposed.
 
 If the first matching rule's variant is out of range, or its split does not have one percentage per variant, it is
-ignored and normal assignment applies; later rules are not tried.
+ignored and normal assignment applies; later rules are not tried. A rule scoped to environments matches only the
+client's environment (case-sensitive). Rule-assigned exposures are flagged `ruleOverride`. `setOverride()` still takes
+precedence over every rule. Conditions can compare versions with `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt`
+and `semver_lte`.
 
-A rule matches when its conditions evaluate to true against the context attributes and, if it is scoped to
-environments, the client's environment is one of them. A rule without conditions always matches, and an empty
-environments list means every environment. Environment names are case-sensitive. Contexts without a client have no
-environment, so rules scoped to environments never match there. Rule-assigned exposures are flagged `ruleOverride` so
-the backend can exclude them from analysis. `setOverride()` still takes precedence over every rule.
+### Holdouts
 
-Conditions can compare versions with `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte`, for
-example against `app_version`. A leading `v` or `V` and build metadata are ignored, missing parts count as `0`, and a
-pre-release is lower than its release (`1.0.0-beta < 1.0.0`).
+Experiments covered by a holdout are suppressed for the units it holds out: they get the control variant and record
+no exposure of their own, while the holdout records the membership. No API is needed.
 
-### SDK Identification
+### Switchback experiments
 
-The SDK sends `X-Agent: absmartly-java-sdk/<version>` when it publishes events, so the backend can report which SDK
-versions your applications use.
-
-### Tracking Goals
-
-Goals are created in the A/B Smartly web console.
-
-```java
-context.track("payment", Map.of(
-    "item_count", 1,
-    "total_amount", 1999.99
-));
-```
-
-### Publishing Pending Data
-
-Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector, before proceeding.
-You can explicitly call the `publish()` or `publishAsync()` methods.
-
-```java
-context.publish();
-```
-
-### Finalizing
-
-The `close()` and `closeAsync()` methods will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
-
-```java
-context.close();
-```
-
-### Switchback Experiments
-
-Switchback experiments need no new API: `getTreatment`, `peekTreatment` and the variable methods return the variant for the current time period, and the SDK emits one exposure per period while time moves forward. A switchback is clustered by attribute: the experiment links one or more unit types to an attribute path, so set those units and attributes on the context. The first linked unit whose attribute holds a value serves the experiment, and that value is its cluster. Units of the experiment's linked types that disagree on the value, carry a value outside the experiment's allowed values, or carry no value at all get the control variant and record no exposure. Holdouts do not apply to switchbacks. Assignment rules do apply, ahead of the time schedule.
+Switchback experiments need no new API: `treatment`, `peekTreatment` and the variable methods return the variant
+for the current time period, and the SDK emits one exposure per period. Set the linked units and the attribute that
+holds the cluster:
 
 ```java
 context.setUnit("store_id", "store-0042");
-context.setAttribute("store", Collections.singletonMap("region", "lisbon"));
-int treatment = context.getTreatment("exp_switchback_pricing");
+context.setAttribute("store", Map.of("region", "lisbon"));
+int variant = context.treatment("exp_switchback_pricing");
 ```
 
-The order of an experiment's `switchbackClusters` map is part of its meaning (the first linked unit with a value serves), so `Experiment.equals` and `hashCode` are order-sensitive on that field: experiments whose maps hold the same entries in a different order are not equal.
+See [SWITCHBACK.md](SWITCHBACK.md) for the serving rules.
 
-See [SWITCHBACK.md](SWITCHBACK.md) for the serving rules, the exposure deduplication bound, the minimum SDK version and how older SDKs behave.
-
-### Custom Event Logger
-
-The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
-In addition, an event logger can be specified when creating a particular context, in the `ContextConfig`.
+### Tracking goals
 
 ```java
-public class CustomEventLogger implements ContextEventLogger {
-    @Override
-    public void handleEvent(Context context, ContextEventLogger.EventType event, Object data) {
-        switch (event) {
-        case Exposure:
-            final Exposure exposure = (Exposure)data;
-            System.out.printf("exposed to experiment %s", exposure.name);
-            break;
-        case Goal:
-            final GoalAchievement goal = (GoalAchievement)data;
-            System.out.printf("goal tracked: %s", goal.name);
-            break;
-        case Error:
-            System.out.printf("error: %s", data);
-            break;
-        case Publish:
-        case Ready:
-        case Refresh:
-        case Close:
-            break;
-        }
+context.track("payment", Map.of("item_count", 1, "total_amount", 1999.99));
+context.track("signup");
+```
+
+### Publishing pending events
+
+Events are published automatically `publishDelay` after the first one is queued. To publish now:
+
+```java
+context.publish();                // or publishAsync()
+int pending = context.pendingEventCount();
+```
+
+A failed publish throws (the blocking form) or fails the future with the transport's `ABsmartlyException`, and the
+events stay queued for the next attempt.
+
+### Closing
+
+`close()` (or `closeAsync()`) publishes the pending events and seals the context: methods that would queue an event
+then throw `ContextClosedException`. Use try-with-resources. `close()` is idempotent; if its publish fails, the events
+stay queued and the context stays open so you can retry.
+
+### Events
+
+Listen to the events of one context, or of every context of a client:
+
+```java
+Subscription subscription = client.onEvent(event -> {
+    switch (event.type()) {
+    case EXPOSURE:
+        Exposure exposure = ((ExposureEvent) event).exposure();
+        analytics.track("experiment_viewed", exposure.name(), exposure.variant());
+        break;
+    case ERROR:
+        log.warn("ABsmartly error", ((ErrorEvent) event).cause());
+        break;
+    default:
     }
-}
+});
+subscription.close();   // stop listening
 ```
 
-Usage:
+On Java 16+ you can write `if (event instanceof ExposureEvent e)` instead; the SDK itself only needs Java 11.
+
+| Event | Fired when | Payload |
+|---|---|---|
+| `ReadyEvent` | the data loaded | `data()` |
+| `RefreshEvent` | refreshed data was installed | `data()` |
+| `ExposureEvent` | an exposure was queued | `exposure()` |
+| `GoalEvent` | a goal was queued | `goal()` |
+| `PublishEvent` | events were published | `exposures()`, `goals()`, `toJson()` |
+| `CloseEvent` | the context closed | |
+| `ErrorEvent` | loading, refreshing or publishing failed | `cause()` |
+
+Listeners run synchronously on the thread that caused the event, so keep them fast; an exception a listener throws
+is logged and ignored. For reactive code, `client.events()` and `context.events()` return a
+`java.util.concurrent.Flow.Publisher<ContextEvent>` that delivers asynchronously and completes when the client or
+context closes (Android API 30+; use `onEvent` below that).
+
+### Errors
+
+Everything the SDK throws for its own failures extends the unchecked `ABsmartlyException`:
+
+| Exception | When |
+|---|---|
+| `ContextLoadException` | the context data could not be loaded (`getCause()` says why) |
+| `ContextNotReadyException` | a read before the data loaded |
+| `ContextClosedException` | a write to a closing or closed context, or a call on a closed client |
+| `UnitAlreadySetException` | `setUnit` with a different UID for a unit that is already set |
+| `HttpStatusException` | the collector answered with a non-2xx status (`statusCode()`) |
+| `TransportException` | a request failed without a response; `RequestTimeoutException` when it timed out |
+| `DecodingException` | a response could not be decoded |
+
+Invalid arguments throw `IllegalArgumentException`. The blocking methods (`ready`, `publish`, `refresh`, `close`,
+`contextData`) throw these directly, never wrapped in `CompletionException`.
+
+### HTTP transport
+
+The default transport is `JdkHttpTransport`, over `java.net.http.HttpClient`. It retries a request that fails with
+an I/O error or gets a 502 or 503, up to 5 times with exponential back-off. Tune it, or plug in your own HTTP stack:
 
 ```java
-// For all contexts, during SDK initialization
-final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create();
-sdkConfig.setContextEventLogger(new CustomEventLogger());
-
-// OR, alternatively, during a particular context initialization
-final ContextConfig contextConfig = ContextConfig.create();
-contextConfig.setEventLogger(new CustomEventLogger());
+ABsmartlyClient client = ABsmartlyClient.builder()
+    // ...
+    .transport(JdkHttpTransport.builder()
+        .connectTimeout(Duration.ofSeconds(3))
+        .requestTimeout(Duration.ofSeconds(5))
+        .maxRetries(3)
+        .retryInterval(Duration.ofMillis(333))
+        .build())
+    .build();
 ```
 
-**Event Types**
+`Transport` is a single method, `CompletableFuture<Response> send(Request)`, so an OkHttp or `HttpURLConnection`
+transport (on Android), a proxy, tracing or a test double is a few lines. A transport you supply stays yours: the
+client does not close it.
 
-| Event      | When                                                       | Data                                   |
-| ---------- | ---------------------------------------------------------- | -------------------------------------- |
-| `Error`    | `Context` receives an error                                | `Throwable` object                     |
-| `Ready`    | `Context` turns ready                                      | `ContextData` used to initialize       |
-| `Refresh`  | `Context.refresh()` method succeeds                        | `ContextData` used to refresh          |
-| `Publish`  | `Context.publish()` method succeeds                        | `PublishEvent` sent to collector       |
-| `Exposure` | `Context.getTreatment()` succeeds on first exposure        | `Exposure` enqueued for publishing     |
-| `Goal`     | `Context.track()` method succeeds                          | `GoalAchievement` enqueued for publishing |
-| `Close`    | `Context.close()` method succeeds the first time           | `null`                                 |
+### Logging
+
+The SDK logs through SLF4J under `com.absmartly.sdk`. Without an SLF4J provider on the classpath, nothing is logged.
+
+### SDK identification
+
+Every request carries `X-Agent: absmartly-java-sdk/<version>`.
 
 ## Platform-Specific Examples
 
-### Using with Spring Boot
+### Spring Boot
 
 ```java
-// Application.java
-import com.absmartly.sdk.*;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
-import org.springframework.beans.factory.annotation.Value;
-
-@SpringBootApplication
-public class Application {
-
-    @Value("${absmartly.endpoint}")
-    private String endpoint;
-
-    @Value("${absmartly.apiKey}")
-    private String apiKey;
-
-    @Value("${absmartly.application}")
-    private String application;
-
-    @Value("${absmartly.environment}")
-    private String environment;
-
-    @Bean
-    public ABSmartly absmartly() {
-        final ClientConfig clientConfig = ClientConfig.create()
-            .setEndpoint(endpoint)
-            .setAPIKey(apiKey)
-            .setApplication(application)
-            .setEnvironment(environment);
-
-        final Client client = Client.create(clientConfig);
-
-        final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
-            .setClient(client);
-
-        return ABSmartly.create(sdkConfig);
-    }
-
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
+@Configuration
+public class ABsmartlyConfiguration {
+    @Bean(destroyMethod = "close")
+    public ABsmartlyClient absmartly(@Value("${absmartly.endpoint}") String endpoint,
+            @Value("${absmartly.api-key}") String apiKey,
+            @Value("${absmartly.application}") String application,
+            @Value("${absmartly.environment}") String environment) {
+        return ABsmartlyClient.builder()
+            .endpoint(URI.create(endpoint))
+            .apiKey(apiKey)
+            .application(application)
+            .environment(environment)
+            .build();
     }
 }
 
-// application.properties
-absmartly.endpoint=https://your-company.absmartly.io/v1
-absmartly.apiKey=YOUR-API-KEY
-absmartly.application=website
-absmartly.environment=production
+@RestController
+public class CheckoutController {
+    private final ABsmartlyClient absmartly;
 
-// ProductController.java
-import com.absmartly.sdk.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.servlet.ModelAndView;
-import jakarta.servlet.http.HttpSession;
-
-@Controller
-public class ProductController {
-
-    @Autowired
-    private ABSmartly absmartly;
-
-    @GetMapping("/product")
-    public ModelAndView showProduct(HttpSession session) {
-        final ContextConfig contextConfig = ContextConfig.create()
-            .setUnit("session_id", session.getId());
-
-        final ModelAndView mav = new ModelAndView();
-
-        try (Context context = absmartly.createContext(contextConfig)
-                .waitUntilReady()) {
-            final int treatment = context.getTreatment("exp_product_layout");
-
-            if (treatment == 0) {
-                mav.setViewName("product_control");
-            } else {
-                mav.setViewName("product_treatment");
-            }
-        }
-
-        return mav;
+    public CheckoutController(ABsmartlyClient absmartly) {
+        this.absmartly = absmartly;
     }
-}
-```
 
-### Using with Jakarta EE / JAX-RS
-
-```java
-// ABSmartlyProducer.java
-import com.absmartly.sdk.*;
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Produces;
-
-@ApplicationScoped
-public class ABSmartlyProducer {
-
-    @Produces
-    @ApplicationScoped
-    public ABSmartly produceABSmartly() {
-        final ClientConfig clientConfig = ClientConfig.create()
-            .setEndpoint(System.getenv("ABSMARTLY_ENDPOINT"))
-            .setAPIKey(System.getenv("ABSMARTLY_API_KEY"))
-            .setApplication("website")
-            .setEnvironment(System.getenv("ENV"));
-
-        final Client client = Client.create(clientConfig);
-
-        final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
-            .setClient(client);
-
-        return ABSmartly.create(sdkConfig);
-    }
-}
-
-// ProductResource.java
-import com.absmartly.sdk.*;
-import jakarta.inject.Inject;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.core.Response;
-import jakarta.servlet.http.HttpServletRequest;
-
-@Path("/product")
-public class ProductResource {
-
-    @Inject
-    private ABSmartly absmartly;
-
-    @Inject
-    private HttpServletRequest request;
-
-    @GET
-    public Response getProduct() {
-        final String sessionId = request.getSession().getId();
-
-        final ContextConfig contextConfig = ContextConfig.create()
-            .setUnit("session_id", sessionId);
-
-        try (Context context = absmartly.createContext(contextConfig)
-                .waitUntilReady()) {
-            final int treatment = context.getTreatment("exp_product_layout");
-
-            return Response.ok()
-                .entity(Map.of("treatment", treatment))
-                .build();
-        }
-    }
-}
-```
-
-### Using with Android Activities
-
-```java
-// MainActivity.java
-import android.os.Bundle;
-import androidx.appcompat.app.AppCompatActivity;
-import com.absmartly.sdk.*;
-import java.util.UUID;
-
-public class MainActivity extends AppCompatActivity {
-
-    private static ABSmartly sdk;
-    private Context absmartlyContext;
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        // Initialize SDK once (typically in Application class)
-        if (sdk == null) {
-            final ClientConfig clientConfig = ClientConfig.create()
-                .setEndpoint("https://your-company.absmartly.io/v1")
-                .setAPIKey("YOUR-API-KEY")
-                .setApplication("android-app")
-                .setEnvironment("production");
-
-            final Client client = Client.create(clientConfig);
-
-            final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
-                .setClient(client);
-
-            sdk = ABSmartly.create(sdkConfig);
-        }
-
-        // Create context for this user
-        String deviceId = getDeviceId(); // Get from SharedPreferences
-
-        final ContextConfig contextConfig = ContextConfig.create()
-            .setUnit("device_id", deviceId);
-
-        final Context contextInstance = sdk.createContext(contextConfig);
-        absmartlyContext = contextInstance;
-
-        contextInstance.waitUntilReadyAsync()
-            .thenAccept(ctx -> {
-                runOnUiThread(() -> setupUI(ctx));
-            })
-            .exceptionally(throwable -> {
-                runOnUiThread(() -> setupUIWithDefault());
-                return null;
+    @GetMapping("/checkout")
+    public CompletableFuture<String> checkout(@CookieValue("session_id") String sessionId) {
+        return absmartly.contextAsync(ContextOptions.units(Map.of("session_id", sessionId)))
+            .thenApply(context -> {
+                try (context) {
+                    return context.treatment("exp_checkout") == 1 ? "checkout-v2" : "checkout";
+                }
             });
     }
-
-    private void setupUI(Context context) {
-        int treatment = context.getTreatment("exp_button_color");
-
-        if (treatment == 0) {
-            setContentView(R.layout.activity_main_control);
-        } else {
-            setContentView(R.layout.activity_main_treatment);
-        }
-    }
-
-    private void setupUIWithDefault() {
-        setContentView(R.layout.activity_main_control);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (absmartlyContext != null) {
-            absmartlyContext.close();
-        }
-    }
-
-    private String getDeviceId() {
-        // IMPORTANT: Device ID must be persisted across app sessions in SharedPreferences
-        // to ensure consistent experiment assignments for the same user/device.
-        // This example uses a random UUID for demonstration purposes only.
-        return UUID.randomUUID().toString();
-    }
 }
 ```
 
-## Advanced Request Configuration
+To serve many requests from one fetch, cache `client.contextData()` and refresh it periodically, then create each
+request's context with `client.context(options, data)`.
 
-### HTTP Request Timeout Override
+### Android
 
-Configure timeout for individual requests using DefaultHTTPClientConfig:
+Use the [android-sdk](https://github.com/absmartly/android-sdk), which builds on this core through the
+[kotlin-sdk](https://github.com/absmartly/kotlin-sdk). To use the core directly, enable core library desugaring
+and pass a `Transport` built on OkHttp or `HttpURLConnection`: the default transport needs `java.net.http`, which
+Android does not have, and is never loaded when you supply your own.
 
-```java
-import com.absmartly.sdk.*;
+## About ABsmartly
 
-// Create HTTP client with custom timeout
-final DefaultHTTPClientConfig httpClientConfig = DefaultHTTPClientConfig.create()
-    .setConnectTimeout(1500)    // 1.5 seconds
-    .setConnectionRequestTimeout(1500);
-
-final DefaultHTTPClient httpClient = DefaultHTTPClient.create(httpClientConfig);
-
-final ClientConfig clientConfig = ClientConfig.create()
-    .setEndpoint("https://your-company.absmartly.io/v1")
-    .setAPIKey("YOUR-API-KEY")
-    .setApplication("website")
-    .setEnvironment("development");
-
-final Client client = Client.create(clientConfig, httpClient);
-
-final ABSmartlyConfig sdkConfig = ABSmartlyConfig.create()
-    .setClient(client);
-
-final ABSmartly sdk = ABSmartly.create(sdkConfig);
-
-final ContextConfig contextConfig = ContextConfig.create()
-    .setUnit("session_id", "abc123");
-
-final Context context = sdk.createContext(contextConfig)
-    .waitUntilReady();
-```
-
-### Request Cancellation with CompletableFuture
-
-Cancel inflight requests when user navigates away:
-
-```java
-import com.absmartly.sdk.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.*;
-
-public class CancellableContextExample {
-
-    public static void main(String[] args) throws Exception {
-        final ABSmartly sdk = ABSmartly.builder()
-            .endpoint("https://your-company.absmartly.io/v1")
-            .apiKey("YOUR-API-KEY")
-            .application("website")
-            .environment("development")
-            .build();
-
-        final ContextConfig contextConfig = ContextConfig.create()
-            .setUnit("session_id", "abc123");
-
-        final Context context = sdk.createContext(contextConfig);
-
-        // Create future for context initialization
-        final CompletableFuture<Context> future = context.waitUntilReadyAsync();
-
-        // Cancel after 1.5 seconds if not ready
-        final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-        scheduler.schedule(() -> {
-            if (!future.isDone()) {
-                future.cancel(true);
-                System.out.println("Context creation cancelled");
-            }
-        }, 1500, TimeUnit.MILLISECONDS);
-
-        try {
-            final Context readyContext = future.get();
-            System.out.println("Context ready!");
-            readyContext.close();
-        } catch (CancellationException e) {
-            System.out.println("Context creation was cancelled");
-        } catch (ExecutionException e) {
-            System.out.println("Context creation failed: " + e.getCause());
-        } finally {
-            scheduler.shutdown();
-        }
-    }
-}
-```
-
-### Android Activity Lifecycle Cancellation
-
-```java
-import android.os.Bundle;
-import androidx.appcompat.app.AppCompatActivity;
-import com.absmartly.sdk.*;
-import java.util.concurrent.CompletableFuture;
-
-public class MainActivity extends AppCompatActivity {
-
-    private static ABSmartly sdk; // Initialize SDK once (typically in Application class)
-    private CompletableFuture<Context> contextFuture;
-    private Context absmartlyContext;
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        final ContextConfig contextConfig = ContextConfig.create()
-            .setUnit("device_id", getDeviceId());
-
-        absmartlyContext = sdk.createContext(contextConfig);
-        contextFuture = absmartlyContext.waitUntilReadyAsync();
-
-        contextFuture.thenAccept(ctx -> {
-            runOnUiThread(() -> setupUI(ctx));
-        });
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-
-        // Cancel ongoing context creation if activity is destroyed
-        if (contextFuture != null && !contextFuture.isDone()) {
-            contextFuture.cancel(true);
-        }
-
-        if (absmartlyContext != null) {
-            absmartlyContext.close();
-        }
-    }
-}
-```
-
-## About A/B Smartly
-
-**A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
-A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
+**ABsmartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for
+engineering and product teams that want to confidently deploy features as fast as they can develop them.
 
 ### Have a look at our growing list of clients and SDKs:
 - [Java SDK](https://www.github.com/absmartly/java-sdk) (this package)
+- [Kotlin SDK](https://www.github.com/absmartly/kotlin-sdk)
+- [Android SDK](https://www.github.com/absmartly/android-sdk)
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)
 - [PHP SDK](https://www.github.com/absmartly/php-sdk)
 - [Swift SDK](https://www.github.com/absmartly/swift-sdk)

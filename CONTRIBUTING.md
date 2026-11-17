@@ -21,7 +21,9 @@ The information below describes how to build and test the project, and how to su
 
 ### Building the SDK
 
-The SDK sources live in `core-api`. They use Java 6 syntax but the `java.util.concurrent` and `java.util.function` types, and compile to Java 8 bytecode. `core-api-java6` has no sources of its own: its build generates them from `core-api` by switching `CompletableFuture`, `CompletionStage`, `CompletionException`, `Function`, `Consumer`, `Supplier` and `BiFunction` to their `java8.util` backports, and compiles them to Java 6 bytecode. Files in `core-api/src/java6Main` and `core-api/src/java6Test` replace the file at the same path for `core-api-java6` only. Import those seven types one by one; a wildcard import of `java.util.function` or `java.util.concurrent` that hides one of them fails the build.
+The SDK sources live in `core-api` and target Java 11. `core-api/src/main` is the core that Android also loads (through kotlin-sdk and android-sdk), so it must not use `java.net.http` and is checked against the Android API level 24 signature (Animal Sniffer). The default `java.net.http` transport lives in `core-api/src/jdk` and is only loaded by name when no transport is supplied. Jackson is shaded into the jar under `com.absmartly.sdk.internal.shaded.jackson`; the build fails if an unrelocated Jackson class ends up in it.
+
+Every public package is `@NullMarked` (JSpecify): annotate nullable parameters and results with `@Nullable`.
 
 ```
 ./gradlew build
@@ -37,7 +39,7 @@ All tests can be run at once with the following command:
 ./gradlew test
 ```
 
-`./gradlew check` and `./gradlew build` also run the tests of both modules on a JDK 25 runtime (`testJdk25`). Gradle downloads JDK 25 on the first run if it is not installed. To skip it, for example when offline, pass `-PskipJdk25`:
+`./gradlew check` and `./gradlew build` also run the tests on a JDK 25 runtime (`testJdk25`). Gradle downloads JDK 25 on the first run if it is not installed. To skip it, for example when offline, pass `-PskipJdk25`:
 
 ```
 ./gradlew build -PskipJdk25

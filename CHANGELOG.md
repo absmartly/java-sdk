@@ -1,5 +1,43 @@
 # Changelog
 
+## 2.0.0 (unreleased)
+
+A new, idiomatic API. Assignment, exposure, publish and refresh behaviour and the wire format are unchanged from 1.x.
+See [MIGRATING.md](MIGRATING.md) for every 1.x API and its 2.0 equivalent, and [SUPPORT.md](SUPPORT.md) for the 1.x
+support window.
+
+### Breaking changes
+
+- Java 11 or later. `core-api-java6` is not continued in 2.x (it stays on the 1.x line).
+- `ABsmartlyClient.builder()` replaces `ABSmartly`, `ABSmartlyConfig`, `Client`, `ClientConfig` and `DefaultHTTPClientConfig`.
+- `ContextOptions` (immutable builder) replaces `ContextConfig`.
+- `client.context(options)` blocks until ready and throws `ContextLoadException` on failure; `contextAsync`,
+  `newContext` and `context(options, data)` cover the other cases. `ContextState state()` replaces
+  `isReady/isFailed/isClosing/isClosed/isFinalizing/isFinalized`, and `failure()` replaces `readyError()`.
+- Accessors drop `get`: `treatment`, `unit`, `units`, `attribute`, `attributes`, `override`, `customAssignment`,
+  `experiments` (now a `List`), `customFieldKeys` (now a sorted `List`), `customFieldValue`, `customFieldType`,
+  `variableKeys`, `pendingEventCount`, `data`. Collections are unmodifiable snapshots.
+- `ContextEventLogger` is replaced by typed events (`ReadyEvent`, `RefreshEvent`, `ExposureEvent`, `GoalEvent`,
+  `PublishEvent`, `CloseEvent`, `ErrorEvent`) through `onEvent(listener)` on the client or a context, and
+  `events()` as a `java.util.concurrent.Flow.Publisher`.
+- Unchecked `ABsmartlyException` hierarchy (`ContextNotReadyException`, `ContextClosedException`,
+  `ContextLoadException`, `UnitAlreadySetException`, `HttpStatusException`, `TransportException`,
+  `RequestTimeoutException`, `DecodingException`). Blocking methods throw the cause, never `CompletionException`.
+- `Transport` replaces `HTTPClient`; the default `JdkHttpTransport` uses `java.net.http` (same retry policy as 1.x).
+- The JSON model (`com.absmartly.sdk.json`) and `jsonexpr` packages are internal; the public `ContextData`, `Exposure`
+  and `Goal` value types replace them in the API.
+- Dependencies: Apache HttpClient 5, jsr305 and findbugs-annotations are gone; Jackson is shaded and relocated; SLF4J
+  2.0; JSpecify nullability annotations on every public type.
+- Brand spelling `ABsmartly` in type names and messages ("ABsmartly Context is not yet ready").
+
+### Added
+
+- Typed variables: `variable(key, default)` typed by the default, `variable(key, Class, default)` mapping JSON objects
+  to your class, and `peekVariable` twins.
+- `clearOverride`, `clearCustomAssignment`, `overrides()`, `customAssignments()`, `track(goal)`.
+- `ContextData.toJson()`/`fromJson()`.
+- `JdkHttpTransport.Builder.requestTimeout(Duration)`.
+
 ## 1.9.0 (unreleased)
 
 ### Changed

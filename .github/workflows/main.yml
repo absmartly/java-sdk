@@ -4,16 +4,20 @@ on:
   push:
     branches:
       - main
+      - "release/**"
   pull_request:
+    branches:
+      - main
+      - "release/**"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      # JDK 25 is only the runtime for the testJdk25 task; JDK 11 (listed last, so it becomes JAVA_HOME) runs Gradle
-      # and compiles the Java 1.6 bytecode.
+      # JDK 25 is only the runtime for the testJdk25 task; JDK 11 (listed last, so it becomes JAVA_HOME) runs Gradle,
+      # compiles the Java 11 bytecode and runs the tests on the floor.
       - name: Setup Java 25 and 11
         uses: actions/setup-java@v4
         with:
@@ -26,3 +30,19 @@ jobs:
       - name: Build Java SDK
         run: |
           ./gradlew -Porg.gradle.java.installations.fromEnv=JAVA_HOME_25_X64 clean build
+
+  # The latest LTS as a second runtime for the whole suite, next to the Java 11 floor above.
+  test-jdk21:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: "gradle"
+
+      - name: Test on Java 21
+        run: ./gradlew :core-api:test -PskipJdk25
