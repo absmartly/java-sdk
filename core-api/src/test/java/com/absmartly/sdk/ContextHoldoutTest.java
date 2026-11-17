@@ -657,7 +657,7 @@ class ContextHoldoutTest extends TestUtils {
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(context, expected);
 	}
 
-	// The repeat need not be adjacent: {11, 12, 11} is holdouts 11 and 12.
+	// A repeat need not be adjacent or of the first id: {11, 12, 11, 12} is holdouts 11 and 12.
 	@Test
 	void nonAdjacentDuplicateHoldoutIdIsOneHoldout() {
 		final Experiment[] holdouts = {
@@ -665,7 +665,7 @@ class ContextHoldoutTest extends TestUtils {
 				newHoldout(12, "holdout_b", HOLDOUT_B_SEED_HI, HOLDOUT_B_SEED_LO)
 		};
 		final Context context = createReadyContext(UID_NOT_HELD_OUT, contextDataOf(holdouts,
-				coveredBy(newExperiment(1, "exp_non_adjacent_duplicate"), 11, 12, 11)));
+				coveredBy(newExperiment(1, "exp_non_adjacent_duplicate"), 11, 12, 11, 12)));
 
 		assertEquals(0, context.getTreatment("exp_non_adjacent_duplicate"));
 		assertEquals(3, context.getPendingCount()); // own exposure + one per holdout
