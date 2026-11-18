@@ -168,8 +168,9 @@ boolean modal = context.variable("show-modal", false);
 
 When no running experiment assigns the key, or the value cannot be read as the requested type (for example `"red"`
 for an `Integer` default), you get the default (a type mismatch is logged). Numbers convert between numeric types:
-to an integer type only when the value is a whole number in range, to `Double`/`Float` as the nearest value (a whole
-number only when it is exact, so an ID is never silently changed). A JSON object variable maps to your own class:
+to an integer type only when the value is a whole number in range, to `Double`/`Float` as the nearest value. A
+whole-number JSON value (written without a decimal point or exponent, like an ID) converts to `Double`/`Float` only
+when it is exact. A JSON object variable maps to your own class:
 
 ```java
 public class Checkout {

@@ -881,7 +881,8 @@ public final class Context implements AutoCloseable {
 	 * Returns {@code defaultValue} when no running experiment assigns the key, or when its value cannot be converted
 	 * (for example {@code "red"} for an {@code Integer} default; logged). Numbers convert between numeric types: to an
 	 * integer type only when the value is a whole number in range, to {@code Double}/{@code Float} as the nearest
-	 * value (a whole number only when it is exact, and never infinite, NaN or underflowing to zero).
+	 * value, never infinite, NaN or underflowing to zero. A whole-number JSON value (no decimal point or exponent,
+	 * like an ID) converts to {@code Double}/{@code Float} only when it is exact.
 	 *
 	 * <pre>{@code
 	 * String color = context.variable("button.color", "blue");

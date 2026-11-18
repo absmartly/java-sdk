@@ -325,6 +325,8 @@ class ABsmartlyClientTest extends TestUtils {
 	void floatingReadsRejectOverflowAndInexactWholeNumbers() {
 		assertEquals(-1.0, VariableConverter.convert("n", new BigInteger("9007199254740993"), Double.class, -1.0),
 				"2^53 + 1 is not a double: an ID must not silently change");
+		assertEquals(-1.0, VariableConverter.convert("n", (1L << 53) + 1, Double.class, -1.0),
+				"a Long ID, as Jackson parses one, must not silently change");
 		assertEquals(-1.0f, VariableConverter.convert("n", 16777217, Float.class, -1.0f));
 		assertEquals(-1.0, VariableConverter.convert("n", new BigDecimal("1e1000"), Double.class, -1.0));
 		assertEquals(-1.0f, VariableConverter.convert("n", Double.MAX_VALUE, Float.class, -1.0f));
@@ -371,6 +373,9 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(new BigDecimal("2E-3"), VariableConverter.shortestDecimal(2.0e-3));
 		assertEquals(new BigDecimal("1E+23"), VariableConverter.shortestDecimal(1.0e23));
 		assertEquals(new BigDecimal("0.1"), VariableConverter.shortestDecimal(0.1));
+		// A power of two whose shortest decimal is a neighbour of the exact value's rounding, not the rounding.
+		assertEquals(new BigDecimal("7.120236347223045E-307"),
+				VariableConverter.shortestDecimal(7.120236347223045E-307));
 	}
 
 	@Test
@@ -387,6 +392,29 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(List.of()));
 		assertEquals(java.util.TreeMap.class, VariableConverter.inferType(Collections.emptySortedMap()));
 		assertEquals(java.util.LinkedHashMap.class, VariableConverter.inferType(Map.of()));
+	}
+
+	public static final class Tags extends java.util.AbstractList<String> {
+		@Override
+		public String get(final int index) {
+			throw new IndexOutOfBoundsException();
+		}
+
+		@Override
+		public int size() {
+			return 0;
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void finalCollectionDefaultsFallBack() {
+		final Tags tags = new Tags();
+		final Tags read = VariableConverter.convert("items", List.of("actual"),
+				(Class<Tags>) VariableConverter.inferType(tags), tags);
+		assertSame(tags, read, "a final collection default is returned, never a cast-failing ArrayList");
+		final java.util.Set<String> keySet = java.util.concurrent.ConcurrentHashMap.newKeySet();
+		assertEquals(keySet.getClass(), VariableConverter.inferType(keySet), "same answer on every JDK");
 	}
 
 	@Test

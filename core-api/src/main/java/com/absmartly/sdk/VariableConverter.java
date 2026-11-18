@@ -43,11 +43,11 @@ final class VariableConverter {
 			java.util.TreeSet.class, java.util.LinkedHashMap.class, java.util.TreeMap.class};
 
 	// Whether a value of `candidate` can stand in for the default: it implements every interface that declares methods
-	// on the default's class (or its superclasses), and extends the nearest public, non-final superclass of the
-	// default. Marker interfaces with no methods (Kotlin's KMappedMarker, RandomAccess, Serializable...) are skipped,
-	// and so are final classes, which no caller can declare a variable of a subtype of: a Kotlin emptyList() (the
-	// public final kotlin.collections.EmptyList) or Collections.emptySet() takes a JDK collection, while an EnumSet
-	// default, whose nearest such superclass is EnumSet, takes nothing: the caller's cast would fail.
+	// on the default's class (or its superclasses), and extends the nearest public superclass of the default. Marker
+	// interfaces with no methods (Kotlin's KMappedMarker, RandomAccess, Serializable...) are skipped. Kotlin's empty
+	// collections are the one exception to the superclass rule: they are public final classes, but Kotlin code only
+	// ever types them as List/Set/Map. Every other default whose class a JDK collection does not extend (EnumSet, a
+	// caller's own final collection, ConcurrentHashMap's key set) takes nothing, and the read returns the default.
 	private static boolean implementsEveryInterfaceOf(final Class<?> candidate, final Class<?> type) {
 		for (Class<?> c = type; c != null; c = c.getSuperclass()) {
 			for (final Class<?> iface : c.getInterfaces()) {
@@ -57,12 +57,18 @@ final class VariableConverter {
 			}
 		}
 		Class<?> visible = type;
-		while ((visible != null) && (!java.lang.reflect.Modifier.isPublic(visible.getModifiers())
-				|| java.lang.reflect.Modifier.isFinal(visible.getModifiers()))) {
+		if (KOTLIN_EMPTY_COLLECTIONS.contains(type.getName())) {
+			return true;
+		}
+		while ((visible != null) && !java.lang.reflect.Modifier.isPublic(visible.getModifiers())) {
 			visible = visible.getSuperclass();
 		}
 		return (visible == null) || visible.isAssignableFrom(candidate);
 	}
+
+	private static final java.util.Set<String> KOTLIN_EMPTY_COLLECTIONS = new java.util.HashSet<String>(
+			java.util.Arrays.asList("kotlin.collections.EmptyList", "kotlin.collections.EmptySet",
+					"kotlin.collections.EmptyMap"));
 
 	private static boolean isConstructible(final Class<?> type) {
 		if (!java.lang.reflect.Modifier.isPublic(type.getModifiers())
