@@ -62,7 +62,7 @@ ABsmartlyClient client = ABsmartlyClient.builder()
 | `environment(String)` | yes | The environment name, as configured in ABsmartly. |
 | `applicationVersion(String or long)` | no | Sent as the `X-Application-Version` header when it is a whole number of at most 18 digits, otherwise as `0`. |
 | `transport(Transport)` | no | The HTTP stack; defaults to `JdkHttpTransport`. See [HTTP transport](#http-transport). |
-| `executor(Executor)` | no | Runs the SDK's asynchronous work (decoding, encoding, the event stream). Defaults to a pool of daemon threads. |
+| `executor(Executor)` | no | Runs the SDK's asynchronous work (decoding responses, the transport's callbacks and retries, the event streams). Defaults to a pool of daemon threads. |
 | `scheduler(ScheduledExecutorService)` | no | Runs automatic publishing and refreshing. Defaults to one daemon thread, shut down with the client; a scheduler you supply is left running. |
 
 ### Creating a context
@@ -167,10 +167,11 @@ boolean modal = context.variable("show-modal", false);
 ```
 
 When no running experiment assigns the key, or the value cannot be read as the requested type (for example `"red"`
-for an `Integer` default), you get the default (a type mismatch is logged). Numbers convert between numeric types:
-to an integer type only when the value is a whole number in range, to `Double`/`Float` as the nearest value. A
-whole-number JSON value (written without a decimal point or exponent, like an ID) converts to `Double`/`Float` only
-when it is exact. A JSON object variable maps to your own class:
+for an `Integer` default), you get the default (a type mismatch is logged). A typed numeric read uses the number
+exactly as written in the config: it converts to an integer type only when that number is a whole number in range
+(so `1.0000000000000001` is not an `int`), and to `Double`/`Float` as the nearest value, never infinite, NaN or
+underflowing to zero. A whole-number JSON value (written without a decimal point or exponent, like an ID) converts to
+`Double`/`Float` only when it is exact. A JSON object variable maps to your own class:
 
 ```java
 public class Checkout {

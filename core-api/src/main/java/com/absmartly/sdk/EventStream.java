@@ -46,9 +46,11 @@ final class EventStream {
 		} catch (final IllegalStateException closed) {
 			return;
 		} catch (final RuntimeException rejected) {
-			// The executor refused to deliver (RejectedExecutionException, shut down or saturated): the subscriber
-			// misses this event, but the context's own state and the caller are never affected.
-			log.warn("ABsmartly event stream could not deliver {}: {}", event.type(), rejected.toString());
+			// The executor refused to deliver (RejectedExecutionException, shut down or saturated). SubmissionPublisher
+			// then drops that subscriber, which receives no further events; the context's own state and the caller are
+			// never affected.
+			log.warn("ABsmartly event stream could not deliver {} and stops delivering to its subscriber: {}",
+					event.type(), rejected.toString());
 			return;
 		}
 		// offer() returns minus the number of drops.

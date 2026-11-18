@@ -92,6 +92,14 @@ final class VariableConverter {
 			log.warn("ABsmartly variable '{}' is {}, not a finite number", key, value);
 			return defaultValue;
 		}
+		// An exact number from the config with an absurd exponent is a typo; turning it away first keeps every
+		// conversion cheap (BigInteger would materialise 1e10000000 for seconds; printing a BigDecimal of
+		// 1E+999999999 allocates a gigabyte). Within the bound, the integer conversions are fast.
+		if ((value instanceof BigDecimal) && (Math.abs((long) ((BigDecimal) value).precision()
+				- ((BigDecimal) value).scale()) > MAX_BIG_DECIMAL_EXPONENT)) {
+			log.warn("ABsmartly variable '{}' is out of range", key);
+			return defaultValue;
+		}
 		if (type.isInstance(value)) {
 			return type.cast(value);
 		}
@@ -171,6 +179,8 @@ final class VariableConverter {
 		}
 		return null;
 	}
+
+	private static final int MAX_BIG_DECIMAL_EXPONENT = 4096;
 
 	private static boolean isWholeNumberType(final Object value) {
 		return (value instanceof Long) || (value instanceof Integer) || (value instanceof Short)

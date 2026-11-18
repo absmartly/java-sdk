@@ -220,8 +220,13 @@ public final class JdkHttpTransport implements Transport {
 	// Moves a completion onto the callback executor. An executor that rejects the task (shut down, or saturated)
 	// fails the request with a TransportException instead of leaving its future incomplete forever.
 	private <T> CompletableFuture<T> onCallbackExecutor(final CompletableFuture<T> source, final HttpRequest request) {
+		return onExecutor(source, callbackExecutor_, request);
+	}
+
+	static <T> CompletableFuture<T> onExecutor(final CompletableFuture<T> source, final Executor executor,
+			final HttpRequest request) {
 		final CompletableFuture<T> moved = new CompletableFuture<T>();
-		source.whenComplete((value, error) -> dispatch(() -> {
+		source.whenComplete((value, error) -> dispatch(executor, () -> {
 			if (error != null) {
 				moved.completeExceptionally(error);
 			} else {
@@ -232,8 +237,13 @@ public final class JdkHttpTransport implements Transport {
 	}
 
 	private void dispatch(final Runnable task, final CompletableFuture<?> target, final HttpRequest request) {
+		dispatch(callbackExecutor_, task, target, request);
+	}
+
+	private static void dispatch(final Executor executor, final Runnable task, final CompletableFuture<?> target,
+			final HttpRequest request) {
 		try {
-			callbackExecutor_.execute(task);
+			executor.execute(task);
 		} catch (final RuntimeException rejected) {
 			target.completeExceptionally(new TransportException(request.method() + " " + request.uri().getPath()
 					+ " could not be scheduled on the transport executor", rejected));

@@ -799,6 +799,42 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void typedNumericReadsDoNotReparseTheConfig() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"count\":3,\"price\":19.99}")));
+		final Context context = client.context(SESSION);
+		try (org.mockito.MockedStatic<com.absmartly.sdk.internal.Json> json = org.mockito.Mockito.mockStatic(
+				com.absmartly.sdk.internal.Json.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+			for (int i = 0; i < 100; ++i) {
+				assertEquals(3, context.variable("count", 0));
+				assertEquals(19.99, context.peekVariable("price", 0.0));
+			}
+			json.verify(() -> com.absmartly.sdk.internal.Json.readExactNumbers(org.mockito.ArgumentMatchers.any()),
+					org.mockito.Mockito.never());
+		}
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void hugeExponentsFallBackQuickly() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"huge\":1e10000000,\"big\":1e999999999,\"negzero\":-0.0}")));
+		final Context context = client.context(SESSION);
+		assertEquals(-1, context.variable("huge", -1));
+		assertEquals(-1L, context.variable("huge", -1L));
+		assertEquals(BigInteger.ONE, context.variable("huge", BigInteger.ONE));
+		assertEquals(BigDecimal.ONE, context.variable("big", BigDecimal.ONE));
+		assertEquals(-1.0, context.variable("huge", -1.0));
+		// Within the exponent bound, a number past every bounded integer type still falls back.
+		assertEquals(-1, VariableConverter.convert("n", new BigDecimal("1e3000"), Integer.class, -1));
+		assertEquals(BigInteger.ONE, VariableConverter.convert("n", new BigDecimal("1e4097"), BigInteger.class,
+				BigInteger.ONE), "past the exponent bound");
+		assertEquals(BigInteger.TEN.pow(4000),
+				VariableConverter.convert("n", new BigDecimal("1e4000"), BigInteger.class, BigInteger.ONE));
+		final double negativeZero = context.variable("negzero", 1.0);
+		assertEquals(Double.doubleToRawLongBits(-0.0), Double.doubleToRawLongBits(negativeZero), "-0.0 keeps its sign");
+	}
+
+	@Test
 	void asyncCheckoutClosesOnAOneThreadExecutor() throws Exception {
 		final java.util.concurrent.ExecutorService single = java.util.concurrent.Executors.newSingleThreadExecutor();
 		try {
@@ -858,6 +894,16 @@ class ABsmartlyClientTest extends TestUtils {
 			assertEquals(ContextState.READY, context.state());
 			assertNull(context.failure());
 			assertEquals(1, context.treatment("exp_test_ab"), "a rejected delivery never reaches the caller");
+			// SubmissionPublisher drops a subscriber whose delivery was rejected: it sees nothing more.
+			final java.lang.reflect.Field field = EventDispatcher.class.getDeclaredField("stream_");
+			field.setAccessible(true);
+			final java.lang.reflect.Field events = ABsmartlyClient.class.getDeclaredField("events_");
+			events.setAccessible(true);
+			final EventStream stream = (EventStream) field.get(events.get(client));
+			final java.lang.reflect.Field publisher = EventStream.class.getDeclaredField("publisher_");
+			publisher.setAccessible(true);
+			assertEquals(0,
+					((java.util.concurrent.SubmissionPublisher<?>) publisher.get(stream)).getNumberOfSubscribers());
 		} finally {
 			pool.shutdownNow();
 		}

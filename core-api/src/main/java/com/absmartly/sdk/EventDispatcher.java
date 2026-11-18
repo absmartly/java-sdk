@@ -93,11 +93,7 @@ final class EventDispatcher {
 		}
 		final Object stream = stream_;
 		if (stream != null) {
-			try {
-				((EventStream) stream).submit(event);
-			} catch (final RuntimeException e) {
-				log.error("ABsmartly event stream failed on {}", event.type(), e);
-			}
+			((EventStream) stream).submit(event);
 		}
 		if (parent_ != null) {
 			parent_.deliver(event);

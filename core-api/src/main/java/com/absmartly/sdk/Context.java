@@ -880,10 +880,10 @@ public final class Context implements AutoCloseable {
 	/**
 	 * A variable's value converted to the type of {@code defaultValue}, queuing the assigning experiment's exposure.
 	 * Returns {@code defaultValue} when no running experiment assigns the key, or when its value cannot be converted
-	 * (for example {@code "red"} for an {@code Integer} default; logged). Numbers convert between numeric types: to an
-	 * integer type only when the value is a whole number in range, to {@code Double}/{@code Float} as the nearest
-	 * value, never infinite, NaN or underflowing to zero. A whole-number JSON value (no decimal point or exponent,
-	 * like an ID) converts to {@code Double}/{@code Float} only when it is exact.
+	 * (for example {@code "red"} for an {@code Integer} default; logged). A numeric read uses the number exactly as
+	 * written in the config: to an integer type only when it is a whole number in range, to {@code Double}/{@code
+	 * Float} as the nearest value, never infinite, NaN or underflowing to zero. A whole-number JSON value (no decimal
+	 * point or exponent, like an ID) converts to {@code Double}/{@code Float} only when it is exact.
 	 *
 	 * <pre>{@code
 	 * String color = context.variable("button.color", "blue");
@@ -933,12 +933,16 @@ public final class Context implements AutoCloseable {
 			return null;
 		}
 		final Object value = assignment.variables.get(key);
-		if (!(value instanceof Number) || (assignment.variantConfig == null) || (type == Number.class)
-				|| !Number.class.isAssignableFrom(type)) {
+		if (!(value instanceof Number) || (type == Number.class) || !Number.class.isAssignableFrom(type)) {
 			return value;
 		}
-		final Object exact = Json.readExactVariable(assignment.variantConfig, key);
-		return (exact instanceof Number) ? exact : value;
+		final Object exact = assignment.exactNumbers.get(key);
+		// -0.0 has no exact BigDecimal: keep the parsed value so its sign survives, as variableValue returns it.
+		if (!(exact instanceof Number) || ((exact instanceof BigDecimal) && (((BigDecimal) exact).signum() == 0)
+				&& (value instanceof Double) && (Double.doubleToRawLongBits((Double) value) != 0))) {
+			return value;
+		}
+		return exact;
 	}
 
 	/** Queues a goal achievement without properties. */
@@ -1731,9 +1735,8 @@ public final class Context implements AutoCloseable {
 		// falls back to a live resolution of `holdouts` in that case.
 		Assignment[] holdoutAssignments;
 		Map<String, Object> variables = Collections.emptyMap();
-		// The assigned variant's raw config JSON (null when it has none).
-		@Nullable
-		String variantConfig;
+		// The assigned variant's exact numeric variables (see ContextExperiment.exactNumbers).
+		Map<String, Object> exactNumbers = Collections.emptyMap();
 		int attrsSeq;
 
 		// Switchback grid this assignment was resolved under; compared by switchbackConfigMatches.
@@ -2180,7 +2183,7 @@ public final class Context implements AutoCloseable {
 			if ((experiment != null) && experiment.data.variants != null && assignment.variant >= 0
 					&& (assignment.variant < experiment.data.variants.length)) {
 				assignment.variables = experiment.variables.get(assignment.variant);
-				assignment.variantConfig = experiment.variantConfigs.get(assignment.variant);
+				assignment.exactNumbers = experiment.exactNumbers.get(assignment.variant);
 			}
 
 			final Assignment reused = reuseExposedRuleAssignment(experiment, cached, assignment);
@@ -2457,8 +2460,9 @@ public final class Context implements AutoCloseable {
 		AudienceMatcher.ParsedRules assignmentRules;
 		Experiment[] holdouts;
 		List<Map<String, Object>> variables;
-		// The variants' raw config JSON, for typed reads that need a number's exact token (see exactVariable).
-		List<@Nullable String> variantConfigs;
+		// Per variant, its top-level numeric variables as the exact BigDecimal/BigInteger written in the config JSON,
+		// parsed once with the data for typed reads (see exactVariable). Empty for a variant with no numbers.
+		List<Map<String, Object>> exactNumbers;
 		Map<String, ContextCustomFieldValue> customFieldValues;
 		// Assigned in setData under dataLock_ write: carried over from the previous index while the
 		// switchback identity is unchanged, otherwise a fresh value. Unused for unit experiments.
@@ -2533,11 +2537,13 @@ public final class Context implements AutoCloseable {
 			}
 			contextExperiment.variables = new ArrayList<Map<String, Object>>(
 					experiment.variants != null ? experiment.variants.length : 0);
-			contextExperiment.variantConfigs = new ArrayList<@Nullable String>(
+			contextExperiment.exactNumbers = new ArrayList<Map<String, Object>>(
 					experiment.variants != null ? experiment.variants.length : 0);
 			if (experiment.variants != null) {
 				for (final ExperimentVariant variant : experiment.variants) {
-					contextExperiment.variantConfigs.add(variant.config);
+					contextExperiment.exactNumbers.add(((variant.config != null) && !variant.config.isEmpty())
+							? Json.readExactNumbers(variant.config)
+							: Collections.<String, Object> emptyMap());
 				}
 			}
 

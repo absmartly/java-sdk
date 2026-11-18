@@ -12,8 +12,10 @@ import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
@@ -549,6 +551,26 @@ class JdkHttpTransportTest {
 			assertEquals("transport-callbacks", thread, "never the JDK's shared CompletableFuture delay thread");
 		} finally {
 			callbacks.shutdownNow();
+		}
+	}
+
+	@Test
+	void rejectedCompletionHandOffFailsTheRequest() {
+		final java.util.concurrent.Executor refusing = command -> {
+			throw new java.util.concurrent.RejectedExecutionException("saturated");
+		};
+		final java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder(base.resolve("/context"))
+				.build();
+		final CompletableFuture<String> done = CompletableFuture.completedFuture("response");
+		final CompletionException error = assertThrows(CompletionException.class,
+				() -> JdkHttpTransport.onExecutor(done, refusing, request).orTimeout(5, TimeUnit.SECONDS).join());
+		assertTrue(error.getCause() instanceof TransportException, error.getCause().toString());
+		assertEquals("GET /context could not be scheduled on the transport executor", error.getCause().getMessage());
+		final java.util.concurrent.ExecutorService pool = Executors.newSingleThreadExecutor();
+		try {
+			assertEquals("response", JdkHttpTransport.onExecutor(done, pool, request).join());
+		} finally {
+			pool.shutdownNow();
 		}
 	}
 
