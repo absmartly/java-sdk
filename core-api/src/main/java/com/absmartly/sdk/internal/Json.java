@@ -30,30 +30,45 @@ public final class Json {
 		}
 	}
 
-	private static final ObjectReader EXACT_VARIABLES_READER = JsonMapperUtils.createStandardObjectMapper()
-			.enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
-			.enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
-			.readerFor(java.util.Map.class);
+	/** Marks a top-level number whose exact value could not be decoded: a typed read of it falls back. */
+	public static final Object UNDECODABLE = new Object();
 
 	/**
 	 * The top-level numeric variables of a variant config, as the exact BigDecimal/BigInteger written in the JSON.
-	 * Empty when the config cannot be parsed or has no numbers.
+	 * Each top-level value is decoded on its own, so a value the exact decoder cannot represent (an exponent beyond
+	 * BigDecimal's range, anywhere inside it) affects only its own key, which maps to {@link #UNDECODABLE}. Empty
+	 * when the config is not a JSON object.
 	 */
 	public static java.util.Map<String, Object> readExactNumbers(final String config) {
-		try {
-			final java.util.Map<?, ?> variables = EXACT_VARIABLES_READER.readValue(config);
-			if (variables == null) {
+		final java.util.Map<String, Object> numbers = new java.util.HashMap<String, Object>();
+		try (com.fasterxml.jackson.core.JsonParser parser = MAPPER.getFactory().createParser(config)) {
+			if (parser.nextToken() != com.fasterxml.jackson.core.JsonToken.START_OBJECT) {
 				return java.util.Collections.emptyMap();
 			}
-			final java.util.Map<String, Object> numbers = new java.util.HashMap<String, Object>();
-			for (final java.util.Map.Entry<?, ?> entry : variables.entrySet()) {
-				if (entry.getValue() instanceof Number) {
-					numbers.put(String.valueOf(entry.getKey()), entry.getValue());
+			while (parser.nextToken() == com.fasterxml.jackson.core.JsonToken.FIELD_NAME) {
+				final String key = parser.getCurrentName();
+				final com.fasterxml.jackson.core.JsonToken value = parser.nextToken();
+				if ((value == com.fasterxml.jackson.core.JsonToken.VALUE_NUMBER_INT)
+						|| (value == com.fasterxml.jackson.core.JsonToken.VALUE_NUMBER_FLOAT)) {
+					numbers.put(key, exactNumber(parser, value));
+				} else {
+					parser.skipChildren();
 				}
 			}
-			return numbers.isEmpty() ? java.util.Collections.<String, Object> emptyMap() : numbers;
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
+			// The config itself is malformed; DefaultVariableParser has already logged and rejected it.
 			return java.util.Collections.emptyMap();
+		}
+		return numbers.isEmpty() ? java.util.Collections.<String, Object> emptyMap() : numbers;
+	}
+
+	private static Object exactNumber(final com.fasterxml.jackson.core.JsonParser parser,
+			final com.fasterxml.jackson.core.JsonToken token) {
+		try {
+			return (token == com.fasterxml.jackson.core.JsonToken.VALUE_NUMBER_INT) ? parser.getBigIntegerValue()
+					: parser.getDecimalValue();
+		} catch (IOException | RuntimeException e) {
+			return UNDECODABLE;
 		}
 	}
 

@@ -354,9 +354,7 @@ class JdkHttpTransportTest {
 				out.write('x');
 				out.flush();
 				Thread.sleep(5000);
-			} catch (IOException | InterruptedException e) {
-				// The client stopped reading.
-			}
+			} catch (IOException | InterruptedException e) {}
 		});
 		final long start = System.nanoTime();
 		final Transport.Response response = JdkHttpTransport.create()
@@ -397,6 +395,27 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void redirectDrainStaysWithinTheRequestDeadline() {
+		server.createContext("/held-redirect", exchange -> {
+			exchange.getResponseHeaders().add("Location", "/context");
+			exchange.sendResponseHeaders(307, 2);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write('x');
+				out.flush();
+				Thread.sleep(2000);
+			} catch (IOException | InterruptedException e) {}
+		});
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(60)).build();
+		transport.send(new Transport.Request("GET", base.resolve("/context"), Map.of(), null)).join();
+		final long start = System.nanoTime();
+		final CompletionException error = assertThrows(CompletionException.class, () -> transport
+				.send(new Transport.Request("GET", base.resolve("/held-redirect"), Map.of(), null)).join());
+		final long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
+		assertTrue(elapsedMs < 95, "the drain wait is cut to the 60 ms deadline, not a fresh 100 ms: " + elapsedMs);
+	}
+
+	@Test
 	void stalledRedirectHopRunsOnTheCallbackExecutor() {
 		server.createContext("/stall-hop", exchange -> {
 			exchange.getResponseHeaders().add("Location", "/hop-target");
@@ -405,9 +424,7 @@ class JdkHttpTransportTest {
 				out.write('x');
 				out.flush();
 				Thread.sleep(2000);
-			} catch (IOException | InterruptedException e) {
-				// The client stopped reading.
-			}
+			} catch (IOException | InterruptedException e) {}
 		});
 		// The hop fails before any I/O hand-off (the target refuses), so where its failure surfaces is where the hop
 		// itself ran: the callback executor, never the JDK's shared delay thread.
@@ -461,6 +478,7 @@ class JdkHttpTransportTest {
 		final java.net.http.HttpResponse.BodySubscriber<?> subscriber = (java.net.http.HttpResponse.BodySubscriber<?>) constructor
 				.newInstance();
 		final java.util.concurrent.CountDownLatch cancelled = new java.util.concurrent.CountDownLatch(1);
+		final long start = System.nanoTime();
 		subscriber.onSubscribe(new java.util.concurrent.Flow.Subscription() {
 			@Override
 			public void request(final long count) {}
@@ -470,11 +488,15 @@ class JdkHttpTransportTest {
 				cancelled.countDown();
 			}
 		});
-		assertTrue(cancelled.await(3, TimeUnit.SECONDS), "a stalled subscriber is eventually cancelled");
+		assertTrue(cancelled.await(3, TimeUnit.SECONDS), "a stalled subscriber is cancelled");
+		final long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+		assertTrue((elapsedMs >= 900) && (elapsedMs < 1500),
+				"cancelled after about one second, not " + elapsedMs + " ms");
 	}
 
 	@Test
-	void tricklingRedirectBodyIsCancelledAfterASecond() throws Exception {
+	// An upper-bound check on a real connection; the exact one-second timer is pinned by the subscriber test above.
+	void tricklingRedirectBodyIsCancelledWithinTheDrainLimit() throws Exception {
 		final java.util.concurrent.CountDownLatch cut = new java.util.concurrent.CountDownLatch(1);
 		server.createContext("/trickle", exchange -> {
 			exchange.getResponseHeaders().add("Location", "/context");
@@ -647,8 +669,8 @@ class JdkHttpTransportTest {
 		assertTrue(elapsedMs < 2500, "timed out after " + elapsedMs + " ms, not after the body arrived");
 	}
 
-	// A blocking callback on a timed-out request must not hold the thread that runs the retry back-off: before the
-	// fix both ran on the JDK's single shared delay thread, so this publish never sent its retry.
+	// A blocking callback on a timed-out request must not hold the JDK's single shared delay thread, which also runs
+	// the retry back-off.
 	@Test
 	void blockingTimeoutCallbackDoesNotStallRetries() {
 		failFirst = 1;

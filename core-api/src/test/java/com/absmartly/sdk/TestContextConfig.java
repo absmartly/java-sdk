@@ -3,10 +3,7 @@ package com.absmartly.sdk;
 import java.time.Duration;
 import java.util.Map;
 
-/**
- * The 1.x ContextConfig call shape over {@link ContextOptions.Builder}, so the ported 1.x engine tests keep their
- * original arrangement code. Production code uses {@link ContextOptions} directly.
- */
+/** A setter-style builder over {@link ContextOptions.Builder} for the engine tests' arrangement code. */
 final class TestContextConfig {
 	static TestContextConfig create() {
 		return new TestContextConfig();

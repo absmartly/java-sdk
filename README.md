@@ -62,7 +62,7 @@ ABsmartlyClient client = ABsmartlyClient.builder()
 | `environment(String)` | yes | The environment name, as configured in ABsmartly. |
 | `applicationVersion(String or long)` | no | Sent as the `X-Application-Version` header when it is a whole number of at most 18 digits, otherwise as `0`. |
 | `transport(Transport)` | no | The HTTP stack; defaults to `JdkHttpTransport`. See [HTTP transport](#http-transport). |
-| `executor(Executor)` | no | Runs the SDK's asynchronous work (decoding responses, the transport's callbacks and retries, the event streams). Defaults to a pool of daemon threads. |
+| `executor(Executor)` | no | Runs the SDK's asynchronous work (decoding responses, the event streams). The default transport has its own execution path (`JdkHttpTransport.builder().executor(...)`), so blocking on this executor, for example closing a context inside one of its stages, cannot starve the transport. Defaults to a pool of daemon threads. |
 | `scheduler(ScheduledExecutorService)` | no | Runs automatic publishing and refreshing. Defaults to one daemon thread, shut down with the client; a scheduler you supply is left running. |
 
 ### Creating a context

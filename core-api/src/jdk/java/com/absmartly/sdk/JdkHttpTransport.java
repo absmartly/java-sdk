@@ -113,17 +113,8 @@ public final class JdkHttpTransport implements Transport {
 	// publish (a PUT) is never silently dropped.
 	private CompletableFuture<Response> followRedirect(final HttpRequest request, final HttpResponse<byte[]> response,
 			final int execCount, final int redirects, final long deadline, final CompletableFuture<Void> drained) {
-		final java.util.Optional<String> location = response.headers().firstValue("Location");
-		if (!location.isPresent() || (redirects >= MAX_REDIRECTS)) {
-			return null;
-		}
-		final java.net.URI target;
-		try {
-			target = request.uri().resolve(location.get());
-		} catch (final IllegalArgumentException e) {
-			return null;
-		}
-		if (!sameOrigin(request.uri(), target)) {
+		final java.net.URI target = redirectTarget(request.uri(), response.headers(), redirects);
+		if (target == null) {
 			return null;
 		}
 		final int status = response.statusCode();
@@ -145,7 +136,11 @@ public final class JdkHttpTransport implements Transport {
 		final HttpRequest hop = next.build();
 		// completeOnTimeout fires on the JDK's shared delay thread: the hop is handed to the callback executor so
 		// neither it nor the caller's callbacks run there.
-		return onCallbackExecutor(drained.copy().completeOnTimeout(null, DRAIN_WAIT_MS, TimeUnit.MILLISECONDS), hop)
+		// The drain wait never extends the attempt: it is cut to whatever remains of the request deadline.
+		final long waitNanos = (requestTimeout_ != null)
+				? Math.max(0, Math.min(TimeUnit.MILLISECONDS.toNanos(DRAIN_WAIT_MS), deadline - System.nanoTime()))
+				: TimeUnit.MILLISECONDS.toNanos(DRAIN_WAIT_MS);
+		return onCallbackExecutor(drained.copy().completeOnTimeout(null, waitNanos, TimeUnit.NANOSECONDS), hop)
 				.thenCompose(ignored -> {
 					hopObserver.onHop();
 					return attempt(hop, execCount, redirects + 1, deadline);
@@ -170,14 +165,12 @@ public final class JdkHttpTransport implements Transport {
 				|| (statusCode == 308);
 	}
 
-	// A redirect this transport will follow is acted on from its headers: its body is discarded, never awaited, so a
-	// stalled redirect body cannot hold up the request. Every other response's body is read in full.
+	// Followed redirects get a DiscardingSubscriber (see below); every other response's body is read in full.
 	private HttpResponse.BodyHandler<byte[]> bodyHandler(final HttpRequest request, final int redirects,
 			final CompletableFuture<Void> redirectDrained) {
 		return info -> {
-			if (isRedirect(info.statusCode()) && (redirects < MAX_REDIRECTS)) {
-				final java.util.Optional<String> location = info.headers().firstValue("Location");
-				if (location.isPresent() && isFollowable(request.uri(), location.get())) {
+			if (isRedirect(info.statusCode())) {
+				if (redirectTarget(request.uri(), info.headers(), redirects) != null) {
 					final DiscardingSubscriber discarding = new DiscardingSubscriber();
 					discarding.drained.whenComplete((ignored, error) -> redirectDrained.complete(null));
 					return discarding;
@@ -252,11 +245,19 @@ public final class JdkHttpTransport implements Transport {
 		}
 	}
 
-	private static boolean isFollowable(final java.net.URI from, final String location) {
+	// The redirect this transport follows (same origin, within MAX_REDIRECTS), or null: one rule for both choosing
+	// the body subscriber and building the next hop.
+	private static java.net.@Nullable URI redirectTarget(final java.net.URI from,
+			final java.net.http.HttpHeaders headers, final int redirects) {
+		final java.util.Optional<String> location = headers.firstValue("Location");
+		if (!location.isPresent() || (redirects >= MAX_REDIRECTS)) {
+			return null;
+		}
 		try {
-			return sameOrigin(from, from.resolve(location));
+			final java.net.URI target = from.resolve(location.get());
+			return sameOrigin(from, target) ? target : null;
 		} catch (final IllegalArgumentException e) {
-			return false;
+			return null;
 		}
 	}
 

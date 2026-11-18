@@ -189,7 +189,14 @@ public final class ABsmartlyClient implements AutoCloseable {
 		}
 
 		try {
-			events_.closeStream();
+			try {
+				events_.closeStream();
+			} catch (final RuntimeException e) {
+				// The stream's terminal delivery could not be scheduled (a shut-down executor): its subscribers miss
+				// onComplete, but the client's own resources are still released.
+				org.slf4j.LoggerFactory.getLogger(ABsmartlyClient.class)
+						.warn("ABsmartly event stream could not complete on close: {}", e.toString());
+			}
 			if (ownsTransport_) {
 				client_.close();
 			}
@@ -269,9 +276,11 @@ public final class ABsmartlyClient implements AutoCloseable {
 		}
 
 		/**
-		 * The executor for the SDK's asynchronous work: decoding responses, the default transport's callbacks and
-		 * retries, and delivering the client's and its contexts' {@code events()} streams. Request bodies are encoded
-		 * on the calling thread. Defaults to a pool of daemon threads.
+		 * The executor for the SDK's asynchronous work: decoding responses and delivering the client's and its
+		 * contexts' {@code events()} streams. Request bodies are encoded on the calling thread. The default transport
+		 * keeps its own execution path ({@code JdkHttpTransport.builder().executor(...)} configures it), so a
+		 * caller blocking on this executor, such as closing a context inside one of its stages, cannot starve the
+		 * transport. Defaults to a pool of daemon threads.
 		 */
 		public Builder executor(final Executor executor) {
 			executor_ = executor;

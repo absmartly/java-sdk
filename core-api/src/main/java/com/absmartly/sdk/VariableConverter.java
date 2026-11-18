@@ -87,6 +87,10 @@ final class VariableConverter {
 		if (value == null) {
 			return defaultValue;
 		}
+		if (value == Json.UNDECODABLE) {
+			log.warn("ABsmartly variable '{}' cannot be read exactly", key);
+			return defaultValue;
+		}
 		if (((value instanceof Double) || (value instanceof Float)) && !Double.isFinite(((Number) value).doubleValue())
 				&& isFloatingType(type)) {
 			log.warn("ABsmartly variable '{}' is {}, not a finite number", key, value);

@@ -811,6 +811,90 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void anUndecodableNumberAffectsOnlyItsOwnKey() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"fraction\":1.0000000000000001,\"nested\":[1e-2147483648],\"wild\":1e-2147483648,\"count\":3}")));
+		final Context context = client.context(SESSION);
+		assertEquals(-1, context.variable("fraction", -1), "an unrelated undecodable value changes nothing here");
+		assertEquals(new BigDecimal("1.0000000000000001"), context.variable("fraction", BigDecimal.ZERO));
+		assertEquals(-1.0, context.variable("wild", -1.0), "its own key falls back instead of using the rounded value");
+		assertEquals(3, context.variable("count", 0));
+		assertEquals(0.0, context.variableValue("wild", null), "raw reads are unchanged");
+	}
+
+	@Test
+	void clientCloseReleasesResourcesWhenStreamTerminationIsRejected() throws Exception {
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newCachedThreadPool();
+		final java.util.concurrent.atomic.AtomicBoolean refuse = new java.util.concurrent.atomic.AtomicBoolean();
+		final java.util.concurrent.Executor executor = command -> {
+			if (refuse.get()) {
+				throw new java.util.concurrent.RejectedExecutionException("shut down");
+			}
+			pool.execute(command);
+		};
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+				.application("a").environment("e").transport(transport).executor(executor)
+				.defaultTransport(() -> transport).build();
+		try {
+			client.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			refuse.set(true);
+			assertDoesNotThrow(client::close);
+			assertFalse(transport.closed, "a caller-supplied transport stays open");
+			final FakeTransport owned = FakeTransport.ok(CONTEXT_JSON);
+			final ABsmartlyClient owning = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").executor(executor).defaultTransport(() -> owned).build();
+			refuse.set(false);
+			owning.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			refuse.set(true);
+			assertDoesNotThrow(owning::close);
+			assertTrue(owned.closed, "the owned transport is closed even when stream termination is rejected");
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	@Test
+	void clearedOverrideOfAnAbsentExperimentIsNoLongerServed() {
+		final ABsmartlyClient client = client(FakeTransport.ok("{\"experiments\":[]}"));
+		final Context context = client.context(SESSION, ContextData.fromJson("{\"experiments\":[]}"));
+		context.setOverride("unknown", 2);
+		assertEquals(2, context.peekTreatment("unknown"));
+		context.clearOverride("unknown");
+		assertNull(context.override("unknown"));
+		assertEquals(0, context.peekTreatment("unknown"), "a cleared override is not served from the cache");
+		assertEquals(0, context.treatment("unknown"));
+	}
+
+	@Test
 	void typedNumericReadsUseTheExactJsonToken() {
 		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
 				"{\"fraction\":1.0000000000000001,\"tiny\":1e-400,\"id\":9007199254740993,\"price\":19.99,"

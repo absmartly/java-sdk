@@ -6,7 +6,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import com.absmartly.sdk.internal.Clock;
 import com.absmartly.sdk.internal.json.ContextPayload;
 
-/** Builds a {@link Context} straight on the engine seams, as the 1.x {@code Context.create} overloads did. */
+/** Builds a {@link Context} straight on the engine seams. */
 final class TestContexts {
 	private TestContexts() {}
 

@@ -223,7 +223,6 @@ public final class Context implements AutoCloseable {
 		return join(readyAsync());
 	}
 
-	// Waits for the load to finish, successfully or not, without throwing.
 	Context awaitLoad() {
 		final CompletableFuture<Void> future = readyFuture_.get();
 		if ((future != null) && !future.isDone()) {
@@ -583,13 +582,7 @@ public final class Context implements AutoCloseable {
 
 	/** Every unit's UID as it was set (String or Number), as an unmodifiable snapshot. */
 	public Map<String, Object> unitValues() {
-		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
-		try {
-			readLock.lock();
-			return Collections.unmodifiableMap(new HashMap<String, Object>(units_));
-		} finally {
-			readLock.unlock();
-		}
+		return Concurrency.snapshotRW(contextLock_, units_);
 	}
 
 	public void setUnits(final Map<String, ?> units) {
@@ -939,7 +932,7 @@ public final class Context implements AutoCloseable {
 
 	private static @Nullable Object exactVariable(final @Nullable Assignment assignment, final String key,
 			final Class<?> type) {
-		if ((assignment == null) || (assignment.variables == null) || !assignment.variables.containsKey(key)) {
+		if (assignment == null) {
 			return null;
 		}
 		final Object value = assignment.variables.get(key);
@@ -948,9 +941,13 @@ public final class Context implements AutoCloseable {
 			return value;
 		}
 		final Object exact = assignment.exactNumbers.get(key);
+		if (!(exact instanceof Number)) {
+			// The written value could not be decoded exactly: never validate the rounded Double in its place.
+			return Json.UNDECODABLE;
+		}
 		// -0.0 has no exact BigDecimal: keep the parsed value so its sign survives, as variableValue returns it.
-		if (!(exact instanceof Number) || ((exact instanceof BigDecimal) && (((BigDecimal) exact).signum() == 0)
-				&& (value instanceof Double) && (Double.doubleToRawLongBits((Double) value) != 0))) {
+		if ((exact instanceof BigDecimal) && (((BigDecimal) exact).signum() == 0)
+				&& (Double.doubleToRawLongBits((Double) value) != 0)) {
 			return value;
 		}
 		return exact;
@@ -1118,12 +1115,7 @@ public final class Context implements AutoCloseable {
 	// Do not expose the internal completion gate: completing or cancelling a caller's dependent future
 	// must not release any other close caller.
 	private static CompletableFuture<Void> closeCallerFuture(final CompletableFuture<Void> attempt) {
-		return attempt.thenApply(new Function<Void, Void>() {
-			@Override
-			public Void apply(Void value) {
-				return null;
-			}
-		});
+		return attempt.thenApply(ignored -> null);
 	}
 
 	/** The blocking form of {@link #closeAsync()}, for try-with-resources. */
@@ -1843,8 +1835,9 @@ public final class Context implements AutoCloseable {
 							: !assignment.switchback);
 		} else if (experiment == null) {
 			// previously not-running experiment. A rule-won assignment is not "assigned" either, but its
-			// variant came from the experiment's rules, so it must be rebuilt once the experiment is gone.
-			return !assignment.assigned && !assignment.ruleOverride;
+			// variant came from the experiment's rules, so it must be rebuilt once the experiment is gone. An
+			// overridden one is stale once its override has been cleared.
+			return !assignment.assigned && !assignment.ruleOverride && !assignment.overridden;
 		} else if (assignment.ruleOverride || Objects.equals(custom, assignment.customAssignment)) {
 			// A matching rule wins over a custom assignment, so a custom change is not staleness.
 			return experimentMatches(experiment, assignment) && ruleMatches(experiment, assignment)

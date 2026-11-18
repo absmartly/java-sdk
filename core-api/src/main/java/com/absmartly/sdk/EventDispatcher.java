@@ -56,7 +56,6 @@ final class EventDispatcher {
 		if (stream_ == null) {
 			final EventStream stream = new EventStream(executor_);
 			if (streamClosed_) {
-				// The owner already closed: a stream first asked for now is complete from the start.
 				stream.close();
 			}
 			stream_ = stream;
