@@ -2,6 +2,7 @@
 -keep class com.absmartly.r8check.Probe { public static void main(java.lang.String[]); }
 # The probe's own class read with variable(key, Class, default), as the README tells apps to keep theirs.
 -keep class com.absmartly.r8check.Probe$Banner { *; }
+-keep class com.absmartly.r8check.Probe$Slot { *; }
 -dontwarn org.slf4j.**
 -dontwarn kotlin.**
 -dontwarn org.jetbrains.annotations.**

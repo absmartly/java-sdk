@@ -1,12 +1,13 @@
-# Consumer rules for com.absmartly.sdk:core-api 2.x, applied automatically by R8 and ProGuard (Android).
+# Consumer rules for com.absmartly.sdk:core-api 2.x. R8 (the Android Gradle plugin) applies them automatically;
+# with standalone ProGuard, -include this file. r8-check in the SDK repository tests every rule.
 
 # The relocated Jackson reads the JSON models reflectively: keep its own classes, the generic signatures and
 # annotations it inspects, and every model class with its fields and constructors.
 -keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
 -keep class com.absmartly.sdk.internal.shaded.jackson.** { *; }
 -keep class com.absmartly.sdk.internal.json.** { *; }
+# Jackson's optional integrations reference java.sql and java.beans, which Android does not have.
 -dontwarn com.absmartly.sdk.internal.shaded.jackson.**
--dontwarn java.beans.**
 
 # Typed variables recognise Kotlin's empty collections by class name.
 -keepnames class kotlin.collections.EmptyList
@@ -18,6 +19,4 @@
 -keep class com.absmartly.sdk.JdkHttpTransport {
 	public static com.absmartly.sdk.JdkHttpTransport create();
 }
--dontwarn com.absmartly.sdk.JdkHttpTransport
--dontwarn com.absmartly.sdk.JdkHttpTransport$*
 -dontwarn java.net.http.**

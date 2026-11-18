@@ -17,6 +17,12 @@ public final class Probe {
 	public static final class Banner {
 		public String color;
 		public int size;
+		// A generic field: Jackson needs the Signature attribute to build Slot elements rather than maps.
+		public List<Slot> slots;
+	}
+
+	public static final class Slot {
+		public String name;
 	}
 
 	private static final String JSON = "{\"futureField\":1,\"experiments\":[{\"id\":1,\"name\":\"exp\","
@@ -24,7 +30,8 @@ public final class Probe {
 			+ "\"trafficSeedHi\":0,\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":1,"
 			+ "\"applications\":[{\"name\":\"a\"}],\"variants\":[{\"name\":\"A\",\"config\":null},{\"name\":\"B\","
 			+ "\"config\":\"{\\\"items\\\":[\\\"x\\\"],\\\"limits\\\":{\\\"cart\\\":3},"
-			+ "\\\"banner\\\":{\\\"color\\\":\\\"red\\\",\\\"size\\\":2}}\"}]}]}";
+			+ "\\\"banner\\\":{\\\"color\\\":\\\"red\\\",\\\"size\\\":2,"
+			+ "\\\"slots\\\":[{\\\"name\\\":\\\"top\\\"}]}}\"}]}]}";
 
 	public static void main(final String[] args) {
 		final Transport transport = request -> CompletableFuture.completedFuture(new Transport.Response(200, "OK",
@@ -41,6 +48,9 @@ public final class Probe {
 					kotlin.collections.MapsKt.<String, Object> emptyMap())), "Kotlin emptyMap default");
 			final Banner banner = context.variable("banner", Banner.class, null);
 			check((banner != null) && "red".equals(banner.color) && (banner.size == 2), "class mapping");
+			check((banner.slots != null) && "top".equals(banner.slots.get(0).name), "generic field mapping");
+			check(java.util.Set.of("x").equals(context.variable("items",
+					kotlin.collections.SetsKt.<String> emptySet())), "Kotlin emptySet default");
 			context.track("goal");
 		}
 		// A minified JVM app with no Transport of its own: the default transport is found by name.

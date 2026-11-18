@@ -45,6 +45,9 @@ All tests can be run at once with the following command:
 ./gradlew build -PskipJdk25
 ```
 
+`r8-check` minifies a probe app with R8 against the jar's own consumer rules, on a JDK and on an Android-like library,
+and runs it. It downloads R8 from Google's Maven repository; pass `-PskipR8Check` to skip it offline.
+
 ### Formatting and static analysis checks
 
 You can run all formatting and static analysis checks at once with the following command:

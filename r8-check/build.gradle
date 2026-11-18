@@ -45,6 +45,48 @@ def minify = tasks.register("minifyProbe", JavaExec) {
 	}
 }
 
+// An Android-like library: only java.base and java.logging, which Android's core library roughly matches. It has no
+// java.net.http, java.sql or java.beans, so the shipped rules must silence every reference to them or R8 fails.
+def androidLike = layout.buildDirectory.dir("r8/android-like")
+def extractAndroidLike = tasks.register("extractAndroidLikeLibrary") {
+	outputs.dir(androidLike)
+	doLast {
+		def javaHome = new File(System.getProperty("java.home"))
+		def jmodTool = new File(javaHome, "bin/jmod")
+		def out = androidLike.get().asFile
+		project.delete(out)
+		out.mkdirs()
+		["java.base", "java.logging"].each { module ->
+			def dir = new File(out, module)
+			project.exec {
+				commandLine jmodTool.path, "extract", "--dir", dir.path, new File(javaHome, "jmods/${module}.jmod").path
+			}
+		}
+	}
+}
+
+def minifyAndroid = tasks.register("minifyProbeForAndroid", JavaExec) {
+	dependsOn jar, extractAndroidLike, project(":core-api").tasks.named("shadowJar")
+	def shaded = project(":core-api").tasks.named("shadowJar").flatMap { it.archiveFile }
+	def rules = file("src/main/r8/probe.pro")
+	def output = layout.buildDirectory.file("r8/probe-android.jar")
+	inputs.files(jar, shaded, rules, configurations.probeRuntime)
+	outputs.file(output)
+	classpath = configurations.r8
+	mainClass = "com.android.tools.r8.R8"
+	doFirst {
+		output.get().asFile.parentFile.mkdirs()
+		def libs = ["java.base", "java.logging"].collectMany { module ->
+			["--lib", new File(androidLike.get().asFile, "${module}/classes").path]
+		}
+		args = ["--classfile", "--release", "--output", output.get().asFile.path] + libs + [
+			"--pg-conf", rules.path,
+			"--pg-conf", rules.path,
+			jar.archiveFile.get().asFile.path, shaded.get().asFile.path] +
+			configurations.probeRuntime.files.collect { it.path }
+	}
+}
+
 // Runs the minified probe alone on the class path: everything it needs must have survived R8.
 def runMinified = tasks.register("runMinifiedProbe", JavaExec) {
 	dependsOn minify
@@ -52,4 +94,7 @@ def runMinified = tasks.register("runMinifiedProbe", JavaExec) {
 	mainClass = "com.absmartly.r8check.Probe"
 }
 
-check.dependsOn runMinified
+// R8 comes from Google's Maven repository: pass -PskipR8Check to build offline.
+if (!project.hasProperty("skipR8Check")) {
+	check.dependsOn runMinified, minifyAndroid
+}

@@ -43,6 +43,8 @@ support window.
 - `clearOverride`, `clearCustomAssignment`, `overrides()`, `customAssignments()`, `track(goal)`.
 - `ContextData.toJson()`/`fromJson()`.
 - `JdkHttpTransport.Builder.requestTimeout(Duration)`.
+- R8/ProGuard consumer rules in the jar (`META-INF/proguard/absmartly-core-api.pro`); R8 applies them
+  automatically. 1.x rules for `com.fasterxml.jackson.**` and `com.absmartly.sdk.json.**` can be removed.
 
 ## 1.9.0 (unreleased)
 
