@@ -306,19 +306,21 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
-	void permanentRedirectKeepsOtherMethods() {
-		for (final String method : new String[]{"PATCH", "DELETE"}) {
-			final String path = "/" + method.toLowerCase(java.util.Locale.ROOT);
-			server.createContext(path, exchange -> {
-				exchange.getRequestBody().readAllBytes();
-				exchange.getResponseHeaders().add("Location", "/context");
-				exchange.sendResponseHeaders(301, -1);
-				exchange.close();
-			});
-			final Transport.Response response = JdkHttpTransport.create().send(new Transport.Request(method,
-					base.resolve(path), Map.of("X-Test", "q"), "b".getBytes(StandardCharsets.UTF_8))).join();
-			assertEquals(method + " null q application/json; charset=UTF-8 b",
-					new String(response.body(), StandardCharsets.UTF_8));
+	void permanentAndFoundRedirectsKeepOtherMethods() {
+		for (final int status : new int[]{301, 302}) {
+			for (final String method : new String[]{"PATCH", "DELETE"}) {
+				final String path = "/" + method.toLowerCase(java.util.Locale.ROOT) + status;
+				server.createContext(path, exchange -> {
+					exchange.getRequestBody().readAllBytes();
+					exchange.getResponseHeaders().add("Location", "/context");
+					exchange.sendResponseHeaders(status, -1);
+					exchange.close();
+				});
+				final Transport.Response response = JdkHttpTransport.create().send(new Transport.Request(method,
+						base.resolve(path), Map.of("X-Test", "q"), "b".getBytes(StandardCharsets.UTF_8))).join();
+				assertEquals(method + " null q application/json; charset=UTF-8 b",
+						new String(response.body(), StandardCharsets.UTF_8), method + " behind " + status);
+			}
 		}
 	}
 
