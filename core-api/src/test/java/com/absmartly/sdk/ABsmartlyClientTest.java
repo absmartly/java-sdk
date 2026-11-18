@@ -835,6 +835,36 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
+	void nestedContainersAreCopiedDeeplyAndSeparately() {
+		final Map<String, Object> inner = new java.util.HashMap<>(Map.of("k", 1));
+		final List<Object> shared = new ArrayList<>(List.of(inner));
+		final Map<String, Object> value = new java.util.LinkedHashMap<>();
+		value.put("first", shared);
+		value.put("second", shared);
+		final Map<String, Object> copy = (Map<String, Object>) com.absmartly.sdk.internal.JsonValues
+				.snapshotValue(value);
+		inner.put("k", 2);
+		shared.add("late");
+		for (final String key : List.of("first", "second")) {
+			final List<Object> list = (List<Object>) copy.get(key);
+			assertEquals(1, list.size(), key + " is a copy, not the shared list");
+			final Map<String, Object> item = (Map<String, Object>) list.get(0);
+			assertEquals(1, item.get("k"), key + "'s map inside the list is copied too");
+			assertThrows(UnsupportedOperationException.class, () -> item.put("x", 3));
+		}
+	}
+
+	@Test
+	void undecodableTypedReadFallsBackEvenWhenTheConverterSeesTheMarker() {
+		assertEquals(-1,
+				VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, Integer.class, -1));
+		assertEquals("x",
+				VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, String.class, "x"));
+		assertNull(VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, Object.class, null));
+	}
+
+	@Test
 	void exactNumbersSkipNestedObjectsOfTheSameName() {
 		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
 				"{\"obj\":{\"price\":9.5},\"price\":1.25,\"later\":2.5}")));

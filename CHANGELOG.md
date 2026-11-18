@@ -2,7 +2,8 @@
 
 ## 2.0.0 (unreleased)
 
-A new, idiomatic API. Assignment, exposure, publish and refresh behaviour and the wire format are unchanged from 1.x.
+A new, idiomatic API. Assignment, exposure, publish and refresh behaviour and the wire format are unchanged from 1.x,
+except for custom objects in attribute and goal values (see Breaking changes).
 See [MIGRATING.md](MIGRATING.md) for every 1.x API and its 2.0 equivalent, and [SUPPORT.md](SUPPORT.md) for the 1.x
 support window.
 
@@ -34,6 +35,11 @@ support window.
 - Dependencies: Apache HttpClient 5, jsr305 and findbugs-annotations are gone; Jackson is shaded and relocated; SLF4J
   2.0; JSpecify nullability annotations on every public type.
 - Brand spelling `ABsmartly` in type names and messages ("ABsmartly Context is not yet ready").
+- Attribute and goal-property values that are your own objects publish differently: the shaded Jackson does not see
+  your Jackson annotations (`@JsonProperty`, `@JsonIgnore`...) or `JsonNode` types, so such a value is written from
+  its bean properties, and a field you excluded with `@JsonIgnore` is published. Pass maps, lists and scalars, or
+  convert first (for example `mapper.convertValue(value, Map.class)`). Strings, numbers, booleans, maps, lists,
+  sets, arrays, `BigDecimal`, `UUID` and `Path` publish as before.
 
 ### Added
 

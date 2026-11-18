@@ -168,7 +168,7 @@ behaviour.
 | `getUnitValue(t)` | `unitValue(t)` |
 | `getUnits()` | `units()` (unmodifiable) |
 | `getUnitValues()` | `unitValues()` (unmodifiable) |
-| `setAttribute(n, v)` / `setAttributes(map)` | same (`setAttributes` takes `Map<String, ?>`) |
+| `setAttribute(n, v)` / `setAttributes(map)` | same (`setAttributes` takes `Map<String, ?>`); a map or list value is copied when set; a value that is your own object is serialized without your Jackson annotations (see below) |
 | `getAttribute(n)` | `attribute(n)` |
 | `getAttributes()` | `attributes()` (unmodifiable) |
 | `setOverride(e, v)` / `setOverrides(map)` | same |
@@ -177,6 +177,24 @@ behaviour.
 | `setCustomAssignment(e, v)` / `setCustomAssignments(map)` | same |
 | `getCustomAssignment(e)` | `customAssignment(e)` |
 | (none) | `customAssignments()`, `clearCustomAssignment(e)` |
+
+**Custom objects as attribute or goal values.** Jackson is shaded inside the SDK, so it no longer sees your Jackson
+annotations or `JsonNode` types. A POJO is published from its bean properties (`@JsonProperty` renames and
+`@JsonIgnore` exclusions are not applied, so an ignored field is sent), an annotated enum sends its constant name, and
+a `JsonNode` sends its bean properties instead of its JSON. Convert such values before passing them:
+
+Before:
+```java
+context.setAttribute("plan", planObject);          // relied on @JsonProperty/@JsonIgnore
+context.setAttribute("profile", objectNode);       // a Jackson JsonNode
+```
+After:
+```java
+context.setAttribute("plan", mapper.convertValue(planObject, Map.class));
+context.setAttribute("profile", mapper.convertValue(objectNode, Map.class));
+```
+
+Strings, numbers, booleans, maps, lists, sets, arrays, `BigDecimal`, `UUID` and `Path` publish as in 1.x.
 
 ### Goals, publish, refresh, close
 

@@ -921,6 +921,15 @@ public final class Context implements AutoCloseable {
 	// numeric type is taken from the variant's config JSON as the exact decimal it was written as (BigDecimal or
 	// BigInteger), so a typed read can tell 1.0000000000000001 from 1 and 1e-400 from 0. variableValue, and typed
 	// reads as Object or Number, keep the 1.x Double/Integer values.
+	// Goal properties sorted by name (the order 1.x published them in), with nested maps and lists copied.
+	private static Map<String, Object> sortedSnapshot(final Map<String, ?> properties) {
+		final TreeMap<String, Object> sorted = new TreeMap<String, Object>();
+		for (final Map.Entry<String, ?> entry : properties.entrySet()) {
+			sorted.put(entry.getKey(), com.absmartly.sdk.internal.JsonValues.snapshotValue(entry.getValue()));
+		}
+		return Collections.unmodifiableMap(sorted);
+	}
+
 	private static boolean hasDouble(final Map<String, Object> variables) {
 		for (final Object value : variables.values()) {
 			if (value instanceof Double) {
@@ -966,7 +975,7 @@ public final class Context implements AutoCloseable {
 		achievement.achievedAt = clock_.millis();
 		achievement.name = goalName;
 		achievement.properties = (properties == null) ? null
-				: com.absmartly.sdk.internal.JsonValues.snapshot(new TreeMap<String, Object>(properties));
+				: sortedSnapshot(properties);
 
 		try {
 			eventLock_.lock();

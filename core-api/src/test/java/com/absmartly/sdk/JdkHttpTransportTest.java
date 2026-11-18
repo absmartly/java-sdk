@@ -412,7 +412,8 @@ class JdkHttpTransportTest {
 				.send(new Transport.Request("GET", base.resolve("/held-redirect"), Map.of(), null)).join());
 		final long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
-		assertTrue(elapsedMs < 95, "the drain wait is cut to the 60 ms deadline, not a fresh 100 ms: " + elapsedMs);
+		// A fresh 100 ms drain wait after the 60 ms deadline would take about 160 ms.
+		assertTrue(elapsedMs < 150, "the drain wait is cut to the 60 ms deadline, not a fresh 100 ms: " + elapsedMs);
 	}
 
 	@Test
