@@ -16,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 
 import org.jspecify.annotations.Nullable;
 
+import com.absmartly.sdk.internal.AsyncExecutor;
+
 /**
  * The default {@link Transport}, over {@code java.net.http.HttpClient} (Java 11+). Not available on Android, which has
  * no {@code java.net.http}: supply another transport there.
@@ -34,6 +36,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JdkHttpTransport implements Transport {
 	private static final long MIN_RETRY_INTERVAL_MS = 5;
+	// Any longer timeout overflows the millisecond deadline; it is far beyond any useful value anyway.
+	private static final Duration MAX_REQUEST_TIMEOUT = Duration.ofDays(365);
 
 	public static Builder builder() {
 		return new Builder();
@@ -51,6 +55,7 @@ public final class JdkHttpTransport implements Transport {
 		if (builder.httpClientVersion_ != null) {
 			http.version(builder.httpClientVersion_);
 		}
+		callbackExecutor_ = (builder.executor_ != null) ? builder.executor_ : AsyncExecutor.get();
 		if (builder.executor_ != null) {
 			http.executor(builder.executor_);
 		}
@@ -94,12 +99,13 @@ public final class JdkHttpTransport implements Transport {
 		final CompletableFuture<HttpResponse<byte[]>> sent = httpClient_.sendAsync(request,
 				HttpResponse.BodyHandlers.ofByteArray());
 		// HttpRequest.timeout stops applying once the headers arrive, so the deadline is also enforced on the whole
-		// exchange, up to the last byte of the body.
+		// exchange, up to the last byte of the body. orTimeout completes the future on the JDK's shared delay thread,
+		// so everything after it runs on the callback executor: a blocking callback must never hold that thread.
 		if (requestTimeout_ != null) {
 			sent.orTimeout(requestTimeout_.toMillis(), TimeUnit.MILLISECONDS);
 		}
 		return sent
-				.handle((response, error) -> {
+				.handleAsync((response, error) -> {
 					if (error == null) {
 						if (isRetryableStatus(response.statusCode()) && (execCount <= maxRetries_)) {
 							return retry(request, execCount);
@@ -109,6 +115,9 @@ public final class JdkHttpTransport implements Transport {
 					}
 					final Throwable cause = unwrap(error);
 					if (cause instanceof java.util.concurrent.TimeoutException) {
+						// Stops the exchange where the JDK supports it (closing the connection on JDK 17+; JDK 11's
+						// client ignores the cancellation and finishes reading the response in the background).
+						sent.cancel(true);
 						return CompletableFuture.<Response> failedFuture(new RequestTimeoutException(
 								request.method() + " " + request.uri().getPath() + " timed out", cause));
 					}
@@ -122,12 +131,13 @@ public final class JdkHttpTransport implements Transport {
 								request.method() + " " + request.uri().getPath() + what, cause));
 					}
 					return CompletableFuture.<Response> failedFuture(cause);
-				})
+				}, callbackExecutor_)
 				.thenCompose(future -> future);
 	}
 
 	private CompletableFuture<Response> retry(final HttpRequest request, final int execCount) {
-		final Executor delayed = CompletableFuture.delayedExecutor(retryDelayMillis(execCount), TimeUnit.MILLISECONDS);
+		final Executor delayed = CompletableFuture.delayedExecutor(retryDelayMillis(execCount), TimeUnit.MILLISECONDS,
+				callbackExecutor_);
 		return CompletableFuture.supplyAsync(() -> null, delayed)
 				.thenCompose(ignored -> attempt(request, execCount + 1));
 	}
@@ -186,6 +196,9 @@ public final class JdkHttpTransport implements Transport {
 		 */
 		public Builder requestTimeout(final Duration requestTimeout) {
 			requestTimeout_ = positive(requestTimeout, "requestTimeout");
+			if (requestTimeout.compareTo(MAX_REQUEST_TIMEOUT) > 0) {
+				throw new IllegalArgumentException("requestTimeout must be at most " + MAX_REQUEST_TIMEOUT);
+			}
 			return this;
 		}
 
@@ -241,6 +254,7 @@ public final class JdkHttpTransport implements Transport {
 	}
 
 	private final HttpClient httpClient_;
+	private final Executor callbackExecutor_;
 	private volatile boolean closed_;
 	private final @Nullable Duration requestTimeout_;
 	private final HttpClient.@Nullable Version httpVersion_;

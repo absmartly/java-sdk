@@ -265,6 +265,57 @@ class JdkHttpTransportTest {
 		assertTrue(elapsedMs < 2500, "timed out after " + elapsedMs + " ms, not after the body arrived");
 	}
 
+	// A blocking callback on a timed-out request must not hold the thread that runs the retry back-off: before the
+	// fix both ran on the JDK's single shared delay thread, so this publish never sent its retry.
+	@Test
+	void blockingTimeoutCallbackDoesNotStallRetries() {
+		failFirst = 1;
+		server.createContext("/slow", exchange -> {
+			try {
+				Thread.sleep(1500);
+				exchange.sendResponseHeaders(200, -1);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			exchange.close();
+		});
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(200))
+				.retryInterval(Duration.ofMillis(20)).build();
+		final String result = transport.send(new Transport.Request("GET", base.resolve("/slow"), Map.of(), null))
+				.handle((response, error) -> {
+					// Blocks inside the timeout callback on a request that needs a 503 retry.
+					return transport.send(new Transport.Request("PUT", base.resolve("/context"), Map.of(),
+							new byte[]{1})).orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).join().statusCode()
+							+ "";
+				}).join();
+		assertEquals("200", result);
+		assertEquals(2, calls.get(), "the 503 and its retry");
+	}
+
+	@Test
+	void timeoutCallbacksRunOnTheCallbackExecutor() {
+		server.createContext("/slow", exchange -> {
+			try {
+				Thread.sleep(2000);
+				exchange.sendResponseHeaders(200, -1);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			exchange.close();
+		});
+		final java.util.concurrent.ExecutorService callbacks = Executors
+				.newSingleThreadExecutor(runnable -> new Thread(runnable, "transport-callbacks"));
+		try {
+			final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(200))
+					.executor(callbacks).build();
+			final String thread = transport.send(new Transport.Request("GET", base.resolve("/slow"), Map.of(), null))
+					.handle((response, error) -> Thread.currentThread().getName()).join();
+			assertEquals("transport-callbacks", thread, "never the JDK's shared CompletableFuture delay thread");
+		} finally {
+			callbacks.shutdownNow();
+		}
+	}
+
 	@Test
 	void backoffMatchesOneDotX() {
 		final JdkHttpTransport transport = JdkHttpTransport.create();
@@ -313,6 +364,8 @@ class JdkHttpTransportTest {
 		assertThrows(IllegalArgumentException.class, () -> JdkHttpTransport.builder().connectTimeout(Duration.ZERO));
 		assertThrows(IllegalArgumentException.class,
 				() -> JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(-1)));
+		assertThrows(IllegalArgumentException.class,
+				() -> JdkHttpTransport.builder().requestTimeout(Duration.ofSeconds(Long.MAX_VALUE)));
 		assertThrows(IllegalArgumentException.class,
 				() -> JdkHttpTransport.builder().retryInterval(Duration.ofMillis(-1)));
 		assertEquals(5, JdkHttpTransport.builder().retryInterval(Duration.ZERO).build().retryDelayMillis(1));

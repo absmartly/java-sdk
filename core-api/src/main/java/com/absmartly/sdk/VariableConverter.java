@@ -15,17 +15,31 @@ final class VariableConverter {
 
 	private VariableConverter() {}
 
-	// The type a default value asks for: its own class, except that any List or Map default (Collections.emptyList(),
-	// List.of(...), an unmodifiable map...) asks for the interface, since JSON arrays and objects decode to ArrayList and
-	// LinkedHashMap whatever implementation the default uses.
+	// The type a default value asks for: its own class, except that a List or Map default whose class cannot be built
+	// (Collections.emptyList(), List.of(...), unmodifiable views: no public no-argument constructor) asks for the
+	// interface, since JSON arrays and objects decode to ArrayList and LinkedHashMap. A constructible collection class
+	// (TreeMap, LinkedList...) is kept, so the value is converted into it.
 	static Class<?> inferType(final Object defaultValue) {
-		if (defaultValue instanceof java.util.List) {
-			return java.util.List.class;
+		final Class<?> type = defaultValue.getClass();
+		if (!(defaultValue instanceof java.util.List) && !(defaultValue instanceof java.util.Map)) {
+			return type;
 		}
-		if (defaultValue instanceof java.util.Map) {
-			return java.util.Map.class;
+		if (isConstructible(type)) {
+			return type;
 		}
-		return defaultValue.getClass();
+		return (defaultValue instanceof java.util.List) ? java.util.List.class : java.util.Map.class;
+	}
+
+	private static boolean isConstructible(final Class<?> type) {
+		if (!java.lang.reflect.Modifier.isPublic(type.getModifiers())
+				|| java.lang.reflect.Modifier.isAbstract(type.getModifiers())) {
+			return false;
+		}
+		try {
+			return java.lang.reflect.Modifier.isPublic(type.getConstructor().getModifiers());
+		} catch (final NoSuchMethodException e) {
+			return false;
+		}
 	}
 
 	static <T> @Nullable T convert(final String key, final @Nullable Object value, final Class<T> type,
@@ -41,7 +55,11 @@ final class VariableConverter {
 			if (converted != null) {
 				return type.cast(converted);
 			}
-			if ((value instanceof java.util.Map) && !isScalarType(type)) {
+			if ((value instanceof java.util.Map) && !isScalarType(type)
+					&& !java.util.Collection.class.isAssignableFrom(type)) {
+				return Json.convert(value, type);
+			}
+			if ((value instanceof java.util.List) && java.util.Collection.class.isAssignableFrom(type)) {
 				return Json.convert(value, type);
 			}
 		} catch (final RuntimeException e) {

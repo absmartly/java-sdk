@@ -287,6 +287,16 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(List.of("fallback"), context.variable("missing", List.of("fallback")));
 		assertEquals(Collections.emptyMap(), context.variable("items", Collections.emptyMap()),
 				"an array is not a map: the default");
+
+		// A constructible collection default keeps its class.
+		final java.util.TreeMap<String, Object> limits = context.peekVariable("limits", new java.util.TreeMap<>());
+		assertEquals(new java.util.TreeMap<>(Map.of("cart", 3)), limits);
+		final java.util.LinkedList<String> linked = context.peekVariable("items", new java.util.LinkedList<>());
+		assertEquals(new java.util.LinkedList<>(List.of("actual")), linked);
+		final java.util.TreeMap<String, Object> fallback = new java.util.TreeMap<>(Map.of("x", 1));
+		assertSame(fallback, context.peekVariable("items", fallback), "an array is not a map: the default");
+		final java.util.LinkedList<String> listFallback = new java.util.LinkedList<>();
+		assertSame(listFallback, context.peekVariable("limits", listFallback), "an object is not a list");
 		assertEquals(1, context.pendingEventCount());
 	}
 
