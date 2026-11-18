@@ -2,7 +2,6 @@ package com.absmartly.sdk.json;
 
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -49,21 +48,32 @@ public class Experiment {
 	// Switchback configuration. randomizationType is "unit" or "switchback"; null means unit.
 	// Instants and durations are epoch/duration milliseconds. Carryover and burn windows are
 	// analysis-only and never read by assignment.
+	// A value of the wrong shape is read as null (see SwitchbackFieldDeserializer), as releases that
+	// ignored these fields effectively did.
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForString.class)
 	public String randomizationType;
 	// Unit type name -> attribute path, in the served order (unit_type_id ascending). The order is
 	// semantic: the first unit yielding a value serves the experiment, so equals compares it too.
-	@JsonDeserialize(as = LinkedHashMap.class)
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForStringMap.class)
 	public Map<String, String> switchbackClusters;
 	// Allow-list of cluster key values; null or empty admits every value. The Collector serves an
 	// experiment that has no allow-list rows with this field absent, and builds its filter set only
 	// when the list is non-empty.
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForStringArray.class)
 	public String[] switchbackClusterValues;
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForLong.class)
 	public Long switchbackStartAt;
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForLong.class)
 	public Long switchbackPeriodMs;
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForLong.class)
 	public Long switchbackCarryoverDurationMs;
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForLong.class)
 	public Long switchbackBurnInDurationMs;
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForLong.class)
 	public Long switchbackBurnOutDurationMs;
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForString.class)
 	public String switchbackDesignType;
+	@JsonDeserialize(using = SwitchbackFieldDeserializer.ForString.class)
 	public String switchbackEstimand;
 
 	public Experiment() {}

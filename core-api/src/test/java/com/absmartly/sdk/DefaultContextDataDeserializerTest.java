@@ -330,6 +330,83 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		assertTrue(copy.toString().contains("assignmentRules='{\"rules\""));
 	}
 
+	// 1.9.0 ignored the switchback fields, so a value of the wrong shape must not fail the context:
+	// only that field reads as null, and the experiment and its neighbours still decode.
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"\"randomizationType\":{}", "\"randomizationType\":[1]",
+			"\"switchbackClusters\":\"x\"", "\"switchbackClusters\":[]", "\"switchbackClusters\":[\"a\"]",
+			"\"switchbackClusters\":{\"a\":{}}", "\"switchbackClusters\":{\"a\":[1]}",
+			"\"switchbackClusterValues\":\"x\"", "\"switchbackClusterValues\":[{}]", "\"switchbackClusterValues\":{}",
+			"\"switchbackStartAt\":\"abc\"", "\"switchbackStartAt\":1e30", "\"switchbackStartAt\":{}",
+			"\"switchbackStartAt\":true", "\"switchbackPeriodMs\":[]", "\"switchbackCarryoverDurationMs\":\"x\"",
+			"\"switchbackBurnInDurationMs\":{}", "\"switchbackBurnOutDurationMs\":99999999999999999999",
+			"\"switchbackDesignType\":{}", "\"switchbackEstimand\":[]",
+			"\"switchbackClusters\":{\"a\":\"x\",\"a\":{\"b\":1,\"b\":2}}",
+			"\"switchbackClusterValues\":[{\"a\":1,\"a\":2}]", "\"switchbackStartAt\":{\"a\":1,\"a\":2}"})
+	void malformedSwitchbackFieldIsIgnoredLikeIn190(final String field) throws Exception {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_bad\",\"unitType\":\"session_id\","
+				+ "\"randomizationType\":\"switchback\",\"switchbackPeriodMs\":3600000,\"switchbackEstimand\":\"ate\","
+				+ field + "},{\"id\":2,\"name\":\"exp_ok\",\"unitType\":\"session_id\"}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertNotNull(data);
+		assertEquals(2, data.experiments.length);
+		assertEquals("exp_bad", data.experiments[0].name);
+		assertEquals("session_id", data.experiments[0].unitType);
+		assertEquals("exp_ok", data.experiments[1].name);
+		final String name = field.substring(1, field.indexOf('"', 1));
+		assertNull(Experiment.class.getField(name).get(data.experiments[0]));
+		if (!name.equals("randomizationType")) {
+			assertEquals("switchback", data.experiments[0].randomizationType);
+		}
+		if (!name.equals("switchbackPeriodMs")) {
+			assertEquals(Long.valueOf(3600000L), data.experiments[0].switchbackPeriodMs);
+		}
+		if (!name.equals("switchbackEstimand")) {
+			assertEquals("ate", data.experiments[0].switchbackEstimand);
+		}
+	}
+
+	// Well-formed values keep Jackson's default coercions.
+	@Test
+	void switchbackFieldsKeepJacksonCoercions() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp\",\"randomizationType\":5,"
+				+ "\"switchbackClusters\":{\"a\":1,\"b\":null},\"switchbackClusterValues\":[1,true],"
+				+ "\"switchbackStartAt\":1.5,\"switchbackPeriodMs\":\"3600000\",\"switchbackDesignType\":null}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertNotNull(data);
+		final Experiment experiment = data.experiments[0];
+		assertEquals("5", experiment.randomizationType);
+		final Map<String, String> clusters = new LinkedHashMap<String, String>();
+		clusters.put("a", "1");
+		clusters.put("b", null);
+		assertEquals(clusters, experiment.switchbackClusters);
+		assertTrue(experiment.switchbackClusters instanceof LinkedHashMap);
+		assertArrayEquals(new String[]{"1", "true"}, experiment.switchbackClusterValues);
+		assertEquals(Long.valueOf(1L), experiment.switchbackStartAt);
+		assertEquals(Long.valueOf(3600000L), experiment.switchbackPeriodMs);
+		assertNull(experiment.switchbackDesignType);
+	}
+
+	// A duplicate key in a well-formed map keeps the last value, as Jackson reads any Map field.
+	@Test
+	void switchbackClustersDuplicateKeyKeepsTheLastValue() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp\","
+				+ "\"switchbackClusters\":{\"a\":\"x\",\"b\":\"y\",\"a\":\"z\"}}]}";
+		final byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+
+		assertNotNull(data);
+		final Map<String, String> clusters = new LinkedHashMap<String, String>();
+		clusters.put("a", "z");
+		clusters.put("b", "y");
+		assertEquals(clusters, data.experiments[0].switchbackClusters);
+	}
+
 	@Test
 	void malformedAssignmentRulesSkipOnlyThatExperiment() {
 		final String json = "{\"experiments\":["

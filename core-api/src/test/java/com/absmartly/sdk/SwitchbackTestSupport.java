@@ -16,6 +16,7 @@ final class SwitchbackTestSupport {
 		long now;
 		// When set, the next read returns this value once, then reads fall back to `now`.
 		Long nextRead;
+		int reads;
 
 		MutableClock(long now) {
 			this.now = now;
@@ -23,6 +24,7 @@ final class SwitchbackTestSupport {
 
 		@Override
 		public long millis() {
+			++reads;
 			if (nextRead != null) {
 				final long value = nextRead;
 				nextRead = null;
