@@ -811,6 +811,40 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
+	void setAttributeSnapshotsNestedContainersOnly() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final List<String> tags = new ArrayList<>(List.of("a"));
+		context.setAttribute("tags", tags);
+		tags.add("b");
+		assertEquals(List.of("a"), context.attribute("tags"), "a list attribute is copied when set");
+		final java.util.TreeSet<String> set = new java.util.TreeSet<>(List.of("vip"));
+		final String[] array = {"vip"};
+		final java.nio.file.Path path = java.nio.file.Paths.get("/tmp/x");
+		context.setAttribute("set", set);
+		context.setAttribute("array", array);
+		context.setAttribute("path", path);
+		assertSame(set, context.attribute("set"), "sets keep their type, as audiences see them in 1.x");
+		assertSame(array, context.attribute("array"), "arrays keep their type");
+		assertSame(path, context.attribute("path"), "an Iterable that is not a list is kept as is");
+		final Iterable<String> iterable = () -> List.of("x").iterator();
+		assertSame(iterable, com.absmartly.sdk.internal.JsonValues.snapshotValue(iterable));
+		context.track("goal", Map.of("path", path));
+		assertDoesNotThrow(context::publish);
+	}
+
+	@Test
+	void exactNumbersSkipNestedObjectsOfTheSameName() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"obj\":{\"price\":9.5},\"price\":1.25,\"later\":2.5}")));
+		final Context context = client.context(SESSION);
+		assertEquals(1.25, context.variable("price", 0.0), "the top-level price, not the nested one");
+		assertEquals(2.5, context.variable("later", 0.0));
+		assertEquals(new BigDecimal("1.25"), context.variable("price", BigDecimal.ZERO));
+	}
+
+	@Test
 	void anUndecodableNumberAffectsOnlyItsOwnKey() {
 		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
 				"{\"fraction\":1.0000000000000001,\"nested\":[1e-2147483648],\"wild\":1e-2147483648,\"count\":3}")));

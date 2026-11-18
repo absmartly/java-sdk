@@ -1,15 +1,20 @@
 package com.absmartly.sdk.internal;
 
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.jspecify.annotations.Nullable;
 
-/** Snapshots JSON containers without retaining mutable maps, lists or arrays supplied by a caller. */
+/**
+ * Snapshots the JSON containers a caller passes as attribute or goal values, so later changes to them cannot reach
+ * a queued publish or an event. Only Map and List are copied (into unmodifiable copies, recursively); every other
+ * value, including sets, arrays and other objects, is kept as it was given, so audiences and serialization see the
+ * same types as in 1.x.
+ */
 public final class JsonValues {
 	private JsonValues() {}
 
@@ -22,13 +27,16 @@ public final class JsonValues {
 	}
 
 	public static @Nullable Object snapshotValue(final @Nullable Object value) {
-		return snapshotValue(value, new java.util.IdentityHashMap<Object, Boolean>());
+		if (!(value instanceof Map) && !(value instanceof List)) {
+			return value;
+		}
+		return snapshotContainer(value, new IdentityHashMap<Object, Boolean>());
 	}
 
-	private static @Nullable Object snapshotValue(final @Nullable Object value,
-			final java.util.IdentityHashMap<Object, Boolean> ancestors) {
-		if (value == null) {
-			return null;
+	private static @Nullable Object snapshotContainer(final @Nullable Object value,
+			final IdentityHashMap<Object, Boolean> ancestors) {
+		if (!(value instanceof Map) && !(value instanceof List)) {
+			return value;
 		}
 		// Cyclic inputs are not JSON; keep the cycle for the evaluator/serializer to reject as before.
 		if (ancestors.put(value, Boolean.TRUE) != null) {
@@ -36,26 +44,17 @@ public final class JsonValues {
 		}
 		try {
 			if (value instanceof Map) {
-				final Map<Object, Object> result = new LinkedHashMap<Object, Object>();
+				final Map<Object, @Nullable Object> result = new LinkedHashMap<Object, @Nullable Object>();
 				for (final Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
-					result.put(entry.getKey(), snapshotValue(entry.getValue(), ancestors));
+					result.put(entry.getKey(), snapshotContainer(entry.getValue(), ancestors));
 				}
 				return Collections.unmodifiableMap(result);
 			}
-			if ((value instanceof Iterable) || ((value != null) && value.getClass().isArray())) {
-				final List<Object> result = new ArrayList<Object>();
-				if (value instanceof Iterable) {
-					for (final Object item : (Iterable<?>) value) {
-						result.add(snapshotValue(item, ancestors));
-					}
-				} else {
-					for (int i = 0; i < Array.getLength(value); ++i) {
-						result.add(snapshotValue(Array.get(value, i), ancestors));
-					}
-				}
-				return Collections.unmodifiableList(result);
+			final List<@Nullable Object> result = new ArrayList<@Nullable Object>(((List<?>) value).size());
+			for (final Object item : (List<?>) value) {
+				result.add(snapshotContainer(item, ancestors));
 			}
-			return value;
+			return Collections.unmodifiableList(result);
 		} finally {
 			ancestors.remove(value);
 		}

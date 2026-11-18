@@ -130,7 +130,7 @@ final class EventDispatcher {
 
 	static Goal toGoal(final GoalAchievement g) {
 		final Map<String, Object> properties = (g.properties != null)
-				? com.absmartly.sdk.internal.JsonValues.snapshot(g.properties)
+				? Collections.unmodifiableMap(g.properties)
 				: null;
 		return new Goal(g.name, g.achievedAt, properties);
 	}
