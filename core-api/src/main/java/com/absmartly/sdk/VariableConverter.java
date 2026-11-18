@@ -43,10 +43,11 @@ final class VariableConverter {
 			java.util.TreeSet.class, java.util.LinkedHashMap.class, java.util.TreeMap.class};
 
 	// Whether a value of `candidate` can stand in for the default: it implements every interface that declares methods
-	// on the default's class (or its superclasses), and extends the nearest public superclass of the default. Marker
-	// interfaces with no methods (Kotlin's KMappedMarker, RandomAccess, Serializable...) are skipped, so a Kotlin
-	// emptyList() or Collections.emptySet() takes a JDK collection, while an EnumSet default, whose public superclass
-	// is EnumSet, takes nothing: the caller's cast would fail.
+	// on the default's class (or its superclasses), and extends the nearest public, non-final superclass of the
+	// default. Marker interfaces with no methods (Kotlin's KMappedMarker, RandomAccess, Serializable...) are skipped,
+	// and so are final classes, which no caller can declare a variable of a subtype of: a Kotlin emptyList() (the
+	// public final kotlin.collections.EmptyList) or Collections.emptySet() takes a JDK collection, while an EnumSet
+	// default, whose nearest such superclass is EnumSet, takes nothing: the caller's cast would fail.
 	private static boolean implementsEveryInterfaceOf(final Class<?> candidate, final Class<?> type) {
 		for (Class<?> c = type; c != null; c = c.getSuperclass()) {
 			for (final Class<?> iface : c.getInterfaces()) {
@@ -56,7 +57,8 @@ final class VariableConverter {
 			}
 		}
 		Class<?> visible = type;
-		while ((visible != null) && !java.lang.reflect.Modifier.isPublic(visible.getModifiers())) {
+		while ((visible != null) && (!java.lang.reflect.Modifier.isPublic(visible.getModifiers())
+				|| java.lang.reflect.Modifier.isFinal(visible.getModifiers()))) {
 			visible = visible.getSuperclass();
 		}
 		return (visible == null) || visible.isAssignableFrom(candidate);
@@ -124,21 +126,18 @@ final class VariableConverter {
 			return null;
 		}
 		final BigDecimal decimal = toBigDecimal((Number) value);
-		if (type == Double.class) {
-			final double converted = ((Number) value).doubleValue();
-			if (!Double.isFinite(converted) || !losslessFloating(decimal, exactValue((Number) value),
-					new BigDecimal(converted), shortestDecimal(converted))) {
-				throw new ArithmeticException(value + " cannot be read as a Double without losing precision");
+		if ((type == Double.class) || (type == Float.class)) {
+			final boolean isDouble = type == Double.class;
+			final double converted = isDouble ? ((Number) value).doubleValue() : ((Number) value).floatValue();
+			if (!Double.isFinite(converted) || ((converted == 0) && (decimal.signum() != 0))) {
+				throw new ArithmeticException(value + " is out of range for a " + type.getSimpleName());
 			}
-			return converted;
-		}
-		if (type == Float.class) {
-			final float converted = ((Number) value).floatValue();
-			if (!Float.isFinite(converted) || !losslessFloating(decimal, exactValue((Number) value),
-					new BigDecimal(converted), shortestDecimal(converted))) {
-				throw new ArithmeticException(value + " cannot be read as a Float without losing precision");
+			// A whole-number source (an ID, a count) must survive exactly: 2^53 + 1 is not a double. A fractional or
+			// floating source rounds to the nearest value, as Java's own conversions do (0.1 is not exact either).
+			if (isWholeNumberType(value) && (new BigDecimal(converted).compareTo(decimal) != 0)) {
+				throw new ArithmeticException(value + " cannot be read as a " + type.getSimpleName() + " exactly");
 			}
-			return converted;
+			return isDouble ? (Object) converted : (Object) (float) converted;
 		}
 		if (type == BigDecimal.class) {
 			return decimal;
@@ -167,34 +166,9 @@ final class VariableConverter {
 		return null;
 	}
 
-	// The exact value of the source: binary for a Double or Float, decimal otherwise.
-	private static BigDecimal exactValue(final Number value) {
-		return ((value instanceof Double) || (value instanceof Float)) ? new BigDecimal(value.doubleValue())
-				: toBigDecimal(value);
-	}
-
-	// A floating conversion is lossless when the result is exactly the source value (2^60 as a Double), or when the
-	// result's shortest decimal is the source's shortest decimal (0.1, 19.99 or 1234.567 as a Float): the reader gets
-	// the number the config wrote. Both shortest forms are computed, so every JDK and Android agree; Double.toString
-	// and Float.toString changed their output in JDK 19.
-	private static boolean losslessFloating(final BigDecimal decimal, final BigDecimal exact,
-			final BigDecimal converted, final BigDecimal convertedShortest) {
-		return (converted.compareTo(exact) == 0) || (convertedShortest.compareTo(decimal) == 0);
-	}
-
-	// The shortest decimal that reads back as the same float.
-	static BigDecimal shortestDecimal(final float f) {
-		if (f == 0) {
-			return BigDecimal.ZERO;
-		}
-		final BigDecimal exact = new BigDecimal(f);
-		for (int digits = 1; digits < 9; ++digits) {
-			final BigDecimal rounded = exact.round(new java.math.MathContext(digits, java.math.RoundingMode.HALF_EVEN));
-			if (rounded.floatValue() == f) {
-				return rounded;
-			}
-		}
-		return exact.round(new java.math.MathContext(9, java.math.RoundingMode.HALF_EVEN));
+	private static boolean isWholeNumberType(final Object value) {
+		return (value instanceof Long) || (value instanceof Integer) || (value instanceof Short)
+				|| (value instanceof Byte) || (value instanceof BigInteger);
 	}
 
 	// BigInteger.longValueExact() and friends need Android API 31, so the range is checked by hand.
@@ -218,19 +192,34 @@ final class VariableConverter {
 		return BigDecimal.valueOf(value.longValue());
 	}
 
-	// The shortest decimal that reads back as the same double: the fewest significant digits (1 to 17) whose
-	// nearest double is `d`. Double.toString finds this only from JDK 19 (and differs on Android), so it is computed.
+	// The shortest decimal that reads back as the same double. Double.toString finds this only from JDK 19 (and
+	// differs on Android), so it is computed.
 	static BigDecimal shortestDecimal(final double d) {
-		if (d == 0) {
-			return BigDecimal.ZERO;
-		}
-		final BigDecimal exact = new BigDecimal(d);
-		for (int digits = 1; digits < 17; ++digits) {
+		return (d == 0) ? BigDecimal.ZERO : shortest(new BigDecimal(d), 17, candidate -> candidate.doubleValue() == d);
+	}
+
+	// The fewest significant digits that read back as the same value. At each length the exact value's rounding and its
+	// two neighbours at that length are tried, the closest that reads back winning: at a power of two the gap below
+	// is half the gap above, so the shortest decimal is not always the rounding (1.2621775E-29 for 2^-96 as a float).
+	private static BigDecimal shortest(final BigDecimal exact, final int maxDigits,
+			final java.util.function.Predicate<BigDecimal> readsBack) {
+		for (int digits = 1; digits < maxDigits; ++digits) {
 			final BigDecimal rounded = exact.round(new java.math.MathContext(digits, java.math.RoundingMode.HALF_EVEN));
-			if (rounded.doubleValue() == d) {
-				return rounded;
+			if (readsBack.test(rounded)) {
+				return rounded.stripTrailingZeros();
+			}
+			final BigDecimal unit = BigDecimal.ONE.scaleByPowerOfTen(-rounded.scale());
+			BigDecimal best = null;
+			for (final BigDecimal neighbour : new BigDecimal[]{rounded.subtract(unit), rounded.add(unit)}) {
+				if ((neighbour.precision() <= digits) && readsBack.test(neighbour) && ((best == null)
+						|| (neighbour.subtract(exact).abs().compareTo(best.subtract(exact).abs()) < 0))) {
+					best = neighbour;
+				}
+			}
+			if (best != null) {
+				return best.stripTrailingZeros();
 			}
 		}
-		return exact.round(new java.math.MathContext(17, java.math.RoundingMode.HALF_EVEN));
+		return exact.round(new java.math.MathContext(maxDigits, java.math.RoundingMode.HALF_EVEN)).stripTrailingZeros();
 	}
 }

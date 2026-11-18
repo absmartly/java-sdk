@@ -322,37 +322,55 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
-	void floatingConversionsRejectOverflowAndPrecisionLoss() {
-		assertEquals(-1.0, VariableConverter.convert("n", new BigInteger("9007199254740993"), Double.class, -1.0));
+	void floatingReadsRejectOverflowAndInexactWholeNumbers() {
+		assertEquals(-1.0, VariableConverter.convert("n", new BigInteger("9007199254740993"), Double.class, -1.0),
+				"2^53 + 1 is not a double: an ID must not silently change");
 		assertEquals(-1.0f, VariableConverter.convert("n", 16777217, Float.class, -1.0f));
 		assertEquals(-1.0, VariableConverter.convert("n", new BigDecimal("1e1000"), Double.class, -1.0));
 		assertEquals(-1.0f, VariableConverter.convert("n", Double.MAX_VALUE, Float.class, -1.0f));
-		assertEquals(0.5f, VariableConverter.convert("n", 0.5, Float.class, -1.0f));
+		assertEquals(-1.0f, VariableConverter.convert("n", 1.0e-50, Float.class, -1.0f), "underflows to zero");
 		assertEquals(-1.0f, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Float.class, -1.0f));
 		assertEquals(-1.0, VariableConverter.convert("n", Double.NaN, Double.class, -1.0));
+		assertEquals(0.0f, VariableConverter.convert("n", 0.0, Float.class, -1.0f));
 	}
 
 	@Test
-	void floatReadsDoNotDependOnTheJdk() {
-		// JDK 11's Double.toString gave non-shortest forms for these, which made them fall back to the default.
-		assertEquals(9.0e9f, VariableConverter.convert("n", 9.0e9, Float.class, -1.0f));
-		assertEquals(2.285692e9f, VariableConverter.convert("n", (double) 2.285692e9f, Float.class, -1.0f));
-		assertEquals(3.0e10f, VariableConverter.convert("n", 3.0e10, Float.class, -1.0f));
+	void floatingReadsReturnTheNearestValue() {
+		assertEquals(0x1p60, VariableConverter.convert("n", 1L << 60, Double.class, -1.0));
+		assertEquals(0x1p40f, VariableConverter.convert("n", 1L << 40, Float.class, -1.0f));
+		assertEquals(0.5f, VariableConverter.convert("n", 0.5, Float.class, -1.0f));
+		assertEquals(0.1f, VariableConverter.convert("n", 0.1, Float.class, -1.0f));
+		assertEquals(0.3f, VariableConverter.convert("n", (double) 0.3f, Float.class, -1.0f));
+		assertEquals(1234.567f, VariableConverter.convert("n", 1234.567, Float.class, -1.0f));
+		assertEquals(1.23456789f, VariableConverter.convert("n", 1.23456789, Float.class, -1.0f),
+				"rounded to the nearest float, as (float) 1.23456789 is");
+		assertEquals(Float.MIN_VALUE, VariableConverter.convert("n", 1.4e-45, Float.class, -1.0f));
 		assertEquals(1.0e23, VariableConverter.convert("n", new BigDecimal("1e23"), Double.class, -1.0));
-		assertEquals(new BigDecimal("2E-3"), VariableConverter.shortestDecimal(2.0e-3));
-		assertEquals(new BigDecimal("1E+23"), VariableConverter.shortestDecimal(1.0e23));
-		assertEquals(new BigDecimal("0.1"), VariableConverter.shortestDecimal(0.1));
+		assertEquals(19.99, VariableConverter.convert("n", 19.99, Double.class, -1.0));
+		assertEquals(0, new BigDecimal("0.1234567890123456")
+				.compareTo(VariableConverter.convert("n", 0.1234567890123456, BigDecimal.class, BigDecimal.ONE)));
+		// Every finite float, written the way the JDK prints it, reads back as itself on every JDK.
+		for (int exponent = -149; exponent <= 127; ++exponent) {
+			final float power = Math.scalb(1.0f, exponent);
+			assertEquals(power, VariableConverter.convert("n", Double.parseDouble(Float.toString(power)),
+					Float.class, Float.NaN), "2^" + exponent);
+		}
 		final java.util.Random random = new java.util.Random(42);
 		for (int i = 0; i < 20000; ++i) {
 			final float f = Float.intBitsToFloat(random.nextInt());
-			if (Float.isFinite(f)) {
-				assertEquals(f, VariableConverter.convert("n", (double) f, Float.class, Float.NaN), "float " + f);
+			if (Float.isFinite(f) && (f != 0)) {
+				assertEquals(f, VariableConverter.convert("n", Double.parseDouble(Float.toString(f)), Float.class,
+						Float.NaN), "float " + f);
 			}
 			final double d = Double.longBitsToDouble(random.nextLong());
 			if (Double.isFinite(d)) {
 				assertEquals(0, Double.compare(d, VariableConverter.shortestDecimal(d).doubleValue()), "double " + d);
+				assertEquals(d, VariableConverter.convert("n", d, Double.class, Double.NaN));
 			}
 		}
+		assertEquals(new BigDecimal("2E-3"), VariableConverter.shortestDecimal(2.0e-3));
+		assertEquals(new BigDecimal("1E+23"), VariableConverter.shortestDecimal(1.0e23));
+		assertEquals(new BigDecimal("0.1"), VariableConverter.shortestDecimal(0.1));
 	}
 
 	@Test
@@ -372,41 +390,20 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
-	void sevenDigitFloatsAreRead() {
-		assertEquals(1234.567f, VariableConverter.convert("n", 1234.567, Float.class, -1.0f));
-		assertEquals(0.1234567f, VariableConverter.convert("n", 0.1234567, Float.class, -1.0f));
-		assertEquals(12345.67f, VariableConverter.convert("n", 12345.67, Float.class, -1.0f));
-		assertEquals(9.999999f, VariableConverter.convert("n", 9.999999, Float.class, -1.0f));
-		assertEquals(1.0e23f, VariableConverter.convert("n", 1.0e23, Float.class, -1.0f));
-		assertEquals(-1.0f, VariableConverter.convert("n", 1.23456789, Float.class, -1.0f), "9 digits do not fit");
-		final java.util.Random random = new java.util.Random(7);
-		for (int i = 0; i < 20000; ++i) {
-			final BigDecimal decimal = BigDecimal.valueOf(random.nextInt(9_000_000) + 1_000_000, random.nextInt(10));
-			final float read = VariableConverter.convert("n", decimal.doubleValue(), Float.class, Float.NaN);
-			if (!Float.isNaN(read)) {
-				assertEquals(0, VariableConverter.shortestDecimal(read).compareTo(decimal), decimal.toString());
-			}
-		}
-	}
-
-	@Test
-	void kotlinStyleMarkerInterfacesDoNotBlockSubstitutes() {
-		final java.util.List<String> kotlinLike = new MarkedEmptyList();
-		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(kotlinLike));
-	}
-
-	interface Marker {}
-
-	private static final class MarkedEmptyList extends java.util.AbstractList<String> implements Marker {
-		@Override
-		public String get(final int index) {
-			throw new IndexOutOfBoundsException();
-		}
-
-		@Override
-		public int size() {
-			return 0;
-		}
+	@SuppressWarnings("unchecked")
+	void kotlinEmptyCollectionDefaultsConvert() {
+		final List<String> kotlinList = kotlin.collections.CollectionsKt.emptyList();
+		final java.util.Set<String> kotlinSet = kotlin.collections.SetsKt.emptySet();
+		final Map<String, Object> kotlinMap = kotlin.collections.MapsKt.emptyMap();
+		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(kotlinList));
+		assertEquals(java.util.LinkedHashSet.class, VariableConverter.inferType(kotlinSet));
+		assertEquals(java.util.LinkedHashMap.class, VariableConverter.inferType(kotlinMap));
+		assertEquals(List.of("actual"), VariableConverter.convert("items", List.of("actual"),
+				(Class<List<String>>) VariableConverter.inferType(kotlinList), kotlinList));
+		assertEquals(java.util.Set.of("actual"), VariableConverter.convert("items", List.of("actual"),
+				(Class<java.util.Set<String>>) VariableConverter.inferType(kotlinSet), kotlinSet));
+		assertEquals(Map.of("cart", 3), VariableConverter.convert("limits", Map.of("cart", 3),
+				(Class<Map<String, Object>>) VariableConverter.inferType(kotlinMap), kotlinMap));
 	}
 
 	@Test
@@ -418,17 +415,6 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(Double.POSITIVE_INFINITY, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Number.class,
 				null));
 		assertEquals(-1.0, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Double.class, -1.0));
-	}
-
-	@Test
-	void floatingConversionsKeepExactValues() {
-		assertEquals(0x1p60, VariableConverter.convert("n", 1L << 60, Double.class, -1.0));
-		assertEquals(0x1p62, VariableConverter.convert("n", 1L << 62, Double.class, -1.0));
-		assertEquals(0x1p40f, VariableConverter.convert("n", 1L << 40, Float.class, -1.0f));
-		assertEquals(0.3f, VariableConverter.convert("n", (double) 0.3f, Float.class, -1.0f));
-		assertEquals(0.1f, VariableConverter.convert("n", 0.1, Float.class, -1.0f));
-		assertEquals(19.99, VariableConverter.convert("n", 19.99, Double.class, -1.0));
-		assertEquals(1.0e300, VariableConverter.convert("n", new BigDecimal("1e300"), Double.class, -1.0));
 	}
 
 	@Test

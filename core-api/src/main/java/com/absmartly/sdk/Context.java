@@ -879,8 +879,9 @@ public final class Context implements AutoCloseable {
 	/**
 	 * A variable's value converted to the type of {@code defaultValue}, queuing the assigning experiment's exposure.
 	 * Returns {@code defaultValue} when no running experiment assigns the key, or when its value cannot be converted
-	 * (for example {@code "red"} for an {@code Integer} default; logged). Numbers convert between numeric types
-	 * ({@code 10} as {@code Long}, {@code Double}...).
+	 * (for example {@code "red"} for an {@code Integer} default; logged). Numbers convert between numeric types: to an
+	 * integer type only when the value is a whole number in range, to {@code Double}/{@code Float} as the nearest
+	 * value (a whole number only when it is exact, and never infinite, NaN or underflowing to zero).
 	 *
 	 * <pre>{@code
 	 * String color = context.variable("button.color", "blue");
