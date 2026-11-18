@@ -143,8 +143,8 @@ public final class JdkHttpTransport implements Transport {
 			next.GET();
 		}
 		final HttpRequest hop = next.build();
-		// completeOnTimeout fires on the JDK's shared delay thread: the hop is handed to the callback executor so neither
-		// it nor the caller's callbacks run there.
+		// completeOnTimeout fires on the JDK's shared delay thread: the hop is handed to the callback executor so
+		// neither it nor the caller's callbacks run there.
 		return onCallbackExecutor(drained.copy().completeOnTimeout(null, DRAIN_WAIT_MS, TimeUnit.MILLISECONDS), hop)
 				.thenCompose(ignored -> {
 					hopObserver.onHop();

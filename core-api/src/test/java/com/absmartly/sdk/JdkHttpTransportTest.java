@@ -17,6 +17,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -414,16 +415,11 @@ class JdkHttpTransportTest {
 			exchange.sendResponseHeaders(500, -1);
 			exchange.close();
 		});
-		final java.util.List<String> starters = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 		final java.util.concurrent.ExecutorService callbacks = Executors
 				.newSingleThreadExecutor(runnable -> new Thread(runnable, "transport-callbacks"));
-		final java.util.concurrent.Executor recording = command -> {
-			starters.add(Thread.currentThread().getName());
-			callbacks.execute(command);
-		};
 		try {
-			final JdkHttpTransport transport = JdkHttpTransport.builder().executor(recording).build();
-			final java.util.concurrent.atomic.AtomicReference<String> hopThread = new java.util.concurrent.atomic.AtomicReference<>();
+			final JdkHttpTransport transport = JdkHttpTransport.builder().executor(callbacks).build();
+			final AtomicReference<String> hopThread = new AtomicReference<>();
 			final JdkHttpTransport.HopObserver previous = JdkHttpTransport.hopObserver;
 			JdkHttpTransport.hopObserver = () -> hopThread.set(Thread.currentThread().getName());
 			try {
@@ -440,19 +436,46 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
-	void largeRedirectBodyIsCancelledAndTheHopStillRuns() {
-		final java.util.concurrent.atomic.AtomicBoolean cut = new java.util.concurrent.atomic.AtomicBoolean();
+	void tricklingRedirectBodyIsCancelledAfterASecond() throws Exception {
+		final java.util.concurrent.CountDownLatch cut = new java.util.concurrent.CountDownLatch(1);
+		server.createContext("/trickle", exchange -> {
+			exchange.getResponseHeaders().add("Location", "/context");
+			exchange.sendResponseHeaders(307, 25);
+			try (OutputStream out = exchange.getResponseBody()) {
+				for (int i = 0; i < 25; ++i) {
+					out.write('x');
+					out.flush();
+					Thread.sleep(200);
+				}
+			} catch (IOException e) {
+				cut.countDown();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		});
+		assertEquals(200, JdkHttpTransport.create()
+				.send(new Transport.Request("GET", base.resolve("/trickle"), Map.of(), null))
+				.orTimeout(5, TimeUnit.SECONDS).join().statusCode());
+		if (Runtime.version().feature() >= 16) {
+			assertTrue(cut.await(2500, TimeUnit.MILLISECONDS), "a drain still running after 1 s is cancelled");
+		}
+	}
+
+	@Test
+	void largeRedirectBodyIsCancelledAndTheHopStillRuns() throws Exception {
+		// 16 MiB: more than the socket buffers can absorb, so a cancelled drain always reaches the server.
+		final java.util.concurrent.CountDownLatch cut = new java.util.concurrent.CountDownLatch(1);
 		server.createContext("/big-redirect", exchange -> {
 			exchange.getResponseHeaders().add("Location", "/context");
-			exchange.sendResponseHeaders(307, 1 << 20);
+			exchange.sendResponseHeaders(307, 1 << 24);
 			try (OutputStream out = exchange.getResponseBody()) {
 				final byte[] chunk = new byte[8192];
-				for (int i = 0; i < 128; ++i) {
+				for (int i = 0; i < 2048; ++i) {
 					out.write(chunk);
 					out.flush();
 				}
 			} catch (IOException e) {
-				cut.set(true);
+				cut.countDown();
 			}
 		});
 		final Transport.Response response = JdkHttpTransport.create()
@@ -460,7 +483,7 @@ class JdkHttpTransportTest {
 				.orTimeout(5, TimeUnit.SECONDS).join();
 		assertEquals(200, response.statusCode());
 		if (Runtime.version().feature() >= 16) {
-			assertTrue(cut.get(), "a redirect body over 64 KiB is cancelled rather than drained");
+			assertTrue(cut.await(3, TimeUnit.SECONDS), "a redirect body over 64 KiB is cancelled rather than drained");
 		}
 	}
 
