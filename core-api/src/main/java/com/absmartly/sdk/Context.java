@@ -48,7 +48,7 @@ public class Context implements Closeable {
 	private static final char SWITCHBACK_KEY_SEPARATOR = '\u001f';
 	private static final long NO_SWITCHBACK_PERIOD = Long.MIN_VALUE;
 	// Passed for `now` when the installed data has no switchback: only switchbacks read the clock to
-	// resolve, so the ordinary read path skips the clock as in 1.9.0.
+	// resolve, so the ordinary read path skips the clock.
 	private static final long CLOCK_NOT_READ = Long.MIN_VALUE;
 	private static final int SWITCHBACK_RETAINED_PERIODS = 2;
 	// The Collector's switchback anchor bounds (Registry): an anchor must be hour aligned and in
@@ -749,11 +749,20 @@ public class Context implements Closeable {
 	}
 
 	// Each retry after a concurrent retirement resolves at a fresh clock reading and exposes at it.
+	// A switchback resolved without a caller reading (a refresh installed it after the clock was
+	// skipped) is re-resolved at one reading first, so its variant and exposedAt share a period.
 	private Assignment settleExposure(final Assignment assignment, final long resolvedAt,
 			final Function<Long, Assignment> resolver) {
 		Assignment current = assignment;
 		long now = resolvedAt;
 		for (int attempt = 0; current != null; ++attempt) {
+			if ((now == CLOCK_NOT_READ) && current.switchback) {
+				now = clock_.millis();
+				current = resolver.apply(now);
+				if (current == null) {
+					break;
+				}
+			}
 			if (triggerExposure(current, now) != ASSIGNMENT_RETIRED) {
 				return current;
 			}
@@ -1811,7 +1820,8 @@ public class Context implements Closeable {
 
 	// callerNow is the caller's single clock reading for this resolution, so the cache key, the drawn
 	// period and a switchback exposure's exposedAt all agree. A switchback installed by a refresh
-	// after the caller skipped the clock reads it here; its exposure then reads it again.
+	// after the caller skipped the clock reads it here; settleExposure then re-resolves it at one
+	// reading of its own before exposing.
 	private Assignment getAssignment(final String experimentName, final long callerNow) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		// The cached slot the read path found stale (null on a miss). The write path does not

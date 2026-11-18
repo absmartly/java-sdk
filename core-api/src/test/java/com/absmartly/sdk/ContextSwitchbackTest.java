@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1184,8 +1185,8 @@ class ContextSwitchbackTest {
 				publishExposures(context));
 	}
 
-	// Without a switchback in the data, reads do not consult the clock: a cached read costs what it
-	// did in 1.9.0, and the first exposure reads it once, at enqueue time.
+	// Without a switchback in the data, reads do not consult the clock; the first exposure reads it
+	// once, at enqueue time.
 	@Test
 	void readsSkipTheClockWithoutASwitchback() {
 		final Experiment unit = switchback(2, HOUR);
@@ -1225,6 +1226,33 @@ class ContextSwitchbackTest {
 		expose.invoke(context, "exp_sb", assignment, Long.MIN_VALUE);
 
 		assertEquals(EXPECTED_2_ARMS[3], context.peekTreatment("exp_sb"));
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[3], ANCHOR + 3 * HOUR, true, true)},
+				publishExposures(context));
+	}
+
+	// When that fallback reading and the exposure straddle a period boundary, the returned variant
+	// and the exposure's exposedAt still belong to the same period.
+	@Test
+	void switchbackInstalledAfterTheClockWasSkippedExposesTheVariantOfItsOwnPeriod() throws Exception {
+		final Experiment unit = switchback(2, "exp_unit", 2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		refreshTo(context, unit, switchback(2, HOUR));
+		clock.now = ANCHOR + 3 * HOUR - 1;
+
+		final Method get = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
+		get.setAccessible(true);
+		final Object assignment = get.invoke(context, "exp_sb", Long.MIN_VALUE);
+		final Method expose = Context.class.getDeclaredMethod("exposeTreatmentAssignment", String.class,
+				assignment.getClass(), long.class);
+		expose.setAccessible(true);
+		clock.now = ANCHOR + 3 * HOUR;
+		final Object exposed = expose.invoke(context, "exp_sb", assignment, Long.MIN_VALUE);
+		final Field variant = exposed.getClass().getDeclaredField("variant");
+		variant.setAccessible(true);
+
+		assertEquals(EXPECTED_2_ARMS[2], variant.getInt(assignment));
+		assertEquals(EXPECTED_2_ARMS[3], variant.getInt(exposed));
 		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[3], ANCHOR + 3 * HOUR, true, true)},
 				publishExposures(context));
 	}
