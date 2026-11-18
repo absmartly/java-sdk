@@ -436,6 +436,44 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void redirectDrainErrorsCompleteImmediately() throws Exception {
+		final Class<?> type = Class.forName("com.absmartly.sdk.JdkHttpTransport$DiscardingSubscriber");
+		final java.lang.reflect.Constructor<?> constructor = type.getDeclaredConstructor();
+		constructor.setAccessible(true);
+		final java.net.http.HttpResponse.BodySubscriber<?> subscriber = (java.net.http.HttpResponse.BodySubscriber<?>) constructor
+				.newInstance();
+		final java.lang.reflect.Field field = type.getDeclaredField("drained");
+		field.setAccessible(true);
+		final CompletableFuture<?> drained = (CompletableFuture<?>) field.get(subscriber);
+		assertFalse(drained.isDone());
+		subscriber.onError(new IOException("connection reset"));
+		assertTrue(drained.isDone(), "a failed body must release the drain wait immediately");
+	}
+
+	@Test
+	void redirectDrainCancellationHasAOneSecondDeadline() throws Exception {
+		final Class<?> type = Class.forName("com.absmartly.sdk.JdkHttpTransport$DiscardingSubscriber");
+		final java.lang.reflect.Field delay = type.getDeclaredField("DRAIN_TIMEOUT_MS");
+		delay.setAccessible(true);
+		assertEquals(1000L, delay.getLong(null), "the drain cancellation deadline is one second");
+		final java.lang.reflect.Constructor<?> constructor = type.getDeclaredConstructor();
+		constructor.setAccessible(true);
+		final java.net.http.HttpResponse.BodySubscriber<?> subscriber = (java.net.http.HttpResponse.BodySubscriber<?>) constructor
+				.newInstance();
+		final java.util.concurrent.CountDownLatch cancelled = new java.util.concurrent.CountDownLatch(1);
+		subscriber.onSubscribe(new java.util.concurrent.Flow.Subscription() {
+			@Override
+			public void request(final long count) {}
+
+			@Override
+			public void cancel() {
+				cancelled.countDown();
+			}
+		});
+		assertTrue(cancelled.await(3, TimeUnit.SECONDS), "a stalled subscriber is eventually cancelled");
+	}
+
+	@Test
 	void tricklingRedirectBodyIsCancelledAfterASecond() throws Exception {
 		final java.util.concurrent.CountDownLatch cut = new java.util.concurrent.CountDownLatch(1);
 		server.createContext("/trickle", exchange -> {
