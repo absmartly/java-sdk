@@ -45,10 +45,12 @@ def minify = tasks.register("minifyProbe", JavaExec) {
 	}
 }
 
-// An Android-like library: only java.base and java.logging, which Android's core library roughly matches. It has no
-// java.net.http, java.sql or java.beans, so the shipped rules must silence every reference to them or R8 fails.
+// An Android-like library, stricter than Android: only java.base and java.logging. Like Android it has no
+// java.net.http, java.beans.ConstructorProperties or java.beans.Transient (Android does have parts of java.sql and
+// java.beans; this has none), so the shipped rules must silence every reference to them or R8 fails.
 def androidLike = layout.buildDirectory.dir("r8/android-like")
 def extractAndroidLike = tasks.register("extractAndroidLikeLibrary") {
+	inputs.property("javaHome", System.getProperty("java.home"))
 	outputs.dir(androidLike)
 	doLast {
 		def javaHome = new File(System.getProperty("java.home"))
@@ -80,7 +82,6 @@ def minifyAndroid = tasks.register("minifyProbeForAndroid", JavaExec) {
 			["--lib", new File(androidLike.get().asFile, "${module}/classes").path]
 		}
 		args = ["--classfile", "--release", "--output", output.get().asFile.path] + libs + [
-			"--pg-conf", rules.path,
 			"--pg-conf", rules.path,
 			jar.archiveFile.get().asFile.path, shaded.get().asFile.path] +
 			configurations.probeRuntime.files.collect { it.path }

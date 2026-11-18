@@ -3,10 +3,11 @@
 
 # The relocated Jackson reads the JSON models reflectively: keep its own classes, the generic signatures and
 # annotations it inspects, and every model class with its fields and constructors.
--keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
+-keepattributes Signature,*Annotation*
 -keep class com.absmartly.sdk.internal.shaded.jackson.** { *; }
 -keep class com.absmartly.sdk.internal.json.** { *; }
-# Jackson's optional integrations reference java.sql and java.beans, which Android does not have.
+# Jackson's optional integrations reference classes Android does not have (java.beans.ConstructorProperties,
+# java.beans.Transient and others).
 -dontwarn com.absmartly.sdk.internal.shaded.jackson.**
 
 # Typed variables recognise Kotlin's empty collections by class name.
