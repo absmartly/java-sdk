@@ -363,7 +363,7 @@ class JdkHttpTransportTest {
 				.orTimeout(4, TimeUnit.SECONDS).join();
 		assertEquals(200, response.statusCode());
 		assertEquals(1, calls.get(), "the destination was reached without waiting for the redirect's body");
-		assertTrue(System.nanoTime() - start < 3_000_000_000L);
+		assertTrue(System.nanoTime() - start < 900_000_000L, "the hop waits at most 100 ms for the drain");
 	}
 
 	@Test
@@ -393,6 +393,75 @@ class JdkHttpTransportTest {
 		}
 		assertEquals(1, clients.size(), "each redirect's body drains before the next hop, so one connection serves "
 				+ "all 20 exchanges");
+	}
+
+	@Test
+	void stalledRedirectHopRunsOnTheCallbackExecutor() {
+		server.createContext("/stall-hop", exchange -> {
+			exchange.getResponseHeaders().add("Location", "/hop-target");
+			exchange.sendResponseHeaders(307, 2);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write('x');
+				out.flush();
+				Thread.sleep(2000);
+			} catch (IOException | InterruptedException e) {
+				// The client stopped reading.
+			}
+		});
+		// The hop fails before any I/O hand-off (the target refuses), so where its failure surfaces is where the hop
+		// itself ran: the callback executor, never the JDK's shared delay thread.
+		server.createContext("/hop-target", exchange -> {
+			exchange.sendResponseHeaders(500, -1);
+			exchange.close();
+		});
+		final java.util.List<String> starters = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+		final java.util.concurrent.ExecutorService callbacks = Executors
+				.newSingleThreadExecutor(runnable -> new Thread(runnable, "transport-callbacks"));
+		final java.util.concurrent.Executor recording = command -> {
+			starters.add(Thread.currentThread().getName());
+			callbacks.execute(command);
+		};
+		try {
+			final JdkHttpTransport transport = JdkHttpTransport.builder().executor(recording).build();
+			final java.util.concurrent.atomic.AtomicReference<String> hopThread = new java.util.concurrent.atomic.AtomicReference<>();
+			final JdkHttpTransport.HopObserver previous = JdkHttpTransport.hopObserver;
+			JdkHttpTransport.hopObserver = () -> hopThread.set(Thread.currentThread().getName());
+			try {
+				assertEquals(500, transport.send(new Transport.Request("GET", base.resolve("/stall-hop"), Map.of(),
+						null)).join().statusCode());
+			} finally {
+				JdkHttpTransport.hopObserver = previous;
+			}
+			assertEquals("transport-callbacks", hopThread.get(),
+					"the hop after a drain timeout never runs on the delay thread");
+		} finally {
+			callbacks.shutdownNow();
+		}
+	}
+
+	@Test
+	void largeRedirectBodyIsCancelledAndTheHopStillRuns() {
+		final java.util.concurrent.atomic.AtomicBoolean cut = new java.util.concurrent.atomic.AtomicBoolean();
+		server.createContext("/big-redirect", exchange -> {
+			exchange.getResponseHeaders().add("Location", "/context");
+			exchange.sendResponseHeaders(307, 1 << 20);
+			try (OutputStream out = exchange.getResponseBody()) {
+				final byte[] chunk = new byte[8192];
+				for (int i = 0; i < 128; ++i) {
+					out.write(chunk);
+					out.flush();
+				}
+			} catch (IOException e) {
+				cut.set(true);
+			}
+		});
+		final Transport.Response response = JdkHttpTransport.create()
+				.send(new Transport.Request("GET", base.resolve("/big-redirect"), Map.of(), null))
+				.orTimeout(5, TimeUnit.SECONDS).join();
+		assertEquals(200, response.statusCode());
+		if (Runtime.version().feature() >= 16) {
+			assertTrue(cut.get(), "a redirect body over 64 KiB is cancelled rather than drained");
+		}
 	}
 
 	@Test

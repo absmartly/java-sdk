@@ -143,8 +143,13 @@ public final class JdkHttpTransport implements Transport {
 			next.GET();
 		}
 		final HttpRequest hop = next.build();
-		return drained.copy().completeOnTimeout(null, DRAIN_WAIT_MS, TimeUnit.MILLISECONDS)
-				.thenCompose(ignored -> attempt(hop, execCount, redirects + 1, deadline));
+		// completeOnTimeout fires on the JDK's shared delay thread: the hop is handed to the callback executor so neither
+		// it nor the caller's callbacks run there.
+		return onCallbackExecutor(drained.copy().completeOnTimeout(null, DRAIN_WAIT_MS, TimeUnit.MILLISECONDS), hop)
+				.thenCompose(ignored -> {
+					hopObserver.onHop();
+					return attempt(hop, execCount, redirects + 1, deadline);
+				});
 	}
 
 	static boolean sameOrigin(final java.net.URI from, final java.net.URI to) {
@@ -188,6 +193,14 @@ public final class JdkHttpTransport implements Transport {
 	// never holds the request up. A body still arriving after DRAIN_TIMEOUT_MS, or larger than DRAIN_LIMIT, is
 	// cancelled, which closes that connection.
 	private static final long DRAIN_WAIT_MS = 100;
+
+	// For tests: called on the thread that starts each redirect hop.
+	@FunctionalInterface
+	interface HopObserver {
+		void onHop();
+	}
+
+	static volatile HopObserver hopObserver = () -> {};
 
 	private static final class DiscardingSubscriber implements HttpResponse.BodySubscriber<byte[]> {
 		private static final long DRAIN_LIMIT = 64 * 1024;
