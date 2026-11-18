@@ -51,7 +51,9 @@ allprojects {
 
 
 configure(subprojects.findAll {
-	["core-api"].contains(it.name)
+	[
+		"core-api"
+	].contains(it.name)
 }) {
 	apply plugin: "signing"
 	apply plugin: "maven-publish"

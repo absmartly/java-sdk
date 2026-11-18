@@ -66,7 +66,9 @@ jar {
 shadowJar {
 	archiveClassifier.set("")
 	from sourceSets.jdk.output
-	configurations = [project.configurations.runtimeClasspath]
+	configurations = [
+		project.configurations.runtimeClasspath
+	]
 	relocate "com.fasterxml.jackson", "${shadedPrefix}.jackson"
 	exclude "module-info.class"
 	exclude "META-INF/versions/**/module-info.class"
