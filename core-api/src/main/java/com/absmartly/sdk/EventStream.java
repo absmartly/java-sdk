@@ -19,21 +19,33 @@ final class EventStream {
 	private static final Logger log = LoggerFactory.getLogger(EventStream.class);
 
 	EventStream(final Executor executor) {
-		publisher_ = new SubmissionPublisher<ContextEvent>(executor, Flow.defaultBufferSize());
+		this(new SubmissionPublisher<ContextEvent>(executor, Flow.defaultBufferSize()));
+	}
+
+	// For tests: a publisher that closes between the isClosed check and the offer.
+	EventStream(final SubmissionPublisher<ContextEvent> publisher) {
+		publisher_ = publisher;
 	}
 
 	Flow.Publisher<ContextEvent> publisher() {
 		return publisher_;
 	}
 
+	// The stream can close between the check and the offer (the owner closing on another thread), when offer throws
+	// IllegalStateException; an event racing the close is dropped, never thrown into treatment() or track().
 	void submit(final ContextEvent event) {
 		if (publisher_.isClosed()) {
 			return;
 		}
-		final int lost = publisher_.offer(event, (subscriber, dropped) -> {
-			log.warn("ABsmartly event stream subscriber is too slow, dropped {}", dropped.type());
-			return false;
-		});
+		final int lost;
+		try {
+			lost = publisher_.offer(event, (subscriber, dropped) -> {
+				log.warn("ABsmartly event stream subscriber is too slow, dropped {}", dropped.type());
+				return false;
+			});
+		} catch (final IllegalStateException closed) {
+			return;
+		}
 		if (lost < 0) {
 			droppedCount_.addAndGet(-lost);
 		}

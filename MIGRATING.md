@@ -42,7 +42,8 @@ models moved, so those rules no longer match anything. Keep the fields of your o
 | `DefaultHTTPClientConfig.setMaxRetries(n)` / `setRetryInterval(ms)` | `.maxRetries(n)` / `.retryInterval(Duration)` |
 | `DefaultHTTPClientConfig.setHTTPVersionPolicy(p)` | `.httpVersion(HttpClient.Version)` |
 | `DefaultHTTPClientConfig.setConnectionKeepAlive`, `setConnectionRequestTimeout`, `setSecurityProvider` | removed (the JDK client manages its pool; configure TLS through the JDK) |
-| retry on 502/503, dropped connections and connect timeouts, no retry on refused connections, redirects followed | unchanged in `JdkHttpTransport`; the JDK client also retries a GET once on its own after a connection reset, and an exhausted connect timeout raises `RequestTimeoutException` |
+| retry on 502/503, dropped connections and connect timeouts, no retry on refused connections | unchanged in `JdkHttpTransport`; the JDK client also retries a GET once on its own after a connection reset, and an exhausted connect timeout raises `RequestTimeoutException` |
+| redirects followed to any host | followed only within the same scheme, host and port, so the API key never reaches another host; a redirect elsewhere fails the request with `HttpStatusException` (3xx) |
 | (none) | `JdkHttpTransport.builder().requestTimeout(Duration)` |
 | `sdk.close()` throws `IOException` | `client.close()` throws nothing |
 

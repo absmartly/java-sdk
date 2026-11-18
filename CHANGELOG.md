@@ -25,7 +25,8 @@ support window.
   `RequestTimeoutException`, `DecodingException`). Blocking methods throw the cause, never `CompletionException`.
 - `Transport` replaces `HTTPClient`; the default `JdkHttpTransport` uses `java.net.http`. It retries like the 1.x
   Apache client (502/503, dropped connections and connect timeouts, up to 5 times with the same back-off; a refused
-  connection is not retried) and follows redirects except https to http. Differences: when its connection is reset
+  connection is not retried) and follows redirects only within the same origin, so the API key never
+  reaches another host (1.x's Apache client followed cross-host redirects). Differences: when its connection is reset
   the JDK client also retries a GET once on its own, a connect timeout that exhausts the retries raises
   `RequestTimeoutException`, and the 1.x keep-alive, connection-pool and security-provider settings are gone.
 - The JSON model (`com.absmartly.sdk.json`) and `jsonexpr` packages are internal; the public `ContextData`, `Exposure`

@@ -770,6 +770,47 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void submitAfterACloseInTheGapIsDropped() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		// isClosed() says open, then the owner closes on another thread before offer() runs.
+		final java.util.concurrent.SubmissionPublisher<ContextEvent> racing = new java.util.concurrent.SubmissionPublisher<ContextEvent>(
+				Runnable::run, Flow.defaultBufferSize()) {
+			@Override
+			public boolean isClosed() {
+				final boolean closed = super.isClosed();
+				close();
+				return closed;
+			}
+		};
+		final EventStream stream = new EventStream(racing);
+		assertDoesNotThrow(() -> stream.submit(new CloseEvent(context, 0)));
+	}
+
+	@Test
+	void submitRacingCloseNeverThrows() throws Exception {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		for (int round = 0; round < 200; ++round) {
+			final EventStream stream = new EventStream(Runnable::run);
+			final CountDownLatch start = new CountDownLatch(1);
+			final CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
+				try {
+					start.await();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+				for (int i = 0; i < 200; ++i) {
+					stream.submit(new CloseEvent(context, i));
+				}
+			});
+			start.countDown();
+			stream.close();
+			producer.get(5, TimeUnit.SECONDS);
+		}
+	}
+
+	@Test
 	void slowSubscriberNeverBlocksTheProducer() throws Exception {
 		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
 		final EventStream stream = new EventStream(pool);

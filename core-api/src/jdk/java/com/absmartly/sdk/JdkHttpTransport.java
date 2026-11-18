@@ -26,9 +26,10 @@ import com.absmartly.sdk.internal.AsyncExecutor;
  * Retries follow the 1.x Apache transport: a request that gets a 502 or 503, fails with an I/O error after connecting
  * (for example a dropped connection) or times out while connecting is retried up to {@link Builder#maxRetries(int)}
  * times with exponential back-off, bounded by {@link Builder#retryInterval(Duration)}. A refused connection, any
- * other status and an expired {@link Builder#requestTimeout(Duration)} are not retried. Redirects are followed, except
- * from https to http. The JDK client itself also retries an idempotent GET once when its connection is reset, so a
- * GET can be sent up to twice per attempt.
+ * other status and an expired {@link Builder#requestTimeout(Duration)} are not retried. Redirects are followed only
+ * to the same scheme, host and port (up to 5), so the API key header never reaches another origin; a redirect
+ * elsewhere is returned as the 3xx response. The JDK client itself also retries an idempotent GET once when its
+ * connection is reset, so a GET can be sent up to twice per attempt.
  *
  * <p>
  * Plain {@code http://} endpoints use HTTP/1.1 (no h2c upgrade), as in 1.x; https negotiates HTTP/2 unless
@@ -51,7 +52,7 @@ public final class JdkHttpTransport implements Transport {
 	private JdkHttpTransport(final Builder builder) {
 		final HttpClient.Builder http = HttpClient.newBuilder()
 				.connectTimeout(builder.connectTimeout_)
-				.followRedirects(HttpClient.Redirect.NORMAL);
+				.followRedirects(HttpClient.Redirect.NEVER);
 		if (builder.httpClientVersion_ != null) {
 			http.version(builder.httpClientVersion_);
 		}
@@ -96,7 +97,68 @@ public final class JdkHttpTransport implements Transport {
 		return http.build();
 	}
 
+	private static final int MAX_REDIRECTS = 5;
+
 	private CompletableFuture<Response> attempt(final HttpRequest request, final int execCount) {
+		return attempt(request, execCount, 0);
+	}
+
+	// Redirects are followed here, not by the JDK client: it would send every request header, the API key included,
+	// to whatever host a redirect names. Only a redirect to the same scheme, host and port is followed; any other is
+	// returned to the caller as the 3xx response it is. 301/302/303 turn a non-GET into a GET without a body, as the
+	// JDK client and browsers do; 307/308 resend the same method and body.
+	private CompletableFuture<Response> followRedirect(final HttpRequest request, final HttpResponse<byte[]> response,
+			final int execCount, final int redirects) {
+		final java.util.Optional<String> location = response.headers().firstValue("Location");
+		if (!location.isPresent() || (redirects >= MAX_REDIRECTS)) {
+			return null;
+		}
+		final java.net.URI target;
+		try {
+			target = request.uri().resolve(location.get());
+		} catch (final IllegalArgumentException e) {
+			return null;
+		}
+		if (!sameOrigin(request.uri(), target)) {
+			return null;
+		}
+		final int status = response.statusCode();
+		final boolean keepMethod = (status == 307) || (status == 308);
+		final HttpRequest.Builder next = HttpRequest.newBuilder(target);
+		request.headers().map().forEach((name, values) -> {
+			if (keepMethod || !"Content-Type".equalsIgnoreCase(name)) {
+				values.forEach(value -> next.header(name, value));
+			}
+		});
+		request.timeout().ifPresent(next::timeout);
+		request.version().ifPresent(next::version);
+		if (keepMethod) {
+			next.method(request.method(), request.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()));
+		} else {
+			next.GET();
+		}
+		return attempt(next.build(), execCount, redirects + 1);
+	}
+
+	static boolean sameOrigin(final java.net.URI from, final java.net.URI to) {
+		return (from.getScheme() != null) && from.getScheme().equalsIgnoreCase(to.getScheme())
+				&& (from.getHost() != null) && from.getHost().equalsIgnoreCase(to.getHost())
+				&& (effectivePort(from) == effectivePort(to));
+	}
+
+	private static int effectivePort(final java.net.URI uri) {
+		if (uri.getPort() >= 0) {
+			return uri.getPort();
+		}
+		return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+	}
+
+	private static boolean isRedirect(final int statusCode) {
+		return (statusCode == 301) || (statusCode == 302) || (statusCode == 303) || (statusCode == 307)
+				|| (statusCode == 308);
+	}
+
+	private CompletableFuture<Response> attempt(final HttpRequest request, final int execCount, final int redirects) {
 		final CompletableFuture<HttpResponse<byte[]>> sent = httpClient_.sendAsync(request,
 				HttpResponse.BodyHandlers.ofByteArray());
 		// HttpRequest.timeout stops applying once the headers arrive, so the deadline is also enforced on the whole
@@ -111,6 +173,13 @@ public final class JdkHttpTransport implements Transport {
 					if (error == null) {
 						if (isRetryableStatus(response.statusCode()) && (execCount <= maxRetries_)) {
 							return retry(request, execCount);
+						}
+						if (isRedirect(response.statusCode())) {
+							final CompletableFuture<Response> redirected = followRedirect(request, response, execCount,
+									redirects);
+							if (redirected != null) {
+								return redirected;
+							}
 						}
 						return CompletableFuture.completedFuture(
 								new Response(response.statusCode(), "", response.body()));

@@ -350,7 +350,8 @@ Invalid arguments throw `IllegalArgumentException`. The blocking methods (`ready
 
 The default transport is `JdkHttpTransport`, over `java.net.http.HttpClient`. Like the 1.x transport, it retries a
 request that gets a 502 or 503, loses its connection or times out connecting, up to 5 times with exponential
-back-off, and follows redirects (never from https to http). A refused connection is not retried. Tune it, or plug in your own HTTP stack:
+back-off. It follows redirects only within the same scheme, host and port, so the API key never reaches another host.
+A refused connection is not retried. Tune it, or plug in your own HTTP stack:
 
 ```java
 ABsmartlyClient client = ABsmartlyClient.builder()

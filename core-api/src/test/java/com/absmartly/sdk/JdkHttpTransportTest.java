@@ -203,16 +203,78 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
-	void followsRedirects() {
+	void followsSameOriginRedirectsWithTheirHeaders() {
 		server.createContext("/old", exchange -> {
-			exchange.getResponseHeaders().add("Location", base.resolve("/context").toString());
+			exchange.getResponseHeaders().add("Location", "/context");
 			exchange.sendResponseHeaders(301, -1);
 			exchange.close();
 		});
 		final Transport.Response response = JdkHttpTransport.create()
 				.send(new Transport.Request("GET", base.resolve("/old"), Map.of("X-Test", "r"), null)).join();
 		assertEquals(200, response.statusCode());
+		assertEquals("GET null r null ", new String(response.body(), StandardCharsets.UTF_8));
 		assertEquals(1, calls.get());
+	}
+
+	@Test
+	void doesNotFollowRedirectsToAnotherOrigin() throws Exception {
+		final AtomicInteger otherCalls = new AtomicInteger();
+		final java.util.List<String> otherKeys = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+		final HttpServer other = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		other.createContext("/", exchange -> {
+			otherCalls.incrementAndGet();
+			otherKeys.add(String.valueOf(exchange.getRequestHeaders().getFirst("X-API-Key")));
+			exchange.sendResponseHeaders(200, -1);
+			exchange.close();
+		});
+		other.start();
+		try {
+			final String elsewhere = "http://127.0.0.1:" + other.getAddress().getPort() + "/steal";
+			server.createContext("/away", exchange -> {
+				exchange.getResponseHeaders().add("Location", elsewhere);
+				exchange.sendResponseHeaders(307, -1);
+				exchange.close();
+			});
+			final Transport.Response response = JdkHttpTransport.create().send(new Transport.Request("PUT",
+					base.resolve("/away"), Map.of("X-API-Key", "secret"), new byte[]{1})).join();
+			assertEquals(307, response.statusCode(), "the cross-origin redirect is returned, not followed");
+			assertEquals(0, otherCalls.get(), "the API key never reaches the other origin: " + otherKeys);
+		} finally {
+			other.stop(0);
+		}
+	}
+
+	@Test
+	void temporaryRedirectKeepsMethodAndBody() {
+		server.createContext("/moved", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			exchange.getResponseHeaders().add("Location", base.resolve("/context").toString());
+			exchange.sendResponseHeaders(308, -1);
+			exchange.close();
+		});
+		final Transport.Response response = JdkHttpTransport.create().send(new Transport.Request("PUT",
+				base.resolve("/moved"), Map.of("X-Test", "p"), "{}".getBytes(StandardCharsets.UTF_8))).join();
+		assertEquals("PUT null p application/json; charset=UTF-8 {}",
+				new String(response.body(), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	void redirectLoopsStop() {
+		server.createContext("/loop", exchange -> {
+			exchange.getResponseHeaders().add("Location", "/loop");
+			exchange.sendResponseHeaders(302, -1);
+			exchange.close();
+		});
+		assertEquals(302, JdkHttpTransport.create()
+				.send(new Transport.Request("GET", base.resolve("/loop"), Map.of(), null)).join().statusCode());
+	}
+
+	@Test
+	void sameOriginComparesSchemeHostAndPort() {
+		assertTrue(JdkHttpTransport.sameOrigin(URI.create("https://a.io/v1"), URI.create("https://A.io:443/x")));
+		assertFalse(JdkHttpTransport.sameOrigin(URI.create("https://a.io/v1"), URI.create("http://a.io/v1")));
+		assertFalse(JdkHttpTransport.sameOrigin(URI.create("https://a.io/v1"), URI.create("https://b.io/v1")));
+		assertFalse(JdkHttpTransport.sameOrigin(URI.create("http://a.io/v1"), URI.create("http://a.io:8080/v1")));
 	}
 
 	@Test
