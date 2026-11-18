@@ -181,6 +181,9 @@ public class Checkout {
 Checkout checkout = context.variable("checkout", Checkout.class, Checkout.DEFAULT);
 ```
 
+With R8 or ProGuard, keep such classes' fields (`-keep class com.example.Checkout { *; }`): they are filled
+reflectively, so a stripped field silently reads as the default. The SDK's own rules ship in the jar.
+
 `variableValue(key, default)` returns the raw JSON value (`String`, `Number`, `Boolean`, `Map`, `List` or `null`).
 `variableKeys()` lists every variable key with the experiments that define it.
 

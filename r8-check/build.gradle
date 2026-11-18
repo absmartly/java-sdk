@@ -1,0 +1,55 @@
+description = """Minifies a probe app with R8 against the shaded core-api jar and runs it, so the consumer rules in
+META-INF/proguard are tested by what they keep, not only by being present."""
+
+apply plugin: "java"
+
+repositories {
+	google()
+}
+
+configurations {
+	r8
+	probeRuntime
+}
+
+def r8Version = "8.5.35"
+def kotlinVersion = "1.9.24"
+
+dependencies {
+	implementation project(path: ":core-api", configuration: "shadow")
+	implementation files(project(":core-api").tasks.named("shadowJar"))
+	implementation group: "org.jetbrains.kotlin", name: "kotlin-stdlib", version: kotlinVersion
+	r8 group: "com.android.tools", name: "r8", version: r8Version
+	probeRuntime group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	probeRuntime group: "org.jspecify", name: "jspecify", version: jspecifyVersion
+	probeRuntime group: "org.jetbrains.kotlin", name: "kotlin-stdlib", version: kotlinVersion
+}
+
+def minified = layout.buildDirectory.file("r8/probe-minified.jar")
+
+def minify = tasks.register("minifyProbe", JavaExec) {
+	dependsOn jar, project(":core-api").tasks.named("shadowJar")
+	def shaded = project(":core-api").tasks.named("shadowJar").flatMap { it.archiveFile }
+	def rules = file("src/main/r8/probe.pro")
+	inputs.files(jar, shaded, rules, configurations.probeRuntime)
+	outputs.file(minified)
+	classpath = configurations.r8
+	mainClass = "com.android.tools.r8.R8"
+	doFirst {
+		minified.get().asFile.parentFile.mkdirs()
+		args = ["--classfile", "--release", "--output", minified.get().asFile.path,
+			"--lib", System.getProperty("java.home"),
+			"--pg-conf", rules.path,
+			jar.archiveFile.get().asFile.path, shaded.get().asFile.path] +
+			configurations.probeRuntime.files.collect { it.path }
+	}
+}
+
+// Runs the minified probe alone on the class path: everything it needs must have survived R8.
+def runMinified = tasks.register("runMinifiedProbe", JavaExec) {
+	dependsOn minify
+	classpath = files(minified)
+	mainClass = "com.absmartly.r8check.Probe"
+}
+
+check.dependsOn runMinified

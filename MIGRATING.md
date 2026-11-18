@@ -14,8 +14,10 @@ through the SDK's transitive dependencies, declare them yourself. SLF4J moves to
 provider (logback 1.3+, log4j-slf4j2-impl, slf4j-simple 2).
 
 **R8/ProGuard (Android).** The jar carries its own consumer rules (`META-INF/proguard/absmartly-core-api.pro`), which
-R8 and ProGuard apply automatically. Remove any 1.x rules for `com.fasterxml.jackson.**` or `com.absmartly.sdk.json.**`
-from your app: Jackson is relocated and the JSON models moved, so those rules no longer match anything.
+R8 (the Android Gradle plugin) applies automatically; with standalone ProGuard, `-include` that file. Remove any 1.x
+rules for `com.fasterxml.jackson.**` or `com.absmartly.sdk.json.**` from your app: Jackson is relocated and the JSON
+models moved, so those rules no longer match anything. Keep the fields of your own classes that you read with
+`variable(key, Class, default)`, as for any reflective JSON mapping.
 
 ## Quick reference
 

@@ -13,8 +13,11 @@
 -keepnames class kotlin.collections.EmptySet
 -keepnames class kotlin.collections.EmptyMap
 
-# The default java.net.http transport is loaded by name only when no Transport is supplied, which Android never
-# does; it is not on Android's class path.
+# The default java.net.http transport is loaded by name only when no Transport is supplied: keep that entry point
+# for minified JVM apps. Android always supplies a transport and has no java.net.http, so silence the references.
+-keep class com.absmartly.sdk.JdkHttpTransport {
+	public static com.absmartly.sdk.JdkHttpTransport create();
+}
 -dontwarn com.absmartly.sdk.JdkHttpTransport
 -dontwarn com.absmartly.sdk.JdkHttpTransport$*
 -dontwarn java.net.http.**

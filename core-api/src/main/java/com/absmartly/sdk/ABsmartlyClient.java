@@ -87,8 +87,9 @@ public final class ABsmartlyClient implements AutoCloseable {
 			final Class<?> type = Class.forName(JDK_TRANSPORT);
 			return (Transport) type.getMethod("create").invoke(null);
 		} catch (final ReflectiveOperationException | LinkageError e) {
-			throw new IllegalStateException("The default java.net.http transport is not available on this platform "
-					+ "(Android has no java.net.http): set one with ABsmartlyClient.Builder.transport(...)", e);
+			throw new IllegalStateException("The default java.net.http transport is not available (" + e
+					+ "): Android has no java.net.http, and a minifier must keep JdkHttpTransport.create(). "
+					+ "Set a transport with ABsmartlyClient.Builder.transport(...)", e);
 		}
 	}
 
