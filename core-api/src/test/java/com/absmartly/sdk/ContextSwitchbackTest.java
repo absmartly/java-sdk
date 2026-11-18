@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -1255,6 +1257,58 @@ class ContextSwitchbackTest {
 		assertEquals(EXPECTED_2_ARMS[3], variant.getInt(exposed));
 		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[3], ANCHOR + 3 * HOUR, true, true)},
 				publishExposures(context));
+	}
+
+	// A peek that skipped the clock still resolves a switchback installed since at a real reading.
+	@Test
+	void switchbackInstalledAfterTheClockWasSkippedPeeksTheCurrentPeriod() throws Exception {
+		final Experiment unit = switchback(2, "exp_unit", 2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		refreshTo(context, unit, switchback(2, HOUR));
+		clock.now = ANCHOR + 3 * HOUR;
+
+		final Method get = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
+		get.setAccessible(true);
+		final Object assignment = get.invoke(context, "exp_sb", Long.MIN_VALUE);
+		final Field variant = assignment.getClass().getDeclaredField("variant");
+		variant.setAccessible(true);
+
+		assertEquals(EXPECTED_2_ARMS[3], variant.getInt(assignment));
+		assertEquals(0, context.getPendingCount());
+	}
+
+	// Retrying an exposure after a concurrent retirement does not read the clock without a switchback;
+	// only the exposure reads it, at enqueue time.
+	@Test
+	void exposureRetrySkipsTheClockWithoutASwitchback() throws Exception {
+		final Experiment unit = switchback(2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		final Method get = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
+		get.setAccessible(true);
+		final Object retired = get.invoke(context, "exp_sb", Long.MIN_VALUE);
+		final Field state = retired.getClass().getDeclaredField("exposureState");
+		state.setAccessible(true);
+		((AtomicInteger) state.get(retired)).set(2);
+		final Constructor<?> create = retired.getClass().getDeclaredConstructor();
+		create.setAccessible(true);
+		final Object fresh = create.newInstance();
+		final Method settle = Context.class.getDeclaredMethod("settleExposure", retired.getClass(), long.class,
+				Function.class);
+		settle.setAccessible(true);
+		final int reads = clock.reads;
+
+		settle.invoke(context, retired, Long.MIN_VALUE, new Function<Long, Object>() {
+			@Override
+			public Object apply(final Long now) {
+				assertEquals(Long.MIN_VALUE, now.longValue());
+				return fresh;
+			}
+		});
+
+		assertEquals(reads + 1, clock.reads);
+		assertEquals(1, context.getPendingCount());
 	}
 
 	// A refresh that installs the first switchback makes reads consult the clock again, and one that

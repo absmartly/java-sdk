@@ -216,7 +216,7 @@ public class Client implements Closeable {
 		return SdkVersion.NAME;
 	}
 
-	/** The SDK version, e.g. "1.7.0". */
+	/** The SDK version, e.g. "1.10.0". */
 	public String getAgentVersion() {
 		return SdkVersion.VERSION;
 	}

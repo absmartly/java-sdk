@@ -16,6 +16,10 @@ This release is backwards compatible with 1.9.0: the public API only gains membe
 - `Experiment.equals` and `hashCode` also compare the switchback fields, and compare `switchbackClusters` in its declared order, and `Experiment.toString` lists them. Two `Experiment`s that differ only in these fields were equal in 1.9.0. Affected: code that compares, hashes or parses the string form of `Experiment` objects from context data.
 - With a switchback in the context data, reads consult the clock once per call to find the current period; without one, they do not, as in 1.9.0.
 
+### Fixed
+
+- Concurrent first calls to `getTreatment` or `getVariableValue` for the same experiment could each record an exposure; now only one is recorded.
+
 ## 1.9.0 (2026-11-16)
 
 ### Changed

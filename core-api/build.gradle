@@ -7,3 +7,36 @@ compileJava {
 	sourceCompatibility = "1.6"
 	targetCompatibility = "1.8"
 }
+
+// The deserializer tests also run against a newer Jackson than the pinned one: applications resolve
+// their own Jackson, and 2.15 to 2.17 fail differently on malformed values.
+def jacksonNextVersion = "2.17.3"
+
+configurations {
+	jacksonNextTestRuntime {
+		extendsFrom configurations.testImplementation, configurations.testRuntimeOnly, configurations.implementation
+		canBeConsumed = false
+		resolutionStrategy.eachDependency { details ->
+			if (details.requested.group.startsWith("com.fasterxml.jackson")) {
+				details.useVersion jacksonNextVersion
+			}
+		}
+	}
+}
+
+tasks.register("testJacksonNext", Test) {
+	description = "Runs the JSON decoding tests against Jackson ${jacksonNextVersion}."
+	group = "verification"
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.output + sourceSets.main.output + configurations.jacksonNextTestRuntime
+	useJUnitPlatform()
+	jvmArgs test.jvmArgs
+	filter {
+		includeTestsMatching "com.absmartly.sdk.DefaultContextDataDeserializerTest"
+	}
+	jacoco {
+		enabled = false
+	}
+}
+
+check.dependsOn "testJacksonNext"

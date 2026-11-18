@@ -38,11 +38,17 @@ public abstract class SwitchbackFieldDeserializer<T> extends JsonDeserializer<T>
 			value.nextToken();
 			return ctxt.readValue(value, type(ctxt));
 		} catch (final JsonProcessingException e) {
-			final String name = (current instanceof Experiment) ? ((Experiment) current).name : null;
-			log.warn("Ignoring {} for experiment {}: {}", field, name != null ? "'" + name + "'" : "(unknown)",
-					e.getOriginalMessage());
-			return null;
+			return ignore(field, current, e.getOriginalMessage());
+		} catch (final RuntimeException e) {
+			// Jackson 2.15 to 2.17 throw ClassCastException reading an out-of-range Long from a buffer.
+			return ignore(field, current, e.toString());
 		}
+	}
+
+	private T ignore(final String field, final Object current, final String reason) {
+		final String name = (current instanceof Experiment) ? ((Experiment) current).name : null;
+		log.warn("Ignoring {} for experiment {}: {}", field, name != null ? "'" + name + "'" : "(unknown)", reason);
+		return null;
 	}
 
 	public static final class ForString extends SwitchbackFieldDeserializer<String> {
