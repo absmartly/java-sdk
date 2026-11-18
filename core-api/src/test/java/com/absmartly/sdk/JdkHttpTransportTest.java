@@ -340,6 +340,62 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void stalledRedirectBodyDoesNotHoldUpTheRequest() {
+		server.createContext("/stall-redirect", exchange -> {
+			exchange.getResponseHeaders().add("Location", "/context");
+			exchange.sendResponseHeaders(307, 2);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write('x');
+				out.flush();
+				Thread.sleep(5000);
+			} catch (IOException | InterruptedException e) {
+				// The client stopped reading.
+			}
+		});
+		final long start = System.nanoTime();
+		final Transport.Response response = JdkHttpTransport.create()
+				.send(new Transport.Request("GET", base.resolve("/stall-redirect"), Map.of(), null))
+				.orTimeout(4, TimeUnit.SECONDS).join();
+		assertEquals(200, response.statusCode());
+		assertEquals(1, calls.get(), "the destination was reached without waiting for the redirect's body");
+		assertTrue(System.nanoTime() - start < 3_000_000_000L);
+	}
+
+	@Test
+	void crossOriginRedirectBodyIsStillRead() {
+		server.createContext("/away-body", exchange -> {
+			final byte[] body = "moved".getBytes(StandardCharsets.UTF_8);
+			exchange.getResponseHeaders().add("Location", "http://elsewhere.invalid/x");
+			exchange.sendResponseHeaders(302, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
+		});
+		final Transport.Response response = JdkHttpTransport.create()
+				.send(new Transport.Request("GET", base.resolve("/away-body"), Map.of(), null)).join();
+		assertEquals(302, response.statusCode());
+		assertEquals("moved", new String(response.body(), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	void expiredDeadlineDoesNotStartTheNextHop() throws Exception {
+		// A redirect hop is an attempt with the deadline it inherited; once that deadline has passed (a busy callback
+		// executor handled the 307 late), the hop is not sent: the publish must not reach the collector while the
+		// caller is told it timed out and queues it again.
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(300)).build();
+		final java.net.http.HttpRequest hop = java.net.http.HttpRequest.newBuilder(base.resolve("/context"))
+				.PUT(java.net.http.HttpRequest.BodyPublishers
+						.ofByteArray("{\"goal\":1}".getBytes(StandardCharsets.UTF_8)))
+				.build();
+		final CompletionException error = assertThrows(CompletionException.class,
+				() -> transport.attempt(hop, 1, 1, System.nanoTime() - 1).orTimeout(5, TimeUnit.SECONDS).join());
+		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
+		assertEquals(0, transport.exchangesStarted_.get(), "the hop was never handed to the HTTP client");
+		Thread.sleep(200);
+		assertEquals(0, calls.get(), "and never reached the collector");
+	}
+
+	@Test
 	void redirectHopsShareOneDeadline() {
 		server.createContext("/slow-hop", exchange -> {
 			try {
