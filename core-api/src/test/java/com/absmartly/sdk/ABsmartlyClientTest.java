@@ -333,6 +333,54 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void floatReadsDoNotDependOnTheJdk() {
+		// JDK 11's Double.toString gave non-shortest forms for these, which made them fall back to the default.
+		assertEquals(9.0e9f, VariableConverter.convert("n", 9.0e9, Float.class, -1.0f));
+		assertEquals(2.285692e9f, VariableConverter.convert("n", (double) 2.285692e9f, Float.class, -1.0f));
+		assertEquals(3.0e10f, VariableConverter.convert("n", 3.0e10, Float.class, -1.0f));
+		assertEquals(1.0e23, VariableConverter.convert("n", new BigDecimal("1e23"), Double.class, -1.0));
+		assertEquals(new BigDecimal("2E-3"), VariableConverter.shortestDecimal(2.0e-3));
+		assertEquals(new BigDecimal("1E+23"), VariableConverter.shortestDecimal(1.0e23));
+		assertEquals(new BigDecimal("0.1"), VariableConverter.shortestDecimal(0.1));
+		final java.util.Random random = new java.util.Random(42);
+		for (int i = 0; i < 20000; ++i) {
+			final float f = Float.intBitsToFloat(random.nextInt());
+			if (Float.isFinite(f)) {
+				assertEquals(f, VariableConverter.convert("n", (double) f, Float.class, Float.NaN), "float " + f);
+			}
+			final double d = Double.longBitsToDouble(random.nextLong());
+			if (Double.isFinite(d)) {
+				assertEquals(0, Double.compare(d, VariableConverter.shortestDecimal(d).doubleValue()), "double " + d);
+			}
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void defaultsWithNoConstructibleSubstituteFallBack() {
+		final java.util.EnumSet<TimeUnit> none = java.util.EnumSet.noneOf(TimeUnit.class);
+		assertTrue(java.util.EnumSet.class.isAssignableFrom(VariableConverter.inferType(none)),
+				"no substitute implements every interface of an EnumSet's class");
+		final java.util.EnumSet<TimeUnit> read = VariableConverter.convert("set", List.of("SECONDS"),
+				(Class<java.util.EnumSet<TimeUnit>>) VariableConverter.inferType(none), none);
+		assertSame(none, read, "an EnumSet default is returned rather than a LinkedHashSet");
+		assertEquals(java.util.TreeSet.class, VariableConverter.inferType(Collections.emptySortedSet()));
+		assertEquals(java.util.LinkedHashSet.class, VariableConverter.inferType(Collections.emptySet()));
+		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(List.of()));
+		assertEquals(java.util.TreeMap.class, VariableConverter.inferType(Collections.emptySortedMap()));
+		assertEquals(java.util.LinkedHashMap.class, VariableConverter.inferType(Map.of()));
+	}
+
+	@Test
+	void infinityIsKeptForUntypedReads() {
+		assertEquals(Double.POSITIVE_INFINITY, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Object.class,
+				null));
+		assertEquals(Double.POSITIVE_INFINITY, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Number.class,
+				null));
+		assertEquals(-1.0, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Double.class, -1.0));
+	}
+
+	@Test
 	void floatingConversionsKeepExactValues() {
 		assertEquals(0x1p60, VariableConverter.convert("n", 1L << 60, Double.class, -1.0));
 		assertEquals(0x1p62, VariableConverter.convert("n", 1L << 62, Double.class, -1.0));

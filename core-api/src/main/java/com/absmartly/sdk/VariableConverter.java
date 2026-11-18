@@ -27,23 +27,43 @@ final class VariableConverter {
 		if (isConstructible(type)) {
 			return type;
 		}
-		if (defaultValue instanceof java.util.SortedMap) {
-			return java.util.TreeMap.class;
+		for (final Class<?> candidate : SUBSTITUTES) {
+			if (implementsEveryInterfaceOf(candidate, type)) {
+				return candidate;
+			}
 		}
-		if (defaultValue instanceof java.util.Map) {
-			return java.util.LinkedHashMap.class;
-		}
-		if (defaultValue instanceof java.util.SortedSet) {
-			return java.util.TreeSet.class;
-		}
-		if (defaultValue instanceof java.util.Set) {
-			return java.util.LinkedHashSet.class;
-		}
-		if (defaultValue instanceof java.util.List) {
-			return java.util.ArrayList.class;
-		}
+		// No constructible class can stand in for this default (EnumSet, a custom collection...): the read can only
+		// return the default.
 		return type;
 	}
+
+	// Insertion-ordered shapes first; a sorted default fails them (they are not SortedSet/SortedMap) and gets the
+	// sorted substitute.
+	private static final Class<?>[] SUBSTITUTES = {java.util.ArrayList.class, java.util.LinkedHashSet.class,
+			java.util.TreeSet.class, java.util.LinkedHashMap.class, java.util.TreeMap.class};
+
+	// Whether a value of `candidate` can stand in for the default: it implements every interface the default's class
+	// (or its superclasses) implements, and extends the nearest public superclass other than the JDK's abstract
+	// collection skeletons. So Collections.emptySet() (a private class) takes a LinkedHashSet, while an EnumSet
+	// default, whose public superclass is EnumSet, takes nothing: the caller's cast would fail.
+	private static boolean implementsEveryInterfaceOf(final Class<?> candidate, final Class<?> type) {
+		for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+			for (final Class<?> iface : c.getInterfaces()) {
+				if (!iface.isAssignableFrom(candidate)) {
+					return false;
+				}
+			}
+		}
+		Class<?> visible = type;
+		while ((visible != null) && !java.lang.reflect.Modifier.isPublic(visible.getModifiers())) {
+			visible = visible.getSuperclass();
+		}
+		return (visible == null) || SKELETONS.contains(visible) || visible.isAssignableFrom(candidate);
+	}
+
+	private static final java.util.Set<Class<?>> SKELETONS = new java.util.HashSet<Class<?>>(java.util.Arrays.asList(
+			Object.class, java.util.AbstractCollection.class, java.util.AbstractList.class,
+			java.util.AbstractSet.class, java.util.AbstractMap.class));
 
 	private static boolean isConstructible(final Class<?> type) {
 		if (!java.lang.reflect.Modifier.isPublic(type.getModifiers())
@@ -62,8 +82,8 @@ final class VariableConverter {
 		if (value == null) {
 			return defaultValue;
 		}
-		if (((value instanceof Double) || (value instanceof Float))
-				&& !Double.isFinite(((Number) value).doubleValue())) {
+		if (((value instanceof Double) || (value instanceof Float)) && !Double.isFinite(((Number) value).doubleValue())
+				&& isFloatingType(type)) {
 			log.warn("ABsmartly variable '{}' is {}, not a finite number", key, value);
 			return defaultValue;
 		}
@@ -91,6 +111,10 @@ final class VariableConverter {
 		return defaultValue;
 	}
 
+	private static boolean isFloatingType(final Class<?> type) {
+		return (type == Double.class) || (type == Float.class) || (type == BigDecimal.class);
+	}
+
 	private static boolean isScalarType(final Class<?> type) {
 		return (type == String.class) || (type == Boolean.class) || Number.class.isAssignableFrom(type);
 	}
@@ -101,23 +125,18 @@ final class VariableConverter {
 			return null;
 		}
 		final BigDecimal decimal = toBigDecimal((Number) value);
-		// The exact value of the source: binary for a Double or Float, decimal otherwise.
-		final BigDecimal exact = ((value instanceof Double) || (value instanceof Float))
-				? new BigDecimal(((Number) value).doubleValue())
-				: decimal;
-		// A conversion is lossless when it keeps the exact value, or the same shortest decimal form (0.1 as a Float).
 		if (type == Double.class) {
 			final double converted = ((Number) value).doubleValue();
-			if (!Double.isFinite(converted) || ((new BigDecimal(converted).compareTo(exact) != 0)
-					&& (BigDecimal.valueOf(converted).compareTo(decimal) != 0))) {
+			if (!Double.isFinite(converted)
+					|| !losslessFloating(decimal, exactValue((Number) value), new BigDecimal(converted), 15)) {
 				throw new ArithmeticException(value + " cannot be read as a Double without losing precision");
 			}
 			return converted;
 		}
 		if (type == Float.class) {
 			final float converted = ((Number) value).floatValue();
-			if (!Float.isFinite(converted) || ((new BigDecimal(converted).compareTo(exact) != 0)
-					&& (new BigDecimal(Float.toString(converted)).compareTo(decimal) != 0))) {
+			if (!Float.isFinite(converted)
+					|| !losslessFloating(decimal, exactValue((Number) value), new BigDecimal(converted), 6)) {
 				throw new ArithmeticException(value + " cannot be read as a Float without losing precision");
 			}
 			return converted;
@@ -149,6 +168,26 @@ final class VariableConverter {
 		return null;
 	}
 
+	// The exact value of the source: binary for a Double or Float, decimal otherwise.
+	private static BigDecimal exactValue(final Number value) {
+		return ((value instanceof Double) || (value instanceof Float)) ? new BigDecimal(value.doubleValue())
+				: toBigDecimal(value);
+	}
+
+	// A floating conversion is lossless when the result is exactly the source value (2^60 as a Double), or when the
+	// source's shortest decimal form has at most the target's guaranteed decimal digits (15 for double, 6 for float),
+	// so the result is the nearest double/float to that decimal (0.1 or 19.99 as a Float). This is pure arithmetic,
+	// so every JDK and Android agree; Float.toString and BigDecimal.valueOf changed their output in JDK 19.
+	private static boolean losslessFloating(final BigDecimal decimal, final BigDecimal exact,
+			final BigDecimal converted, final int digits) {
+		if (converted.compareTo(exact) == 0) {
+			return true;
+		}
+		final BigDecimal shortest = decimal.stripTrailingZeros();
+		return (shortest.precision() <= digits) && (shortest.round(new java.math.MathContext(digits))
+				.compareTo(converted.round(new java.math.MathContext(digits))) == 0);
+	}
+
 	// BigInteger.longValueExact() and friends need Android API 31, so the range is checked by hand.
 	private static long exact(final BigInteger value, final long min, final long max) {
 		if ((value.compareTo(BigInteger.valueOf(min)) < 0) || (value.compareTo(BigInteger.valueOf(max)) > 0)) {
@@ -165,8 +204,24 @@ final class VariableConverter {
 			return new BigDecimal((BigInteger) value);
 		}
 		if ((value instanceof Double) || (value instanceof Float)) {
-			return BigDecimal.valueOf(value.doubleValue());
+			return shortestDecimal(value.doubleValue());
 		}
 		return BigDecimal.valueOf(value.longValue());
+	}
+
+	// The shortest decimal that reads back as the same double: the fewest significant digits (1 to 17) whose
+	// nearest double is `d`. Double.toString finds this only from JDK 19 (and differs on Android), so it is computed.
+	static BigDecimal shortestDecimal(final double d) {
+		if (d == 0) {
+			return BigDecimal.ZERO;
+		}
+		final BigDecimal exact = new BigDecimal(d);
+		for (int digits = 1; digits < 17; ++digits) {
+			final BigDecimal rounded = exact.round(new java.math.MathContext(digits, java.math.RoundingMode.HALF_EVEN));
+			if (rounded.doubleValue() == d) {
+				return rounded;
+			}
+		}
+		return exact.round(new java.math.MathContext(17, java.math.RoundingMode.HALF_EVEN));
 	}
 }

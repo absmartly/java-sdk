@@ -194,7 +194,8 @@ public final class JdkHttpTransport implements Transport {
 		 * A timeout for each request attempt, from send to the end of the response (default: none, as in 1.x).
 		 * An expired attempt fails the request with {@link RequestTimeoutException} and is not retried. A connect
 		 * timeout ({@link #connectTimeout(Duration)}) is retried, and raises {@link RequestTimeoutException} when the
-		 * retries run out.
+		 * retries run out. On JDK 11 the JDK client cannot be stopped mid-response, so a timed-out body keeps
+		 * downloading in the background (the caller still gets the timeout); newer JDKs close the connection.
 		 */
 		public Builder requestTimeout(final Duration requestTimeout) {
 			requestTimeout_ = positive(requestTimeout, "requestTimeout");

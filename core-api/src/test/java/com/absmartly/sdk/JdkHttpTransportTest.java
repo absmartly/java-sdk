@@ -347,13 +347,22 @@ class JdkHttpTransportTest {
 		failFirst = 1;
 		final java.util.concurrent.ExecutorService callbacks = Executors
 				.newSingleThreadExecutor(runnable -> new Thread(runnable, "transport-callbacks"));
+		// Records where each task was submitted from: the delayed retry is submitted by the JDK's delay thread, and
+		// must land on this executor rather than run on that shared thread.
+		final java.util.List<String> submitters = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+		final java.util.concurrent.Executor recording = command -> {
+			submitters.add(Thread.currentThread().getName());
+			callbacks.execute(command);
+		};
 		try {
 			final JdkHttpTransport transport = JdkHttpTransport.builder().retryInterval(Duration.ofMillis(20))
-					.executor(callbacks).build();
-			final String thread = transport.send(new Transport.Request("GET", base.resolve("/context"), Map.of(), null))
-					.thenApply(response -> Thread.currentThread().getName()).join();
+					.executor(recording).build();
+			transport.send(new Transport.Request("GET", base.resolve("/context"), Map.of(), null)).join();
 			assertEquals(2, calls.get());
-			assertEquals("transport-callbacks", thread, "the retry's completion runs on the callback executor");
+			// The JDK's delay thread: CompletableFutureDelayScheduler, or ForkJoinPool.commonPool-delayScheduler on
+			// JDK 25.
+			assertTrue(submitters.stream().anyMatch(name -> name.toLowerCase(java.util.Locale.ROOT).contains("delay")),
+					"the back-off hands the retry to the callback executor: " + submitters);
 		} finally {
 			callbacks.shutdownNow();
 		}
