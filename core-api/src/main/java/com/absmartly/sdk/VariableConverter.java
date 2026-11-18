@@ -15,6 +15,19 @@ final class VariableConverter {
 
 	private VariableConverter() {}
 
+	// The type a default value asks for: its own class, except that any List or Map default (Collections.emptyList(),
+	// List.of(...), an unmodifiable map...) asks for the interface, since JSON arrays and objects decode to ArrayList and
+	// LinkedHashMap whatever implementation the default uses.
+	static Class<?> inferType(final Object defaultValue) {
+		if (defaultValue instanceof java.util.List) {
+			return java.util.List.class;
+		}
+		if (defaultValue instanceof java.util.Map) {
+			return java.util.Map.class;
+		}
+		return defaultValue.getClass();
+	}
+
 	static <T> @Nullable T convert(final String key, final @Nullable Object value, final Class<T> type,
 			final @Nullable T defaultValue) {
 		if (value == null) {

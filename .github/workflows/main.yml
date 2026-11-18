@@ -31,6 +31,18 @@ jobs:
         run: |
           ./gradlew -Porg.gradle.java.installations.fromEnv=JAVA_HOME_25_X64 clean build
 
+      # Launch the installed example: it must load (SLF4J and the SDK on its runtime classpath) and reach the
+      # network, where the unreachable placeholder endpoint fails the context load.
+      - name: Launch the example
+        run: |
+          ./gradlew :example:installDist
+          set +e
+          ABSMARTLY_APIKEY=test ABSMARTLY_APP=app ABSMARTLY_ENV=test example/build/install/example/bin/example > example.log 2>&1
+          set -e
+          cat example.log
+          if grep -q "NoClassDefFoundError\|ClassNotFoundException" example.log; then exit 1; fi
+          grep -q "ContextLoadException" example.log
+
   # The latest LTS as a second runtime for the whole suite, next to the Java 11 floor above.
   test-jdk21:
     runs-on: ubuntu-latest

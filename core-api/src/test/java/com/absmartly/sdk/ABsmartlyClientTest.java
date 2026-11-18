@@ -265,6 +265,32 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void collectionDefaultsInferTheirInterface() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_list\",\"unitType\":\"session_id\","
+				+ "\"iteration\":1,\"seedHi\":0,\"seedLo\":0,\"split\":[0,1],\"trafficSeedHi\":0,"
+				+ "\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":1,"
+				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\",\"config\":null},"
+				+ "{\"name\":\"B\",\"config\":\"{\\\"items\\\":[\\\"actual\\\"],"
+				+ "\\\"limits\\\":{\\\"cart\\\":3}}\"}]}]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+
+		final List<String> peekedEmpty = context.peekVariable("items", Collections.emptyList());
+		assertEquals(List.of("actual"), peekedEmpty);
+		assertEquals(List.of("actual"), context.peekVariable("items", List.of("fallback")));
+		assertEquals(Map.of("cart", 3), context.peekVariable("limits", Collections.emptyMap()));
+		assertEquals(0, context.pendingEventCount());
+
+		final List<String> items = context.variable("items", Collections.emptyList());
+		assertEquals(List.of("actual"), items);
+		assertEquals(Map.of("cart", 3), context.variable("limits", Map.of("cart", 1)));
+		assertEquals(List.of("fallback"), context.variable("missing", List.of("fallback")));
+		assertEquals(Collections.emptyMap(), context.variable("items", Collections.emptyMap()),
+				"an array is not a map: the default");
+		assertEquals(1, context.pendingEventCount());
+	}
+
+	@Test
 	void longVariablesKeepTheirFullValue() {
 		assertEquals(5_000_000_000L, VariableConverter.convert("big", 5_000_000_000L, Long.class, 0L));
 		assertEquals(5_000_000_000L, VariableConverter.convert("big", new BigInteger("5000000000"), Long.class, 0L));
@@ -685,6 +711,39 @@ class ABsmartlyClientTest extends TestUtils {
 		assertTrue(received.size() < total, "events beyond the buffer are dropped, not queued");
 		assertTrue(received.size() >= Flow.defaultBufferSize() - 1, "the buffered events are delivered");
 		stream.close();
+	}
+
+	@Test
+	void streamFirstRequestedAfterCloseIsAlreadyComplete() throws InterruptedException {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		context.close();
+		assertTrue(awaitCompletion(context.events()), "context stream completes after close");
+		client.close();
+		assertTrue(awaitCompletion(client.events()), "client stream completes after close");
+	}
+
+	private static boolean awaitCompletion(final Flow.Publisher<ContextEvent> publisher)
+			throws InterruptedException {
+		final CountDownLatch completed = new CountDownLatch(1);
+		publisher.subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				subscription.request(Long.MAX_VALUE);
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {
+				completed.countDown();
+			}
+		});
+		return completed.await(5, TimeUnit.SECONDS);
 	}
 
 	@Test

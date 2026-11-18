@@ -60,12 +60,18 @@ final class EventDispatcher {
 	// Loaded on the first call only: Flow and SubmissionPublisher need Android API 30.
 	synchronized java.util.concurrent.Flow.Publisher<ContextEvent> stream() {
 		if (stream_ == null) {
-			stream_ = new EventStream(executor_);
+			final EventStream stream = new EventStream(executor_);
+			if (streamClosed_) {
+				// The owner already closed: a stream first asked for now is complete from the start.
+				stream.close();
+			}
+			stream_ = stream;
 		}
 		return ((EventStream) stream_).publisher();
 	}
 
 	synchronized void closeStream() {
+		streamClosed_ = true;
 		if (stream_ != null) {
 			((EventStream) stream_).close();
 		}
@@ -164,4 +170,6 @@ final class EventDispatcher {
 	private final List<EventListener> listeners_ = new CopyOnWriteArrayList<EventListener>();
 	// An EventStream once stream() was called; typed Object so this class never links Flow types eagerly.
 	private volatile @Nullable Object stream_;
+	// Guarded by this.
+	private boolean streamClosed_;
 }

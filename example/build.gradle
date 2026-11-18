@@ -9,5 +9,9 @@ description = """ABsmartly Java SDK Example"""
 
 dependencies {
 	implementation project(":core-api")
+	// core-api publishes slf4j-api as a POM dependency of its shaded jar; a project dependency on core-api resolves
+	// the plain variant, which does not carry it, so the example declares it with a provider to log through.
+	implementation group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	runtimeOnly group: "org.slf4j", name: "slf4j-simple", version: slf4jVersion
 }
 

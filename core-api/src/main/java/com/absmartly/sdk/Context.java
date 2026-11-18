@@ -889,7 +889,7 @@ public final class Context implements AutoCloseable {
 	 */
 	@SuppressWarnings("unchecked")
 	public <T> T variable(final String key, final T defaultValue) {
-		return variable(key, (Class<T>) defaultValue.getClass(), defaultValue);
+		return variable(key, (Class<T>) VariableConverter.inferType(defaultValue), defaultValue);
 	}
 
 	/**
@@ -905,7 +905,7 @@ public final class Context implements AutoCloseable {
 	/** Like {@link #variable(String, Object)} but without queuing an exposure. */
 	@SuppressWarnings("unchecked")
 	public <T> T peekVariable(final String key, final T defaultValue) {
-		return peekVariable(key, (Class<T>) defaultValue.getClass(), defaultValue);
+		return peekVariable(key, (Class<T>) VariableConverter.inferType(defaultValue), defaultValue);
 	}
 
 	/** Like {@link #variable(String, Class, Object)} but without queuing an exposure. */

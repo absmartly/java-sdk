@@ -91,7 +91,14 @@ public final class JdkHttpTransport implements Transport {
 	}
 
 	private CompletableFuture<Response> attempt(final HttpRequest request, final int execCount) {
-		return httpClient_.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
+		final CompletableFuture<HttpResponse<byte[]>> sent = httpClient_.sendAsync(request,
+				HttpResponse.BodyHandlers.ofByteArray());
+		// HttpRequest.timeout stops applying once the headers arrive, so the deadline is also enforced on the whole
+		// exchange, up to the last byte of the body.
+		if (requestTimeout_ != null) {
+			sent.orTimeout(requestTimeout_.toMillis(), TimeUnit.MILLISECONDS);
+		}
+		return sent
 				.handle((response, error) -> {
 					if (error == null) {
 						if (isRetryableStatus(response.statusCode()) && (execCount <= maxRetries_)) {
@@ -101,6 +108,10 @@ public final class JdkHttpTransport implements Transport {
 								new Response(response.statusCode(), "", response.body()));
 					}
 					final Throwable cause = unwrap(error);
+					if (cause instanceof java.util.concurrent.TimeoutException) {
+						return CompletableFuture.<Response> failedFuture(new RequestTimeoutException(
+								request.method() + " " + request.uri().getPath() + " timed out", cause));
+					}
 					if (isRetryableFailure(cause) && (execCount <= maxRetries_)) {
 						return retry(request, execCount);
 					}

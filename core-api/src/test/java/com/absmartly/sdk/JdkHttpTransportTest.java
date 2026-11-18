@@ -242,6 +242,30 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void requestTimeoutCoversAStalledBody() {
+		server.createContext("/stall", exchange -> {
+			exchange.sendResponseHeaders(200, 4);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write('{');
+				out.flush();
+				Thread.sleep(3000);
+				out.write("}  ".getBytes(StandardCharsets.US_ASCII), 0, 3);
+			} catch (InterruptedException | IOException e) {
+				Thread.currentThread().interrupt();
+			}
+		});
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(500))
+				.build();
+		final long start = System.nanoTime();
+		final CompletionException error = assertThrows(CompletionException.class,
+				() -> transport.send(new Transport.Request("GET", base.resolve("/stall"), Map.of(), null)).join());
+		final long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
+		assertEquals("GET /stall timed out", error.getCause().getMessage());
+		assertTrue(elapsedMs < 2500, "timed out after " + elapsedMs + " ms, not after the body arrived");
+	}
+
+	@Test
 	void backoffMatchesOneDotX() {
 		final JdkHttpTransport transport = JdkHttpTransport.create();
 		// 5 ms + ((2000 * (333 - 5)) / 2^5) us doubling per retry, as DefaultHTTPClientRetryStrategy computed.
