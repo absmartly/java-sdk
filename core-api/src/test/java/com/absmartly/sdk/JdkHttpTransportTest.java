@@ -290,6 +290,22 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void permanentAndFoundRedirectsTurnAPostIntoAGet() {
+		for (final int status : new int[]{301, 302}) {
+			final String path = "/post" + status;
+			server.createContext(path, exchange -> {
+				exchange.getRequestBody().readAllBytes();
+				exchange.getResponseHeaders().add("Location", "/context");
+				exchange.sendResponseHeaders(status, -1);
+				exchange.close();
+			});
+			final Transport.Response response = JdkHttpTransport.create().send(new Transport.Request("POST",
+					base.resolve(path), Map.of("X-Test", "q"), new byte[]{1})).join();
+			assertEquals("GET null q null ", new String(response.body(), StandardCharsets.UTF_8));
+		}
+	}
+
+	@Test
 	void seeOtherTurnsIntoAGetWithoutContentType() {
 		server.createContext("/other", exchange -> {
 			exchange.getRequestBody().readAllBytes();
