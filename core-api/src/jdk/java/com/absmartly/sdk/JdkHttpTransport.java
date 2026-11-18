@@ -100,12 +100,13 @@ public final class JdkHttpTransport implements Transport {
 		final CompletableFuture<HttpResponse<byte[]>> sent = httpClient_.sendAsync(request,
 				HttpResponse.BodyHandlers.ofByteArray());
 		// HttpRequest.timeout stops applying once the headers arrive, so the deadline is also enforced on the whole
-		// exchange, up to the last byte of the body. orTimeout completes the future on the JDK's shared delay thread,
-		// so everything after it runs on the callback executor: a blocking callback must never hold that thread.
-		if (requestTimeout_ != null) {
-			sent.orTimeout(requestTimeout_.toMillis(), TimeUnit.MILLISECONDS);
-		}
-		return sent
+		// exchange, up to the last byte of the body. The deadline goes on a copy: orTimeout completes the future it is
+		// called on, and the original must stay incomplete so cancelling it still reaches the exchange. orTimeout fires
+		// on the JDK's shared delay thread, so everything after it runs on the callback executor.
+		final CompletableFuture<HttpResponse<byte[]>> timed = (requestTimeout_ != null)
+				? sent.copy().orTimeout(requestTimeout_.toMillis(), TimeUnit.MILLISECONDS)
+				: sent;
+		return timed
 				.handleAsync((response, error) -> {
 					if (error == null) {
 						if (isRetryableStatus(response.statusCode()) && (execCount <= maxRetries_)) {
@@ -116,8 +117,8 @@ public final class JdkHttpTransport implements Transport {
 					}
 					final Throwable cause = unwrap(error);
 					if (cause instanceof java.util.concurrent.TimeoutException) {
-						// Stops the exchange where the JDK supports it (closing the connection on JDK 17+; JDK 11's
-						// client ignores the cancellation and finishes reading the response in the background).
+						// Stops the exchange where the JDK supports it: from JDK 16 cancelling closes the connection;
+						// JDK 11's client ignores it and finishes reading the response in the background.
 						sent.cancel(true);
 						return CompletableFuture.<Response> failedFuture(new RequestTimeoutException(
 								request.method() + " " + request.uri().getPath() + " timed out", cause));

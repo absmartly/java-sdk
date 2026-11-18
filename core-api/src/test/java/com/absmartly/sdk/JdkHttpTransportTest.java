@@ -292,6 +292,73 @@ class JdkHttpTransportTest {
 		assertEquals(2, calls.get(), "the 503 and its retry");
 	}
 
+	// Cancelling the timed-out exchange closes the connection from JDK 16; JDK 11's client keeps reading in the
+	// background, a JDK limit, so the assertion only runs where the JDK can stop it.
+	@Test
+	void timedOutDownloadIsCancelled() throws Exception {
+		final AtomicInteger written = new AtomicInteger();
+		final java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(1);
+		server.createContext("/chunks", exchange -> {
+			exchange.sendResponseHeaders(200, 0);
+			try (OutputStream out = exchange.getResponseBody()) {
+				for (int i = 0; i < 40; ++i) {
+					out.write(new byte[1024]);
+					out.flush();
+					written.incrementAndGet();
+					Thread.sleep(100);
+				}
+			} catch (IOException | InterruptedException e) {
+				// The client closed the connection.
+			} finally {
+				finished.countDown();
+			}
+		});
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(500))
+				.build();
+		final CompletionException error = assertThrows(CompletionException.class,
+				() -> transport.send(new Transport.Request("GET", base.resolve("/chunks"), Map.of(), null)).join());
+		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
+		if (Runtime.version().feature() >= 16) {
+			assertTrue(finished.await(3, java.util.concurrent.TimeUnit.SECONDS), "the server stops writing");
+			assertTrue(written.get() < 40, "the download was cut short after " + written.get() + " chunks");
+		}
+	}
+
+	@Test
+	void callerContentTypeIsNotDuplicated() {
+		final java.util.List<java.util.List<String>> contentTypes = java.util.Collections
+				.synchronizedList(new java.util.ArrayList<>());
+		server.createContext("/headers", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			contentTypes.add(exchange.getRequestHeaders().get("Content-Type"));
+			exchange.sendResponseHeaders(200, -1);
+			exchange.close();
+		});
+		final JdkHttpTransport transport = JdkHttpTransport.create();
+		transport.send(new Transport.Request("PUT", base.resolve("/headers"), Map.of("content-type", "text/plain"),
+				new byte[]{1})).join();
+		transport.send(new Transport.Request("PUT", base.resolve("/headers"), Map.of(), new byte[]{1})).join();
+		assertEquals(java.util.List.of(java.util.List.of("text/plain"),
+				java.util.List.of("application/json; charset=UTF-8")), contentTypes);
+	}
+
+	@Test
+	void retryBackoffRunsOnTheCallbackExecutor() {
+		failFirst = 1;
+		final java.util.concurrent.ExecutorService callbacks = Executors
+				.newSingleThreadExecutor(runnable -> new Thread(runnable, "transport-callbacks"));
+		try {
+			final JdkHttpTransport transport = JdkHttpTransport.builder().retryInterval(Duration.ofMillis(20))
+					.executor(callbacks).build();
+			final String thread = transport.send(new Transport.Request("GET", base.resolve("/context"), Map.of(), null))
+					.thenApply(response -> Thread.currentThread().getName()).join();
+			assertEquals(2, calls.get());
+			assertEquals("transport-callbacks", thread, "the retry's completion runs on the callback executor");
+		} finally {
+			callbacks.shutdownNow();
+		}
+	}
+
 	@Test
 	void timeoutCallbacksRunOnTheCallbackExecutor() {
 		server.createContext("/slow", exchange -> {

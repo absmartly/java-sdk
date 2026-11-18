@@ -297,6 +297,18 @@ class ABsmartlyClientTest extends TestUtils {
 		assertSame(fallback, context.peekVariable("items", fallback), "an array is not a map: the default");
 		final java.util.LinkedList<String> listFallback = new java.util.LinkedList<>();
 		assertSame(listFallback, context.peekVariable("limits", listFallback), "an object is not a list");
+
+		// Non-constructible sorted and set defaults convert into a class of the same shape.
+		final java.util.SortedMap<String, Object> sorted = context.peekVariable("limits",
+				Collections.emptySortedMap());
+		assertEquals(new java.util.TreeMap<>(Map.of("cart", 3)), sorted);
+		final java.util.NavigableMap<String, Object> navigable = context.peekVariable("limits",
+				Collections.unmodifiableNavigableMap(new java.util.TreeMap<>()));
+		assertEquals(Map.of("cart", 3), navigable);
+		final java.util.Set<String> set = context.peekVariable("items", Collections.emptySet());
+		assertEquals(java.util.Set.of("actual"), set);
+		final java.util.SortedSet<String> sortedSet = context.peekVariable("items", Collections.emptySortedSet());
+		assertEquals(new java.util.TreeSet<>(List.of("actual")), sortedSet);
 		assertEquals(1, context.pendingEventCount());
 	}
 
@@ -316,6 +328,19 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(-1.0, VariableConverter.convert("n", new BigDecimal("1e1000"), Double.class, -1.0));
 		assertEquals(-1.0f, VariableConverter.convert("n", Double.MAX_VALUE, Float.class, -1.0f));
 		assertEquals(0.5f, VariableConverter.convert("n", 0.5, Float.class, -1.0f));
+		assertEquals(-1.0f, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Float.class, -1.0f));
+		assertEquals(-1.0, VariableConverter.convert("n", Double.NaN, Double.class, -1.0));
+	}
+
+	@Test
+	void floatingConversionsKeepExactValues() {
+		assertEquals(0x1p60, VariableConverter.convert("n", 1L << 60, Double.class, -1.0));
+		assertEquals(0x1p62, VariableConverter.convert("n", 1L << 62, Double.class, -1.0));
+		assertEquals(0x1p40f, VariableConverter.convert("n", 1L << 40, Float.class, -1.0f));
+		assertEquals(0.3f, VariableConverter.convert("n", (double) 0.3f, Float.class, -1.0f));
+		assertEquals(0.1f, VariableConverter.convert("n", 0.1, Float.class, -1.0f));
+		assertEquals(19.99, VariableConverter.convert("n", 19.99, Double.class, -1.0));
+		assertEquals(1.0e300, VariableConverter.convert("n", new BigDecimal("1e300"), Double.class, -1.0));
 	}
 
 	@Test

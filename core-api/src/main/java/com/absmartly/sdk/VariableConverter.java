@@ -15,19 +15,34 @@ final class VariableConverter {
 
 	private VariableConverter() {}
 
-	// The type a default value asks for: its own class, except that a List or Map default whose class cannot be built
-	// (Collections.emptyList(), List.of(...), unmodifiable views: no public no-argument constructor) asks for the
-	// interface, since JSON arrays and objects decode to ArrayList and LinkedHashMap. A constructible collection class
-	// (TreeMap, LinkedList...) is kept, so the value is converted into it.
+	// The type a default value asks for: its own class, except that a collection default whose class cannot be built
+	// (Collections.emptyList(), List.of(...), unmodifiable views: no public no-argument constructor) asks for a
+	// constructible class of the same shape, so the value is converted into something the default's type accepts. A
+	// constructible collection class (TreeMap, LinkedList...) is kept as is.
 	static Class<?> inferType(final Object defaultValue) {
 		final Class<?> type = defaultValue.getClass();
-		if (!(defaultValue instanceof java.util.List) && !(defaultValue instanceof java.util.Map)) {
+		if (!(defaultValue instanceof java.util.Collection) && !(defaultValue instanceof java.util.Map)) {
 			return type;
 		}
 		if (isConstructible(type)) {
 			return type;
 		}
-		return (defaultValue instanceof java.util.List) ? java.util.List.class : java.util.Map.class;
+		if (defaultValue instanceof java.util.SortedMap) {
+			return java.util.TreeMap.class;
+		}
+		if (defaultValue instanceof java.util.Map) {
+			return java.util.LinkedHashMap.class;
+		}
+		if (defaultValue instanceof java.util.SortedSet) {
+			return java.util.TreeSet.class;
+		}
+		if (defaultValue instanceof java.util.Set) {
+			return java.util.LinkedHashSet.class;
+		}
+		if (defaultValue instanceof java.util.List) {
+			return java.util.ArrayList.class;
+		}
+		return type;
 	}
 
 	private static boolean isConstructible(final Class<?> type) {
@@ -45,6 +60,11 @@ final class VariableConverter {
 	static <T> @Nullable T convert(final String key, final @Nullable Object value, final Class<T> type,
 			final @Nullable T defaultValue) {
 		if (value == null) {
+			return defaultValue;
+		}
+		if (((value instanceof Double) || (value instanceof Float))
+				&& !Double.isFinite(((Number) value).doubleValue())) {
+			log.warn("ABsmartly variable '{}' is {}, not a finite number", key, value);
 			return defaultValue;
 		}
 		if (type.isInstance(value)) {
@@ -81,17 +101,24 @@ final class VariableConverter {
 			return null;
 		}
 		final BigDecimal decimal = toBigDecimal((Number) value);
+		// The exact value of the source: binary for a Double or Float, decimal otherwise.
+		final BigDecimal exact = ((value instanceof Double) || (value instanceof Float))
+				? new BigDecimal(((Number) value).doubleValue())
+				: decimal;
+		// A conversion is lossless when it keeps the exact value, or the same shortest decimal form (0.1 as a Float).
 		if (type == Double.class) {
 			final double converted = ((Number) value).doubleValue();
-			if (!Double.isFinite(converted) || BigDecimal.valueOf(converted).compareTo(decimal) != 0) {
-				throw new ArithmeticException("Lossy double conversion");
+			if (!Double.isFinite(converted) || ((new BigDecimal(converted).compareTo(exact) != 0)
+					&& (BigDecimal.valueOf(converted).compareTo(decimal) != 0))) {
+				throw new ArithmeticException(value + " cannot be read as a Double without losing precision");
 			}
 			return converted;
 		}
 		if (type == Float.class) {
 			final float converted = ((Number) value).floatValue();
-			if (!Float.isFinite(converted) || new BigDecimal(Float.toString(converted)).compareTo(decimal) != 0) {
-				throw new ArithmeticException("Lossy float conversion");
+			if (!Float.isFinite(converted) || ((new BigDecimal(converted).compareTo(exact) != 0)
+					&& (new BigDecimal(Float.toString(converted)).compareTo(decimal) != 0))) {
+				throw new ArithmeticException(value + " cannot be read as a Float without losing precision");
 			}
 			return converted;
 		}
