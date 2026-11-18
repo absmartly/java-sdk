@@ -310,6 +310,15 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void floatingConversionsRejectOverflowAndPrecisionLoss() {
+		assertEquals(-1.0, VariableConverter.convert("n", new BigInteger("9007199254740993"), Double.class, -1.0));
+		assertEquals(-1.0f, VariableConverter.convert("n", 16777217, Float.class, -1.0f));
+		assertEquals(-1.0, VariableConverter.convert("n", new BigDecimal("1e1000"), Double.class, -1.0));
+		assertEquals(-1.0f, VariableConverter.convert("n", Double.MAX_VALUE, Float.class, -1.0f));
+		assertEquals(0.5f, VariableConverter.convert("n", 0.5, Float.class, -1.0f));
+	}
+
+	@Test
 	void numericConversionNeverLosesPrecision() {
 		assertEquals(5, VariableConverter.convert("k", 5.0, Integer.class, 0));
 		assertEquals(0, VariableConverter.convert("k", 5.5, Integer.class, 0));

@@ -70,7 +70,9 @@ class ClientTest extends TestUtils {
 		client.publish(null, new PublishPayload()).join();
 
 		assertEquals(2, transport.requests.size());
-		assertEquals(transport.requests.get(0).headers(), transport.requests.get(1).headers());
+		final Map<String, String> publishHeaders = new java.util.HashMap<>(transport.requests.get(1).headers());
+		assertEquals("application/json; charset=UTF-8", publishHeaders.remove("Content-Type"));
+		assertEquals(transport.requests.get(0).headers(), publishHeaders);
 		assertTrue(transport.requests.get(0).headers().get("X-Agent")
 				.matches("^absmartly-[a-z0-9]+-sdk/[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+-]*)?$"));
 	}
@@ -104,7 +106,9 @@ class ClientTest extends TestUtils {
 
 		final Transport.Request request = transport.requests.get(0);
 		assertEquals("PUT", request.method());
-		assertEquals(sdkHeaders("0"), request.headers());
+		final Map<String, String> expectedHeaders = sdkHeaders("0");
+		expectedHeaders.put("Content-Type", "application/json; charset=UTF-8");
+		assertEquals(expectedHeaders, request.headers());
 		assertEquals("{\"hashed\":true,\"publishedAt\":123}", new String(request.body(), StandardCharsets.UTF_8));
 	}
 

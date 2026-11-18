@@ -116,7 +116,9 @@ class Client implements AutoCloseable, ContextDataProvider, ContextEventHandler 
 		}, executor_).thenCompose(new Function<byte[], CompletableFuture<Transport.Response>>() {
 			@Override
 			public CompletableFuture<Transport.Response> apply(final byte[] body) {
-				return send(new Transport.Request("PUT", contextUri_, headers_, body));
+				final Map<String, String> headers = new LinkedHashMap<String, String>(headers_);
+				headers.put("Content-Type", "application/json; charset=UTF-8");
+				return send(new Transport.Request("PUT", contextUri_, headers, body));
 			}
 		}).thenApply(new Function<Transport.Response, Void>() {
 			@Override

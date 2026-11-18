@@ -83,7 +83,8 @@ public final class JdkHttpTransport implements Transport {
 		for (final Map.Entry<String, String> header : request.headers().entrySet()) {
 			http.header(header.getKey(), header.getValue());
 		}
-		if (body != null) {
+		if ((body != null)
+				&& request.headers().keySet().stream().noneMatch(name -> "Content-Type".equalsIgnoreCase(name))) {
 			http.header("Content-Type", "application/json; charset=UTF-8");
 		}
 		if (requestTimeout_ != null) {

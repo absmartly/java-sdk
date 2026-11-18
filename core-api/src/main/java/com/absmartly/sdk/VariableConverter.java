@@ -82,10 +82,18 @@ final class VariableConverter {
 		}
 		final BigDecimal decimal = toBigDecimal((Number) value);
 		if (type == Double.class) {
-			return ((Number) value).doubleValue();
+			final double converted = ((Number) value).doubleValue();
+			if (!Double.isFinite(converted) || BigDecimal.valueOf(converted).compareTo(decimal) != 0) {
+				throw new ArithmeticException("Lossy double conversion");
+			}
+			return converted;
 		}
 		if (type == Float.class) {
-			return ((Number) value).floatValue();
+			final float converted = ((Number) value).floatValue();
+			if (!Float.isFinite(converted) || new BigDecimal(Float.toString(converted)).compareTo(decimal) != 0) {
+				throw new ArithmeticException("Lossy float conversion");
+			}
+			return converted;
 		}
 		if (type == BigDecimal.class) {
 			return decimal;
