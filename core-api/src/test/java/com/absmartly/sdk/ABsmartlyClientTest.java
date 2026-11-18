@@ -778,6 +778,39 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
+	void nestedOptionsAndGoalPropertiesAreImmutableSnapshots() {
+		final List<String> tags = new ArrayList<>(List.of("original"));
+		final ContextOptions options = ContextOptions.builder().unit("session_id", "u")
+				.attribute("nested", Map.of("tags", tags)).build();
+		tags.add("changed");
+		final Map<String, Object> nested = (Map<String, Object>) options.attributes().get("nested");
+		assertEquals(List.of("original"), nested.get("tags"));
+		assertThrows(UnsupportedOperationException.class, () -> ((List<String>) nested.get("tags")).add("bad"));
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = client(transport);
+		final Context context = client.context(options);
+		final List<Goal> goals = new ArrayList<>();
+		context.onEvent(event -> {
+			if (event instanceof GoalEvent) {
+				goals.add(((GoalEvent) event).goal());
+			}
+		});
+		final List<String> items = new ArrayList<>(List.of("first"));
+		context.track("purchase", Map.of("items", items));
+		items.add("second");
+		final List<String> exposed = (List<String>) goals.get(0).properties().get("items");
+		assertEquals(List.of("first"), exposed);
+		assertThrows(UnsupportedOperationException.class, () -> exposed.add("injected"));
+		context.publish();
+		final String body = new String(transport.requests.get(transport.requests.size() - 1).body(),
+				StandardCharsets.UTF_8);
+		assertFalse(body.contains("second"));
+		assertFalse(body.contains("injected"));
+		assertFalse(body.contains("changed"));
+	}
+
+	@Test
 	void typedNumericReadsUseTheExactJsonToken() {
 		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
 				"{\"fraction\":1.0000000000000001,\"tiny\":1e-400,\"id\":9007199254740993,\"price\":19.99,"

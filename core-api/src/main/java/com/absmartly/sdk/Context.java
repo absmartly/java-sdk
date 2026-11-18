@@ -619,7 +619,8 @@ public final class Context implements AutoCloseable {
 	public void setAttribute(final String name, @Nullable final Object value) {
 		checkNotClosed();
 
-		Concurrency.addRW(contextLock_, attributes_, new AttributePayload(name, value, clock_.millis()));
+		Concurrency.addRW(contextLock_, attributes_, new AttributePayload(name,
+				com.absmartly.sdk.internal.JsonValues.snapshotValue(value), clock_.millis()));
 		attrsSeq_.incrementAndGet();
 	}
 
@@ -967,7 +968,8 @@ public final class Context implements AutoCloseable {
 		final GoalAchievement achievement = new GoalAchievement();
 		achievement.achievedAt = clock_.millis();
 		achievement.name = goalName;
-		achievement.properties = (properties == null) ? null : new TreeMap<String, Object>(properties);
+		achievement.properties = (properties == null) ? null
+				: com.absmartly.sdk.internal.JsonValues.snapshot(new TreeMap<String, Object>(properties));
 
 		try {
 			eventLock_.lock();

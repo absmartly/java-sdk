@@ -28,7 +28,7 @@ public final class ContextOptions {
 
 	private ContextOptions(final Builder builder) {
 		units_ = Collections.unmodifiableMap(new LinkedHashMap<String, Object>(builder.units_));
-		attributes_ = Collections.unmodifiableMap(new LinkedHashMap<String, @Nullable Object>(builder.attributes_));
+		attributes_ = com.absmartly.sdk.internal.JsonValues.snapshot(builder.attributes_);
 		overrides_ = Collections.unmodifiableMap(new LinkedHashMap<String, Integer>(builder.overrides_));
 		customAssignments_ = Collections
 				.unmodifiableMap(new LinkedHashMap<String, Integer>(builder.customAssignments_));

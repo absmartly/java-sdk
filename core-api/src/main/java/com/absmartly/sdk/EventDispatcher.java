@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 
@@ -132,7 +131,7 @@ final class EventDispatcher {
 
 	static Goal toGoal(final GoalAchievement g) {
 		final Map<String, Object> properties = (g.properties != null)
-				? Collections.unmodifiableMap(new TreeMap<String, Object>(g.properties))
+				? com.absmartly.sdk.internal.JsonValues.snapshot(g.properties)
 				: null;
 		return new Goal(g.name, g.achievedAt, properties);
 	}
