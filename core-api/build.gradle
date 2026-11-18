@@ -122,6 +122,9 @@ def verifyShadedJar = tasks.register("verifyShadedJar") {
 		if (!leaked.isEmpty()) {
 			throw new GradleException("Unrelocated Jackson classes in ${jarFile.get().asFile.name}: ${leaked.take(5)}")
 		}
+		if (!names.contains("META-INF/proguard/absmartly-core-api.pro")) {
+			throw new GradleException("The R8/ProGuard consumer rules are missing from ${jarFile.get().asFile.name}")
+		}
 		if (!names.contains("com/absmartly/sdk/JdkHttpTransport.class")) {
 			throw new GradleException("JdkHttpTransport is missing from ${jarFile.get().asFile.name}")
 		}

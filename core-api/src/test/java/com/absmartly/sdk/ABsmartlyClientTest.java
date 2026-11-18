@@ -394,7 +394,10 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(java.util.LinkedHashMap.class, VariableConverter.inferType(Map.of()));
 	}
 
+	// No no-argument constructor, so inferType reaches the substitute check instead of keeping the class.
 	public static final class Tags extends java.util.AbstractList<String> {
+		public Tags(final List<String> ignored) {}
+
 		@Override
 		public String get(final int index) {
 			throw new IndexOutOfBoundsException();
@@ -409,12 +412,20 @@ class ABsmartlyClientTest extends TestUtils {
 	@Test
 	@SuppressWarnings("unchecked")
 	void finalCollectionDefaultsFallBack() {
-		final Tags tags = new Tags();
+		final Tags tags = new Tags(List.of());
 		final Tags read = VariableConverter.convert("items", List.of("actual"),
 				(Class<Tags>) VariableConverter.inferType(tags), tags);
 		assertSame(tags, read, "a final collection default is returned, never a cast-failing ArrayList");
 		final java.util.Set<String> keySet = java.util.concurrent.ConcurrentHashMap.newKeySet();
 		assertEquals(keySet.getClass(), VariableConverter.inferType(keySet), "same answer on every JDK");
+	}
+
+	@Test
+	void onlyKotlinEmptyCollectionsAreExempt() throws Exception {
+		// UIntArray is another public final kotlin collection: no JDK substitute can stand in for it.
+		final Object unsigned = kotlin.UIntArray.class.getMethod("box-impl", int[].class).invoke(null,
+				(Object) new int[0]);
+		assertEquals(kotlin.UIntArray.class, VariableConverter.inferType(unsigned));
 	}
 
 	@Test
@@ -426,6 +437,7 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(kotlinList));
 		assertEquals(java.util.LinkedHashSet.class, VariableConverter.inferType(kotlinSet));
 		assertEquals(java.util.LinkedHashMap.class, VariableConverter.inferType(kotlinMap));
+
 		assertEquals(List.of("actual"), VariableConverter.convert("items", List.of("actual"),
 				(Class<List<String>>) VariableConverter.inferType(kotlinList), kotlinList));
 		assertEquals(java.util.Set.of("actual"), VariableConverter.convert("items", List.of("actual"),
