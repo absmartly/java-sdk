@@ -112,7 +112,7 @@ public final class JdkHttpTransport implements Transport {
 	// without a body, as the JDK client does; every other redirect resends the same method and body, so a redirected
 	// publish (a PUT) is never silently dropped.
 	private CompletableFuture<Response> followRedirect(final HttpRequest request, final HttpResponse<byte[]> response,
-			final int execCount, final int redirects, final long deadline) {
+			final int execCount, final int redirects, final long deadline, final CompletableFuture<Void> drained) {
 		final java.util.Optional<String> location = response.headers().firstValue("Location");
 		if (!location.isPresent() || (redirects >= MAX_REDIRECTS)) {
 			return null;
@@ -142,7 +142,9 @@ public final class JdkHttpTransport implements Transport {
 		} else {
 			next.GET();
 		}
-		return attempt(next.build(), execCount, redirects + 1, deadline);
+		final HttpRequest hop = next.build();
+		return drained.copy().completeOnTimeout(null, DRAIN_WAIT_MS, TimeUnit.MILLISECONDS)
+				.thenCompose(ignored -> attempt(hop, execCount, redirects + 1, deadline));
 	}
 
 	static boolean sameOrigin(final java.net.URI from, final java.net.URI to) {
@@ -165,22 +167,36 @@ public final class JdkHttpTransport implements Transport {
 
 	// A redirect this transport will follow is acted on from its headers: its body is discarded, never awaited, so a
 	// stalled redirect body cannot hold up the request. Every other response's body is read in full.
-	private HttpResponse.BodyHandler<byte[]> bodyHandler(final HttpRequest request, final int redirects) {
+	private HttpResponse.BodyHandler<byte[]> bodyHandler(final HttpRequest request, final int redirects,
+			final CompletableFuture<Void> redirectDrained) {
 		return info -> {
 			if (isRedirect(info.statusCode()) && (redirects < MAX_REDIRECTS)) {
 				final java.util.Optional<String> location = info.headers().firstValue("Location");
 				if (location.isPresent() && isFollowable(request.uri(), location.get())) {
-					return new DiscardingSubscriber();
+					final DiscardingSubscriber discarding = new DiscardingSubscriber();
+					discarding.drained.whenComplete((ignored, error) -> redirectDrained.complete(null));
+					return discarding;
 				}
 			}
+			redirectDrained.complete(null);
 			return HttpResponse.BodySubscribers.ofByteArray();
 		};
 	}
 
-	// Completes with an empty body as soon as the body is offered, cancelling it: the JDK client's own discarding
-	// subscribers only complete once the whole body has arrived.
+	// A followed redirect's body is drained, not awaited: the next hop starts once the body has drained (so an HTTP/1.1
+	// connection is returned to the pool and reused) or after DRAIN_WAIT_MS, whichever is first, so a stalled body
+	// never holds the request up. A body still arriving after DRAIN_TIMEOUT_MS, or larger than DRAIN_LIMIT, is
+	// cancelled, which closes that connection.
+	private static final long DRAIN_WAIT_MS = 100;
+
 	private static final class DiscardingSubscriber implements HttpResponse.BodySubscriber<byte[]> {
+		private static final long DRAIN_LIMIT = 64 * 1024;
+		private static final long DRAIN_TIMEOUT_MS = 1000;
+
 		private final CompletableFuture<byte[]> body = new CompletableFuture<byte[]>();
+		final CompletableFuture<Void> drained = new CompletableFuture<Void>();
+		private volatile java.util.concurrent.Flow.@Nullable Subscription subscription;
+		private long received;
 
 		@Override
 		public java.util.concurrent.CompletionStage<byte[]> getBody() {
@@ -189,21 +205,37 @@ public final class JdkHttpTransport implements Transport {
 
 		@Override
 		public void onSubscribe(final java.util.concurrent.Flow.Subscription subscription) {
-			subscription.cancel();
+			this.subscription = subscription;
 			body.complete(new byte[0]);
+			CompletableFuture.delayedExecutor(DRAIN_TIMEOUT_MS, TimeUnit.MILLISECONDS, Runnable::run).execute(() -> {
+				if (!drained.isDone()) {
+					subscription.cancel();
+					drained.complete(null);
+				}
+			});
+			subscription.request(Long.MAX_VALUE);
 		}
 
 		@Override
-		public void onNext(final java.util.List<java.nio.ByteBuffer> item) {}
+		public void onNext(final java.util.List<java.nio.ByteBuffer> item) {
+			for (final java.nio.ByteBuffer buffer : item) {
+				received += buffer.remaining();
+			}
+			final java.util.concurrent.Flow.Subscription current = subscription;
+			if ((received > DRAIN_LIMIT) && (current != null)) {
+				current.cancel();
+				drained.complete(null);
+			}
+		}
 
 		@Override
 		public void onError(final Throwable throwable) {
-			body.complete(new byte[0]);
+			drained.complete(null);
 		}
 
 		@Override
 		public void onComplete() {
-			body.complete(new byte[0]);
+			drained.complete(null);
 		}
 	}
 
@@ -224,8 +256,9 @@ public final class JdkHttpTransport implements Transport {
 			return timedOut(request, " timed out", null);
 		}
 		exchangesStarted_.incrementAndGet();
+		final CompletableFuture<Void> redirectDrained = new CompletableFuture<Void>();
 		final CompletableFuture<HttpResponse<byte[]>> sent = httpClient_.sendAsync(request,
-				bodyHandler(request, redirects));
+				bodyHandler(request, redirects, redirectDrained));
 		// HttpRequest.timeout stops applying once the headers arrive, so the deadline is also enforced on the whole
 		// exchange, up to the last byte of the body. The deadline goes on a copy: orTimeout completes the future it is
 		// called on, and the original must stay incomplete so cancelling it still reaches the exchange. orTimeout fires
@@ -241,7 +274,7 @@ public final class JdkHttpTransport implements Transport {
 						}
 						if (isRedirect(response.statusCode())) {
 							final CompletableFuture<Response> redirected = followRedirect(request, response, execCount,
-									redirects, deadline);
+									redirects, deadline, redirectDrained);
 							if (redirected != null) {
 								return redirected;
 							}

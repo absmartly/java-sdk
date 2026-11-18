@@ -799,6 +799,18 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void integerOnlyConfigsAreParsedOnce() {
+		try (org.mockito.MockedStatic<com.absmartly.sdk.internal.Json> json = org.mockito.Mockito.mockStatic(
+				com.absmartly.sdk.internal.Json.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+			final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"count\":3,\"name\":\"x\"}")));
+			final Context context = client.context(SESSION);
+			assertEquals(3, context.variable("count", 0));
+			json.verify(() -> com.absmartly.sdk.internal.Json.readExactNumbers(org.mockito.ArgumentMatchers.any()),
+					org.mockito.Mockito.never());
+		}
+	}
+
+	@Test
 	void typedNumericReadsDoNotReparseTheConfig() {
 		final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"count\":3,\"price\":19.99}")));
 		final Context context = client.context(SESSION);
@@ -817,9 +829,10 @@ class ABsmartlyClientTest extends TestUtils {
 	@Timeout(value = 5, unit = TimeUnit.SECONDS)
 	void hugeExponentsFallBackQuickly() {
 		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
-				"{\"huge\":1e10000000,\"big\":1e999999999,\"negzero\":-0.0}")));
+				"{\"huge\":1e10000000,\"big\":1e999999999,\"negzero\":-0.0,\"tiny\":1e-10000000}")));
 		final Context context = client.context(SESSION);
 		assertEquals(-1, context.variable("huge", -1));
+		assertEquals(-1, context.variable("tiny", -1), "a huge negative exponent falls back quickly too");
 		assertEquals(-1L, context.variable("huge", -1L));
 		assertEquals(BigInteger.ONE, context.variable("huge", BigInteger.ONE));
 		assertEquals(BigDecimal.ONE, context.variable("big", BigDecimal.ONE));

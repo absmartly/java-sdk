@@ -927,13 +927,23 @@ public final class Context implements AutoCloseable {
 	// numeric type is taken from the variant's config JSON as the exact decimal it was written as (BigDecimal or
 	// BigInteger), so a typed read can tell 1.0000000000000001 from 1 and 1e-400 from 0. variableValue, and typed
 	// reads as Object or Number, keep the 1.x Double/Integer values.
+	private static boolean hasDouble(final Map<String, Object> variables) {
+		for (final Object value : variables.values()) {
+			if (value instanceof Double) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static @Nullable Object exactVariable(final @Nullable Assignment assignment, final String key,
 			final Class<?> type) {
 		if ((assignment == null) || (assignment.variables == null) || !assignment.variables.containsKey(key)) {
 			return null;
 		}
 		final Object value = assignment.variables.get(key);
-		if (!(value instanceof Number) || (type == Number.class) || !Number.class.isAssignableFrom(type)) {
+		// Integers are parsed exactly already; only a Double can have lost the written value.
+		if (!(value instanceof Double) || (type == Number.class) || !Number.class.isAssignableFrom(type)) {
 			return value;
 		}
 		final Object exact = assignment.exactNumbers.get(key);
@@ -2539,13 +2549,6 @@ public final class Context implements AutoCloseable {
 					experiment.variants != null ? experiment.variants.length : 0);
 			contextExperiment.exactNumbers = new ArrayList<Map<String, Object>>(
 					experiment.variants != null ? experiment.variants.length : 0);
-			if (experiment.variants != null) {
-				for (final ExperimentVariant variant : experiment.variants) {
-					contextExperiment.exactNumbers.add(((variant.config != null) && !variant.config.isEmpty())
-							? Json.readExactNumbers(variant.config)
-							: Collections.<String, Object> emptyMap());
-				}
-			}
 
 			if (experiment.variants != null)
 				for (final ExperimentVariant variant : experiment.variants) {
@@ -2577,16 +2580,24 @@ public final class Context implements AutoCloseable {
 								}
 
 								contextExperiment.variables.add(variables);
+								// Only a fractional or exponent number (parsed as a Double) can differ from what was
+								// written; integers are exact already, so most configs are never parsed twice.
+								contextExperiment.exactNumbers.add(hasDouble(variables)
+										? Json.readExactNumbers(variant.config)
+										: Collections.<String, Object> emptyMap());
 							} else {
 								contextExperiment.variables.add(Collections.<String, Object> emptyMap());
+								contextExperiment.exactNumbers.add(Collections.<String, Object> emptyMap());
 							}
 						} catch (Exception e) {
 							log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
 									experiment.name, variant.name, e.getMessage());
 							contextExperiment.variables.add(Collections.<String, Object> emptyMap());
+							contextExperiment.exactNumbers.add(Collections.<String, Object> emptyMap());
 						}
 					} else {
 						contextExperiment.variables.add(Collections.<String, Object> emptyMap());
+						contextExperiment.exactNumbers.add(Collections.<String, Object> emptyMap());
 					}
 				}
 

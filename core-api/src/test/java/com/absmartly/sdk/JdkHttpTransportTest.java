@@ -265,12 +265,17 @@ class JdkHttpTransportTest {
 		final AtomicInteger hits = new AtomicInteger();
 		server.createContext("/loop", exchange -> {
 			hits.incrementAndGet();
+			final byte[] body = "loop".getBytes(StandardCharsets.UTF_8);
 			exchange.getResponseHeaders().add("Location", "/loop");
-			exchange.sendResponseHeaders(302, -1);
-			exchange.close();
+			exchange.sendResponseHeaders(302, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
 		});
-		assertEquals(302, JdkHttpTransport.create()
-				.send(new Transport.Request("GET", base.resolve("/loop"), Map.of(), null)).join().statusCode());
+		final Transport.Response response = JdkHttpTransport.create()
+				.send(new Transport.Request("GET", base.resolve("/loop"), Map.of(), null)).join();
+		assertEquals(302, response.statusCode());
+		assertEquals("loop", new String(response.body(), StandardCharsets.UTF_8), "the capped 3xx keeps its body");
 		assertEquals(6, hits.get(), "the first request and five redirects");
 	}
 
@@ -359,6 +364,35 @@ class JdkHttpTransportTest {
 		assertEquals(200, response.statusCode());
 		assertEquals(1, calls.get(), "the destination was reached without waiting for the redirect's body");
 		assertTrue(System.nanoTime() - start < 3_000_000_000L);
+	}
+
+	@Test
+	void followedRedirectsReuseTheConnection() {
+		final java.util.Set<String> clients = java.util.concurrent.ConcurrentHashMap.newKeySet();
+		server.createContext("/reuse", exchange -> {
+			clients.add(exchange.getRemoteAddress().toString());
+			final byte[] body = "moved".getBytes(StandardCharsets.UTF_8);
+			exchange.getResponseHeaders().add("Location", "/reused");
+			exchange.sendResponseHeaders(307, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
+		});
+		server.createContext("/reused", exchange -> {
+			clients.add(exchange.getRemoteAddress().toString());
+			final byte[] body = "ok".getBytes(StandardCharsets.UTF_8);
+			exchange.sendResponseHeaders(200, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
+		});
+		final JdkHttpTransport transport = JdkHttpTransport.create();
+		for (int i = 0; i < 10; ++i) {
+			assertEquals(200, transport.send(new Transport.Request("GET", base.resolve("/reuse"), Map.of(), null))
+					.join().statusCode());
+		}
+		assertEquals(1, clients.size(), "each redirect's body drains before the next hop, so one connection serves "
+				+ "all 20 exchanges");
 	}
 
 	@Test
