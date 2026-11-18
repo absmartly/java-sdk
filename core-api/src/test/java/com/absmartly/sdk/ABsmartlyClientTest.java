@@ -547,19 +547,16 @@ class ABsmartlyClientTest extends TestUtils {
 
 	@Test
 	void contextStreamsUseTheClientExecutor() throws InterruptedException {
-		final AtomicInteger executed = new AtomicInteger();
-		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
-		final java.util.concurrent.Executor counting = command -> {
-			executed.incrementAndGet();
-			pool.execute(command);
-		};
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors
+				.newSingleThreadExecutor(runnable -> new Thread(runnable, "client-executor"));
 		try {
 			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
-					.application("a").environment("e").transport(FakeTransport.ok(CONTEXT_JSON)).executor(counting)
+					.application("a").environment("e").transport(FakeTransport.ok(CONTEXT_JSON)).executor(pool)
 					.build();
 			closeables.add(client);
 			final Context context = client.context(SESSION);
 			final CountDownLatch received = new CountDownLatch(1);
+			final List<String> threads = Collections.synchronizedList(new ArrayList<>());
 			context.events().subscribe(new Flow.Subscriber<ContextEvent>() {
 				@Override
 				public void onSubscribe(final Flow.Subscription subscription) {
@@ -569,6 +566,7 @@ class ABsmartlyClientTest extends TestUtils {
 				@Override
 				public void onNext(final ContextEvent item) {
 					if (item.type() == ContextEvent.Type.EXPOSURE) {
+						threads.add(Thread.currentThread().getName());
 						received.countDown();
 					}
 				}
@@ -579,10 +577,9 @@ class ABsmartlyClientTest extends TestUtils {
 				@Override
 				public void onComplete() {}
 			});
-			final int before = executed.get();
 			context.treatment("exp_test_ab");
 			assertTrue(received.await(5, TimeUnit.SECONDS));
-			assertTrue(executed.get() > before, "the context's stream delivers on the client's executor");
+			assertEquals(List.of("client-executor"), threads, "the context's stream delivers on the client executor");
 		} finally {
 			pool.shutdownNow();
 		}
@@ -617,11 +614,24 @@ class ABsmartlyClientTest extends TestUtils {
 			}
 		});
 		producer.get(5, TimeUnit.SECONDS);
-		// Nothing was requested, so everything past the buffer is dropped once, never retried into the buffer.
+		// Nothing was requested, so every event past the buffer is lost and the producer is never blocked.
 		final int total = Flow.defaultBufferSize() * 4;
 		assertEquals(total - Flow.defaultBufferSize(), stream.droppedCount());
 		stream.close();
 		pool.shutdownNow();
+	}
+
+	@Test
+	void transportIsClosedWhenTheClientCannotBeBuilt() {
+		final FakeTransport created = FakeTransport.ok("{}");
+		assertThrows(IllegalArgumentException.class, () -> ABsmartlyClient.builder().endpoint(URI.create("ftp://x"))
+				.apiKey("k").application("a").environment("e").defaultTransport(() -> created).build());
+		assertTrue(created.closed, "a transport the client created is closed when construction fails");
+
+		final FakeTransport supplied = FakeTransport.ok("{}");
+		assertThrows(IllegalArgumentException.class, () -> ABsmartlyClient.builder().endpoint(URI.create("ftp://x"))
+				.apiKey("k").application("a").environment("e").transport(supplied).build());
+		assertFalse(supplied.closed, "a caller's transport stays open");
 	}
 
 	@Test

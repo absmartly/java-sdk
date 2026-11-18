@@ -57,7 +57,8 @@ public final class ABsmartlyClient implements AutoCloseable {
 			throw new IllegalArgumentException("Missing Environment configuration");
 		}
 
-		final Transport transport = (builder.transport_ != null) ? builder.transport_ : defaultTransport();
+		final Transport transport = (builder.transport_ != null) ? builder.transport_
+				: builder.defaultTransport_.get();
 		ownsTransport_ = builder.transport_ == null;
 		try {
 			client_ = new Client(builder.endpoint_.toString(), builder.apiKey_, builder.application_,
@@ -295,6 +296,11 @@ public final class ABsmartlyClient implements AutoCloseable {
 			return this;
 		}
 
+		Builder defaultTransport(final java.util.function.Supplier<Transport> defaultTransport) {
+			defaultTransport_ = defaultTransport;
+			return this;
+		}
+
 		Builder eventHandler(final ContextEventHandler eventHandler) {
 			eventHandler_ = eventHandler;
 			return this;
@@ -315,6 +321,7 @@ public final class ABsmartlyClient implements AutoCloseable {
 		private Clock clock_ = Clock.systemUTC();
 		private @Nullable ContextDataProvider dataProvider_;
 		private @Nullable ContextEventHandler eventHandler_;
+		private java.util.function.Supplier<Transport> defaultTransport_ = ABsmartlyClient::defaultTransport;
 	}
 
 	private final Client client_;
