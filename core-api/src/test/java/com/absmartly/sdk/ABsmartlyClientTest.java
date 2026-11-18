@@ -372,7 +372,47 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void sevenDigitFloatsAreRead() {
+		assertEquals(1234.567f, VariableConverter.convert("n", 1234.567, Float.class, -1.0f));
+		assertEquals(0.1234567f, VariableConverter.convert("n", 0.1234567, Float.class, -1.0f));
+		assertEquals(12345.67f, VariableConverter.convert("n", 12345.67, Float.class, -1.0f));
+		assertEquals(9.999999f, VariableConverter.convert("n", 9.999999, Float.class, -1.0f));
+		assertEquals(1.0e23f, VariableConverter.convert("n", 1.0e23, Float.class, -1.0f));
+		assertEquals(-1.0f, VariableConverter.convert("n", 1.23456789, Float.class, -1.0f), "9 digits do not fit");
+		final java.util.Random random = new java.util.Random(7);
+		for (int i = 0; i < 20000; ++i) {
+			final BigDecimal decimal = BigDecimal.valueOf(random.nextInt(9_000_000) + 1_000_000, random.nextInt(10));
+			final float read = VariableConverter.convert("n", decimal.doubleValue(), Float.class, Float.NaN);
+			if (!Float.isNaN(read)) {
+				assertEquals(0, VariableConverter.shortestDecimal(read).compareTo(decimal), decimal.toString());
+			}
+		}
+	}
+
+	@Test
+	void kotlinStyleMarkerInterfacesDoNotBlockSubstitutes() {
+		final java.util.List<String> kotlinLike = new MarkedEmptyList();
+		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(kotlinLike));
+	}
+
+	interface Marker {}
+
+	private static final class MarkedEmptyList extends java.util.AbstractList<String> implements Marker {
+		@Override
+		public String get(final int index) {
+			throw new IndexOutOfBoundsException();
+		}
+
+		@Override
+		public int size() {
+			return 0;
+		}
+	}
+
+	@Test
 	void infinityIsKeptForUntypedReads() {
+		assertEquals(BigDecimal.ONE, VariableConverter.convert("n", Double.POSITIVE_INFINITY, BigDecimal.class,
+				BigDecimal.ONE));
 		assertEquals(Double.POSITIVE_INFINITY, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Object.class,
 				null));
 		assertEquals(Double.POSITIVE_INFINITY, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Number.class,

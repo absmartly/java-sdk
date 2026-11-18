@@ -42,14 +42,15 @@ final class VariableConverter {
 	private static final Class<?>[] SUBSTITUTES = {java.util.ArrayList.class, java.util.LinkedHashSet.class,
 			java.util.TreeSet.class, java.util.LinkedHashMap.class, java.util.TreeMap.class};
 
-	// Whether a value of `candidate` can stand in for the default: it implements every interface the default's class
-	// (or its superclasses) implements, and extends the nearest public superclass other than the JDK's abstract
-	// collection skeletons. So Collections.emptySet() (a private class) takes a LinkedHashSet, while an EnumSet
-	// default, whose public superclass is EnumSet, takes nothing: the caller's cast would fail.
+	// Whether a value of `candidate` can stand in for the default: it implements every interface that declares methods
+	// on the default's class (or its superclasses), and extends the nearest public superclass of the default. Marker
+	// interfaces with no methods (Kotlin's KMappedMarker, RandomAccess, Serializable...) are skipped, so a Kotlin
+	// emptyList() or Collections.emptySet() takes a JDK collection, while an EnumSet default, whose public superclass
+	// is EnumSet, takes nothing: the caller's cast would fail.
 	private static boolean implementsEveryInterfaceOf(final Class<?> candidate, final Class<?> type) {
 		for (Class<?> c = type; c != null; c = c.getSuperclass()) {
 			for (final Class<?> iface : c.getInterfaces()) {
-				if (!iface.isAssignableFrom(candidate)) {
+				if ((iface.getMethods().length > 0) && !iface.isAssignableFrom(candidate)) {
 					return false;
 				}
 			}
@@ -58,12 +59,8 @@ final class VariableConverter {
 		while ((visible != null) && !java.lang.reflect.Modifier.isPublic(visible.getModifiers())) {
 			visible = visible.getSuperclass();
 		}
-		return (visible == null) || SKELETONS.contains(visible) || visible.isAssignableFrom(candidate);
+		return (visible == null) || visible.isAssignableFrom(candidate);
 	}
-
-	private static final java.util.Set<Class<?>> SKELETONS = new java.util.HashSet<Class<?>>(java.util.Arrays.asList(
-			Object.class, java.util.AbstractCollection.class, java.util.AbstractList.class,
-			java.util.AbstractSet.class, java.util.AbstractMap.class));
 
 	private static boolean isConstructible(final Class<?> type) {
 		if (!java.lang.reflect.Modifier.isPublic(type.getModifiers())
@@ -111,8 +108,10 @@ final class VariableConverter {
 		return defaultValue;
 	}
 
+	// Double and Float accept Infinity and NaN as values, so these reads must turn them away explicitly; every other
+	// numeric conversion (BigDecimal, the integer types) already rejects a non-finite number.
 	private static boolean isFloatingType(final Class<?> type) {
-		return (type == Double.class) || (type == Float.class) || (type == BigDecimal.class);
+		return (type == Double.class) || (type == Float.class);
 	}
 
 	private static boolean isScalarType(final Class<?> type) {
@@ -127,16 +126,16 @@ final class VariableConverter {
 		final BigDecimal decimal = toBigDecimal((Number) value);
 		if (type == Double.class) {
 			final double converted = ((Number) value).doubleValue();
-			if (!Double.isFinite(converted)
-					|| !losslessFloating(decimal, exactValue((Number) value), new BigDecimal(converted), 15)) {
+			if (!Double.isFinite(converted) || !losslessFloating(decimal, exactValue((Number) value),
+					new BigDecimal(converted), shortestDecimal(converted))) {
 				throw new ArithmeticException(value + " cannot be read as a Double without losing precision");
 			}
 			return converted;
 		}
 		if (type == Float.class) {
 			final float converted = ((Number) value).floatValue();
-			if (!Float.isFinite(converted)
-					|| !losslessFloating(decimal, exactValue((Number) value), new BigDecimal(converted), 6)) {
+			if (!Float.isFinite(converted) || !losslessFloating(decimal, exactValue((Number) value),
+					new BigDecimal(converted), shortestDecimal(converted))) {
 				throw new ArithmeticException(value + " cannot be read as a Float without losing precision");
 			}
 			return converted;
@@ -175,17 +174,27 @@ final class VariableConverter {
 	}
 
 	// A floating conversion is lossless when the result is exactly the source value (2^60 as a Double), or when the
-	// source's shortest decimal form has at most the target's guaranteed decimal digits (15 for double, 6 for float),
-	// so the result is the nearest double/float to that decimal (0.1 or 19.99 as a Float). This is pure arithmetic,
-	// so every JDK and Android agree; Float.toString and BigDecimal.valueOf changed their output in JDK 19.
+	// result's shortest decimal is the source's shortest decimal (0.1, 19.99 or 1234.567 as a Float): the reader gets
+	// the number the config wrote. Both shortest forms are computed, so every JDK and Android agree; Double.toString
+	// and Float.toString changed their output in JDK 19.
 	private static boolean losslessFloating(final BigDecimal decimal, final BigDecimal exact,
-			final BigDecimal converted, final int digits) {
-		if (converted.compareTo(exact) == 0) {
-			return true;
+			final BigDecimal converted, final BigDecimal convertedShortest) {
+		return (converted.compareTo(exact) == 0) || (convertedShortest.compareTo(decimal) == 0);
+	}
+
+	// The shortest decimal that reads back as the same float.
+	static BigDecimal shortestDecimal(final float f) {
+		if (f == 0) {
+			return BigDecimal.ZERO;
 		}
-		final BigDecimal shortest = decimal.stripTrailingZeros();
-		return (shortest.precision() <= digits) && (shortest.round(new java.math.MathContext(digits))
-				.compareTo(converted.round(new java.math.MathContext(digits))) == 0);
+		final BigDecimal exact = new BigDecimal(f);
+		for (int digits = 1; digits < 9; ++digits) {
+			final BigDecimal rounded = exact.round(new java.math.MathContext(digits, java.math.RoundingMode.HALF_EVEN));
+			if (rounded.floatValue() == f) {
+				return rounded;
+			}
+		}
+		return exact.round(new java.math.MathContext(9, java.math.RoundingMode.HALF_EVEN));
 	}
 
 	// BigInteger.longValueExact() and friends need Android API 31, so the range is checked by hand.
