@@ -760,7 +760,7 @@ public class Context implements Closeable {
 				now = clock_.millis();
 				current = resolver.apply(now);
 				if (current == null) {
-					break;
+					return null;
 				}
 			}
 			if (triggerExposure(current, now) != ASSIGNMENT_RETIRED) {
@@ -1820,8 +1820,7 @@ public class Context implements Closeable {
 
 	// callerNow is the caller's single clock reading for this resolution, so the cache key, the drawn
 	// period and a switchback exposure's exposedAt all agree. A switchback installed by a refresh
-	// after the caller skipped the clock reads it here; settleExposure then re-resolves it at one
-	// reading of its own before exposing.
+	// after the caller skipped the clock reads it here.
 	private Assignment getAssignment(final String experimentName, final long callerNow) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		// The cached slot the read path found stale (null on a miss). The write path does not

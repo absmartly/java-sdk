@@ -40,7 +40,8 @@ public abstract class SwitchbackFieldDeserializer<T> extends JsonDeserializer<T>
 		} catch (final JsonProcessingException e) {
 			return ignore(field, current, e.getOriginalMessage());
 		} catch (final RuntimeException e) {
-			// Jackson 2.15 to 2.17 throw ClassCastException reading an out-of-range Long from a buffer.
+			// Any failure converting the buffered value ignores the field, as 1.9.0 did; e.g. Jackson
+			// 2.15 to 2.17 throw ClassCastException reading an out-of-range Long from a buffer.
 			return ignore(field, current, e.toString());
 		}
 	}
