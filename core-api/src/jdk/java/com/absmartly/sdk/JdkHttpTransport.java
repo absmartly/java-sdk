@@ -174,8 +174,8 @@ public final class JdkHttpTransport implements Transport {
 		final CompletableFuture<HttpResponse<byte[]>> timed = (requestTimeout_ != null)
 				? sent.copy().orTimeout(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
 				: sent;
-		return timed
-				.handleAsync((response, error) -> {
+		return onCallbackExecutor(timed, request)
+				.handle((response, error) -> {
 					if (error == null) {
 						if (isRetryableStatus(response.statusCode()) && (execCount <= maxRetries_)) {
 							return retry(request, execCount);
@@ -195,28 +195,58 @@ public final class JdkHttpTransport implements Transport {
 						// Stops the exchange where the JDK supports it: from JDK 16 cancelling closes the connection;
 						// JDK 11's client ignores it and finishes reading the response in the background.
 						sent.cancel(true);
-						return CompletableFuture.<Response> failedFuture(new RequestTimeoutException(
-								request.method() + " " + request.uri().getPath() + " timed out", cause));
+						return timedOut(request, " timed out", cause);
 					}
 					if (isRetryableFailure(cause) && (execCount <= maxRetries_)) {
 						return retry(request, execCount);
 					}
 					if (cause instanceof HttpTimeoutException) {
-						final String what = (cause instanceof HttpConnectTimeoutException) ? " timed out connecting"
-								: " timed out";
-						return CompletableFuture.<Response> failedFuture(new RequestTimeoutException(
-								request.method() + " " + request.uri().getPath() + what, cause));
+						return timedOut(request,
+								(cause instanceof HttpConnectTimeoutException) ? " timed out connecting"
+										: " timed out",
+								cause);
 					}
 					return CompletableFuture.<Response> failedFuture(cause);
-				}, callbackExecutor_)
+				})
 				.thenCompose(future -> future);
 	}
 
+	private static CompletableFuture<Response> timedOut(final HttpRequest request, final String what,
+			final Throwable cause) {
+		return CompletableFuture.failedFuture(
+				new RequestTimeoutException(request.method() + " " + request.uri().getPath() + what, cause));
+	}
+
+	// Moves a completion onto the callback executor. An executor that rejects the task (shut down, or saturated)
+	// fails the request with a TransportException instead of leaving its future incomplete forever.
+	private <T> CompletableFuture<T> onCallbackExecutor(final CompletableFuture<T> source, final HttpRequest request) {
+		final CompletableFuture<T> moved = new CompletableFuture<T>();
+		source.whenComplete((value, error) -> dispatch(() -> {
+			if (error != null) {
+				moved.completeExceptionally(error);
+			} else {
+				moved.complete(value);
+			}
+		}, moved, request));
+		return moved;
+	}
+
+	private void dispatch(final Runnable task, final CompletableFuture<?> target, final HttpRequest request) {
+		try {
+			callbackExecutor_.execute(task);
+		} catch (final RuntimeException rejected) {
+			target.completeExceptionally(new TransportException(request.method() + " " + request.uri().getPath()
+					+ " could not be scheduled on the transport executor", rejected));
+		}
+	}
+
+	// The back-off runs on the JDK's shared delay thread, which then hands the retry to the callback executor; a
+	// rejection there fails the request rather than being lost on the delay thread.
 	private CompletableFuture<Response> retry(final HttpRequest request, final int execCount) {
-		final Executor delayed = CompletableFuture.delayedExecutor(retryDelayMillis(execCount), TimeUnit.MILLISECONDS,
-				callbackExecutor_);
-		return CompletableFuture.supplyAsync(() -> null, delayed)
-				.thenCompose(ignored -> attempt(request, execCount + 1));
+		final CompletableFuture<Void> due = new CompletableFuture<Void>();
+		CompletableFuture.delayedExecutor(retryDelayMillis(execCount), TimeUnit.MILLISECONDS, Runnable::run)
+				.execute(() -> dispatch(() -> due.complete(null), due, request));
+		return due.thenCompose(ignored -> attempt(request, execCount + 1));
 	}
 
 	// The delay before retry number execCount: 5 ms plus a share of retryInterval that doubles on every retry.

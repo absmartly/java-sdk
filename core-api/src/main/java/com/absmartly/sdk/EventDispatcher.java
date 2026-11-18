@@ -49,12 +49,7 @@ final class EventDispatcher {
 
 	Subscription addListener(final EventListener listener) {
 		listeners_.add(listener);
-		return new Subscription() {
-			@Override
-			public void close() {
-				listeners_.remove(listener);
-			}
-		};
+		return () -> listeners_.remove(listener);
 	}
 
 	// Loaded on the first call only: Flow and SubmissionPublisher need Android API 30.
@@ -98,7 +93,11 @@ final class EventDispatcher {
 		}
 		final Object stream = stream_;
 		if (stream != null) {
-			((EventStream) stream).submit(event);
+			try {
+				((EventStream) stream).submit(event);
+			} catch (final RuntimeException e) {
+				log.error("ABsmartly event stream failed on {}", event.type(), e);
+			}
 		}
 		if (parent_ != null) {
 			parent_.deliver(event);

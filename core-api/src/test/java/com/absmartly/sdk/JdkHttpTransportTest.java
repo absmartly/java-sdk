@@ -553,6 +553,31 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void rejectedRetrySchedulingFailsTheRequest() {
+		failFirst = 1;
+		final java.util.concurrent.ExecutorService shut = Executors.newSingleThreadExecutor();
+		// Refuses only the retry hand-off, which the JDK's delay thread submits after the back-off, as a saturated
+		// executor would; the HTTP client's own tasks on the same executor still run.
+		final java.util.concurrent.Executor failingLater = command -> {
+			if (Thread.currentThread().getName().toLowerCase(java.util.Locale.ROOT).contains("delay")) {
+				throw new java.util.concurrent.RejectedExecutionException("saturated");
+			}
+			shut.execute(command);
+		};
+		try {
+			final JdkHttpTransport transport = JdkHttpTransport.builder().retryInterval(Duration.ofMillis(10))
+					.executor(failingLater).build();
+			final CompletionException error = assertThrows(CompletionException.class, () -> transport
+					.send(new Transport.Request("GET", base.resolve("/context"), Map.of(), null))
+					.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).join());
+			assertTrue(error.getCause() instanceof TransportException, error.getCause().toString());
+			assertTrue(error.getCause().getCause() instanceof java.util.concurrent.RejectedExecutionException);
+		} finally {
+			shut.shutdownNow();
+		}
+	}
+
+	@Test
 	void backoffMatchesOneDotX() {
 		final JdkHttpTransport transport = JdkHttpTransport.create();
 		// 5 ms + ((2000 * (333 - 5)) / 2^5) us doubling per retry, as DefaultHTTPClientRetryStrategy computed.

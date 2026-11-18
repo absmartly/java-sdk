@@ -6,7 +6,7 @@ import com.absmartly.sdk.ContextData;
 /**
  * Fired when the context data loaded. It is dispatched on the thread that completed the load, right after the
  * futures waiting for it complete, so {@code ABsmartlyClient.context(...)} or {@code Context.ready()} can return a
- * moment before listeners see this event (as with the 1.x event logger).
+ * moment before listeners see this event.
  */
 public final class ReadyEvent extends ContextEvent {
 	public ReadyEvent(final Context context, final long timestamp, final ContextData data) {

@@ -32,6 +32,7 @@ import com.absmartly.sdk.internal.AsyncExecutor;
 import com.absmartly.sdk.internal.Clock;
 import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.Futures;
+import com.absmartly.sdk.internal.Json;
 import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.SwitchbackAttributePath;
@@ -222,7 +223,7 @@ public final class Context implements AutoCloseable {
 		return join(readyAsync());
 	}
 
-	// Waits for the load to finish, successfully or not, without throwing (the 1.x waitUntilReady semantics).
+	// Waits for the load to finish, successfully or not, without throwing.
 	Context awaitLoad() {
 		final CompletableFuture<Void> future = readyFuture_.get();
 		if ((future != null) && !future.isDone()) {
@@ -901,7 +902,11 @@ public final class Context implements AutoCloseable {
 	 * cannot be converted (logged).
 	 */
 	public <T> @Nullable T variable(final String key, final Class<T> type, final @Nullable T defaultValue) {
-		return VariableConverter.convert(key, variableValue(key, null), type, defaultValue);
+		checkReady(true);
+
+		final long now = clock_.millis();
+		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false, now), now);
+		return VariableConverter.convert(key, exactVariable(assignment, key, type), type, defaultValue);
 	}
 
 	/** Like {@link #variable(String, Object)} but without queuing an exposure. */
@@ -912,7 +917,28 @@ public final class Context implements AutoCloseable {
 
 	/** Like {@link #variable(String, Class, Object)} but without queuing an exposure. */
 	public <T> @Nullable T peekVariable(final String key, final Class<T> type, final @Nullable T defaultValue) {
-		return VariableConverter.convert(key, peekVariableValue(key, null), type, defaultValue);
+		checkReady(true);
+
+		return VariableConverter.convert(key,
+				exactVariable(getVariableAssignment(key, true, clock_.millis()), key, type), type, defaultValue);
+	}
+
+	// A variable's value for a typed read: as variableValue returns it, except that a number read as a concrete
+	// numeric type is taken from the variant's config JSON as the exact decimal it was written as (BigDecimal or
+	// BigInteger), so a typed read can tell 1.0000000000000001 from 1 and 1e-400 from 0. variableValue, and typed
+	// reads as Object or Number, keep the 1.x Double/Integer values.
+	private static @Nullable Object exactVariable(final @Nullable Assignment assignment, final String key,
+			final Class<?> type) {
+		if ((assignment == null) || (assignment.variables == null) || !assignment.variables.containsKey(key)) {
+			return null;
+		}
+		final Object value = assignment.variables.get(key);
+		if (!(value instanceof Number) || (assignment.variantConfig == null) || (type == Number.class)
+				|| !Number.class.isAssignableFrom(type)) {
+			return value;
+		}
+		final Object exact = Json.readExactVariable(assignment.variantConfig, key);
+		return (exact instanceof Number) ? exact : value;
 	}
 
 	/** Queues a goal achievement without properties. */
@@ -1705,6 +1731,9 @@ public final class Context implements AutoCloseable {
 		// falls back to a live resolution of `holdouts` in that case.
 		Assignment[] holdoutAssignments;
 		Map<String, Object> variables = Collections.emptyMap();
+		// The assigned variant's raw config JSON (null when it has none).
+		@Nullable
+		String variantConfig;
 		int attrsSeq;
 
 		// Switchback grid this assignment was resolved under; compared by switchbackConfigMatches.
@@ -2151,6 +2180,7 @@ public final class Context implements AutoCloseable {
 			if ((experiment != null) && experiment.data.variants != null && assignment.variant >= 0
 					&& (assignment.variant < experiment.data.variants.length)) {
 				assignment.variables = experiment.variables.get(assignment.variant);
+				assignment.variantConfig = experiment.variantConfigs.get(assignment.variant);
 			}
 
 			final Assignment reused = reuseExposedRuleAssignment(experiment, cached, assignment);
@@ -2427,6 +2457,8 @@ public final class Context implements AutoCloseable {
 		AudienceMatcher.ParsedRules assignmentRules;
 		Experiment[] holdouts;
 		List<Map<String, Object>> variables;
+		// The variants' raw config JSON, for typed reads that need a number's exact token (see exactVariable).
+		List<@Nullable String> variantConfigs;
 		Map<String, ContextCustomFieldValue> customFieldValues;
 		// Assigned in setData under dataLock_ write: carried over from the previous index while the
 		// switchback identity is unchanged, otherwise a fresh value. Unused for unit experiments.
@@ -2501,6 +2533,13 @@ public final class Context implements AutoCloseable {
 			}
 			contextExperiment.variables = new ArrayList<Map<String, Object>>(
 					experiment.variants != null ? experiment.variants.length : 0);
+			contextExperiment.variantConfigs = new ArrayList<@Nullable String>(
+					experiment.variants != null ? experiment.variants.length : 0);
+			if (experiment.variants != null) {
+				for (final ExperimentVariant variant : experiment.variants) {
+					contextExperiment.variantConfigs.add(variant.config);
+				}
+			}
 
 			if (experiment.variants != null)
 				for (final ExperimentVariant variant : experiment.variants) {

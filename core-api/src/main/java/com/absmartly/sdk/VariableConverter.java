@@ -198,26 +198,24 @@ final class VariableConverter {
 		return BigDecimal.valueOf(value.longValue());
 	}
 
-	// The shortest decimal that reads back as the same double. Double.toString finds this only from JDK 19 (and
-	// differs on Android), so it is computed.
+	// The shortest decimal that reads back as the same double. Double.toString finds this only from JDK 19 (and differs
+	// on Android), so it is computed: at each length, the exact value's rounding and its two neighbours at that length
+	// are tried, the closest that reads back winning. At a power of two the gap below is half the gap above, so the
+	// shortest decimal is not always the rounding (7.120236347223045E-307).
 	static BigDecimal shortestDecimal(final double d) {
-		return (d == 0) ? BigDecimal.ZERO : shortest(new BigDecimal(d), 17, candidate -> candidate.doubleValue() == d);
-	}
-
-	// The fewest significant digits that read back as the same value. At each length the exact value's rounding and its
-	// two neighbours at that length are tried, the closest that reads back winning: at a power of two the gap below
-	// is half the gap above, so the shortest decimal is not always the rounding (1.2621775E-29 for 2^-96 as a float).
-	private static BigDecimal shortest(final BigDecimal exact, final int maxDigits,
-			final java.util.function.Predicate<BigDecimal> readsBack) {
-		for (int digits = 1; digits < maxDigits; ++digits) {
+		if (d == 0) {
+			return BigDecimal.ZERO;
+		}
+		final BigDecimal exact = new BigDecimal(d);
+		for (int digits = 1; digits < 17; ++digits) {
 			final BigDecimal rounded = exact.round(new java.math.MathContext(digits, java.math.RoundingMode.HALF_EVEN));
-			if (readsBack.test(rounded)) {
+			if (rounded.doubleValue() == d) {
 				return rounded.stripTrailingZeros();
 			}
 			final BigDecimal unit = BigDecimal.ONE.scaleByPowerOfTen(-rounded.scale());
 			BigDecimal best = null;
 			for (final BigDecimal neighbour : new BigDecimal[]{rounded.subtract(unit), rounded.add(unit)}) {
-				if ((neighbour.precision() <= digits) && readsBack.test(neighbour) && ((best == null)
+				if ((neighbour.precision() <= digits) && (neighbour.doubleValue() == d) && ((best == null)
 						|| (neighbour.subtract(exact).abs().compareTo(best.subtract(exact).abs()) < 0))) {
 					best = neighbour;
 				}
@@ -226,6 +224,6 @@ final class VariableConverter {
 				return best.stripTrailingZeros();
 			}
 		}
-		return exact.round(new java.math.MathContext(maxDigits, java.math.RoundingMode.HALF_EVEN)).stripTrailingZeros();
+		return exact.round(new java.math.MathContext(17, java.math.RoundingMode.HALF_EVEN)).stripTrailingZeros();
 	}
 }

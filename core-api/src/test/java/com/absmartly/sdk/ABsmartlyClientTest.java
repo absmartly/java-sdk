@@ -555,7 +555,7 @@ class ABsmartlyClientTest extends TestUtils {
 				.publishDelay(Duration.ofMillis(-1))
 				.eventListener(contextEvents::add)
 				.build());
-		// As in 1.x, context() can return just before READY is dispatched on the loading thread.
+		// context() can return just before READY is dispatched on the loading thread.
 		awaitSize(contextEvents, 1);
 		awaitSize(clientEvents, 1);
 		context.treatment("exp_test_ab");
@@ -563,7 +563,7 @@ class ABsmartlyClientTest extends TestUtils {
 		context.publish();
 		awaitSize(contextEvents, 4);
 		context.refresh();
-		// As in 1.x, a future completes before its event is logged, so wait for each event before the next step.
+		// A future completes before its event is dispatched, so wait for each event before the next step.
 		awaitSize(contextEvents, 5);
 		context.close();
 		awaitSize(contextEvents, 6);
@@ -615,7 +615,7 @@ class ABsmartlyClientTest extends TestUtils {
 		final Context context = client.newContext(SESSION);
 		assertThrows(ContextLoadException.class, context::ready);
 
-		// The ready future completes before the event is logged, as in 1.x, so wait for the event.
+		// The ready future completes before the event is dispatched, so wait for the event.
 		awaitSize(events, 1);
 		assertEquals(List.of(ContextEvent.Type.ERROR), types(events));
 		final Throwable cause = ((ErrorEvent) events.get(0)).cause();
@@ -764,6 +764,100 @@ class ABsmartlyClientTest extends TestUtils {
 			context.treatment("exp_test_ab");
 			assertTrue(received.await(5, TimeUnit.SECONDS));
 			assertEquals(List.of("client-executor"), threads, "the context's stream delivers on the client executor");
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	static String configJson(final String variantConfig) {
+		return "{\"experiments\":[{\"id\":1,\"name\":\"exp_num\",\"unitType\":\"session_id\",\"iteration\":1,"
+				+ "\"seedHi\":0,\"seedLo\":0,\"split\":[0,1],\"trafficSeedHi\":0,\"trafficSeedLo\":0,"
+				+ "\"trafficSplit\":[0,1],\"fullOnVariant\":1,\"applications\":[{\"name\":\"website\"}],"
+				+ "\"variants\":[{\"name\":\"A\",\"config\":null},{\"name\":\"B\",\"config\":"
+				+ new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(variantConfig) + "}]}]}";
+	}
+
+	@Test
+	void typedNumericReadsUseTheExactJsonToken() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"fraction\":1.0000000000000001,\"tiny\":1e-400,\"id\":9007199254740993,\"price\":19.99,"
+						+ "\"count\":3}")));
+		final Context context = client.context(SESSION);
+		assertEquals(-1, context.variable("fraction", -1), "not a whole number: the default");
+		assertEquals(-1.0, context.variable("tiny", -1.0), "underflows to zero: the default");
+		assertEquals(-1.0, context.variable("id", -1.0), "2^53 + 1 is not a double: the default");
+		assertEquals(9007199254740993L, context.variable("id", 0L));
+		assertEquals(new BigDecimal("1.0000000000000001"), context.variable("fraction", BigDecimal.ZERO));
+		assertEquals(19.99, context.variable("price", 0.0));
+		assertEquals(19.99f, context.variable("price", 0.0f));
+		assertEquals(3, context.variable("count", 0));
+		assertEquals(-1, context.peekVariable("fraction", -1));
+		// Untyped and Number reads keep the 1.x parsed values.
+		assertEquals(1.0, context.variableValue("fraction", null));
+		assertEquals(1.0, context.variable("fraction", Number.class, null));
+		assertEquals(0.0, context.peekVariableValue("tiny", null));
+	}
+
+	@Test
+	void asyncCheckoutClosesOnAOneThreadExecutor() throws Exception {
+		final java.util.concurrent.ExecutorService single = java.util.concurrent.Executors.newSingleThreadExecutor();
+		try {
+			final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").transport(transport).executor(single).build();
+			closeables.add(client);
+			// The README's pattern: the context is used and closed inside a stage that runs on the executor.
+			final Integer variant = client.contextAsync(SESSION).thenApplyAsync(context -> {
+				try (context) {
+					return context.treatment("exp_test_ab");
+				}
+			}, single).get(5, TimeUnit.SECONDS);
+			assertEquals(1, variant);
+			assertEquals("PUT", transport.requests.get(transport.requests.size() - 1).method(), "close published");
+		} finally {
+			single.shutdownNow();
+		}
+	}
+
+	@Test
+	void rejectedStreamDeliveryDoesNotFailALoadedContext() throws Exception {
+		// Rejects only the event stream's delivery tasks (SubmissionPublisher's consumer tasks), as a saturated
+		// executor does: the SDK's own stages still run.
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newCachedThreadPool();
+		final java.util.concurrent.atomic.AtomicBoolean saturated = new java.util.concurrent.atomic.AtomicBoolean();
+		final java.util.concurrent.Executor refusing = command -> {
+			if (saturated.get() && command.getClass().getName().contains("SubmissionPublisher")) {
+				throw new java.util.concurrent.RejectedExecutionException("saturated");
+			}
+			pool.execute(command);
+		};
+		try {
+			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").transport(FakeTransport.ok(CONTEXT_JSON)).executor(refusing)
+					.build();
+			closeables.add(client);
+			client.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			// Subscribed; from now on the executor refuses the stream's delivery tasks.
+			saturated.set(true);
+			final Context context = client.newContext(SESSION);
+			context.ready();
+			assertEquals(ContextState.READY, context.state());
+			assertNull(context.failure());
+			assertEquals(1, context.treatment("exp_test_ab"), "a rejected delivery never reaches the caller");
 		} finally {
 			pool.shutdownNow();
 		}

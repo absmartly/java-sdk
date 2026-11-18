@@ -1,6 +1,6 @@
 package com.absmartly.sdk;
 
-/** The lifecycle of a {@link Context}, replacing the 1.x {@code isReady()/isFailed()/isClosing()/isClosed()}. */
+/** The lifecycle of a {@link Context}. */
 public enum ContextState {
 	/** The context data is being fetched. Reads throw {@link ContextNotReadyException}. */
 	LOADING,

@@ -45,13 +45,18 @@ final class EventStream {
 			});
 		} catch (final IllegalStateException closed) {
 			return;
+		} catch (final RuntimeException rejected) {
+			// The executor refused to deliver (RejectedExecutionException, shut down or saturated): the subscriber
+			// misses this event, but the context's own state and the caller are never affected.
+			log.warn("ABsmartly event stream could not deliver {}: {}", event.type(), rejected.toString());
+			return;
 		}
+		// offer() returns minus the number of drops.
 		if (lost < 0) {
 			droppedCount_.addAndGet(-lost);
 		}
 	}
 
-	// Events slow subscribers lost (offer() returns minus the number of drops), for tests.
 	int droppedCount() {
 		return droppedCount_.get();
 	}

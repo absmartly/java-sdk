@@ -30,6 +30,24 @@ public final class Json {
 		}
 	}
 
+	private static final ObjectReader EXACT_VARIABLES_READER = JsonMapperUtils.createStandardObjectMapper()
+			.enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+			.enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
+			.readerFor(java.util.Map.class);
+
+	/**
+	 * One top-level variable of a variant config, with numbers as the exact BigDecimal/BigInteger written in the JSON.
+	 * Null when the config cannot be parsed or has no such key.
+	 */
+	public static @org.jspecify.annotations.Nullable Object readExactVariable(final String config, final String key) {
+		try {
+			final java.util.Map<?, ?> variables = EXACT_VARIABLES_READER.readValue(config);
+			return (variables != null) ? variables.get(key) : null;
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
 	public static String encode(final Object value) {
 		return new String(encodeBytes(value), StandardCharsets.UTF_8);
 	}

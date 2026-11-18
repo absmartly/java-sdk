@@ -115,8 +115,11 @@ def verifyShadedJar = tasks.register("verifyShadedJar") {
 	def jarFile = shadowJar.archiveFile
 	inputs.file(jarFile)
 	doLast {
-		def names = new java.util.zip.ZipFile(jarFile.get().asFile).withCloseable { zip ->
-			zip.entries().collect { it.name }
+		def names
+		def manifest
+		new java.util.zip.ZipFile(jarFile.get().asFile).withCloseable { zip ->
+			names = zip.entries().collect { it.name }
+			manifest = zip.getInputStream(zip.getEntry("META-INF/MANIFEST.MF")).text
 		}
 		def leaked = names.findAll { it.startsWith("com/fasterxml/") }
 		if (!leaked.isEmpty()) {
@@ -130,9 +133,6 @@ def verifyShadedJar = tasks.register("verifyShadedJar") {
 		}
 		if (!names.any { it.startsWith("com/absmartly/sdk/internal/shaded/jackson/databind/") }) {
 			throw new GradleException("Relocated Jackson is missing from ${jarFile.get().asFile.name}")
-		}
-		def manifest = new java.util.zip.ZipFile(jarFile.get().asFile).withCloseable { zip ->
-			zip.getInputStream(zip.getEntry("META-INF/MANIFEST.MF")).text
 		}
 		if (manifest.contains("Class-Path")) {
 			throw new GradleException("The jar manifest must not carry a Class-Path: ${manifest}")

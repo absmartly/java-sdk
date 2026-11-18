@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
-import java.util.function.Function;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -93,39 +92,31 @@ class Client implements AutoCloseable, ContextDataProvider, ContextEventHandler 
 
 	@Override
 	public CompletableFuture<ContextPayload> getContextData() {
-		return send(new Transport.Request("GET", fetchUri_, headers_, null)).thenApplyAsync(
-				new Function<Transport.Response, ContextPayload>() {
-					@Override
-					public ContextPayload apply(final Transport.Response response) {
-						final byte[] content = response.body();
-						if ((content == null) || (content.length == 0)) {
-							throw new DecodingException("Empty response body from context data endpoint", null);
-						}
-						return Json.decodeContext(content);
-					}
-				}, executor_);
+		return send(new Transport.Request("GET", fetchUri_, headers_, null)).thenApplyAsync(response -> {
+			final byte[] content = response.body();
+			if ((content == null) || (content.length == 0)) {
+				throw new DecodingException("Empty response body from context data endpoint", null);
+			}
+			return Json.decodeContext(content);
+		}, executor_);
 	}
 
+	// The body is encoded on the calling thread, never queued to the executor: a caller closing a context from inside
+	// an executor task (the README's contextAsync(...).thenApply(... try (context) ...)) would otherwise wait, on a
+	// one-thread executor, for a task queued behind itself.
 	@Override
 	public CompletableFuture<Void> publish(final Context context, final PublishPayload event) {
-		return CompletableFuture.supplyAsync(new java.util.function.Supplier<byte[]>() {
-			@Override
-			public byte[] get() {
-				return Json.encodeBytes(event);
-			}
-		}, executor_).thenCompose(new Function<byte[], CompletableFuture<Transport.Response>>() {
-			@Override
-			public CompletableFuture<Transport.Response> apply(final byte[] body) {
-				final Map<String, String> headers = new LinkedHashMap<String, String>(headers_);
-				headers.put("Content-Type", "application/json; charset=UTF-8");
-				return send(new Transport.Request("PUT", contextUri_, headers, body));
-			}
-		}).thenApply(new Function<Transport.Response, Void>() {
-			@Override
-			public Void apply(final Transport.Response response) {
-				return null;
-			}
-		});
+		final byte[] body;
+		try {
+			body = Json.encodeBytes(event);
+		} catch (final RuntimeException e) {
+			final CompletableFuture<Void> failed = new CompletableFuture<Void>();
+			failed.completeExceptionally(e);
+			return failed;
+		}
+		final Map<String, String> headers = new LinkedHashMap<String, String>(headers_);
+		headers.put("Content-Type", "application/json; charset=UTF-8");
+		return send(new Transport.Request("PUT", contextUri_, headers, body)).thenApply(response -> null);
 	}
 
 	// Completes with a 2xx response; fails with HttpStatusException for any other status, and with the transport's
