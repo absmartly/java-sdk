@@ -259,14 +259,75 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
-	void redirectLoopsStop() {
+	void redirectLoopsStopAfterFiveHops() {
+		final AtomicInteger hits = new AtomicInteger();
 		server.createContext("/loop", exchange -> {
+			hits.incrementAndGet();
 			exchange.getResponseHeaders().add("Location", "/loop");
 			exchange.sendResponseHeaders(302, -1);
 			exchange.close();
 		});
 		assertEquals(302, JdkHttpTransport.create()
 				.send(new Transport.Request("GET", base.resolve("/loop"), Map.of(), null)).join().statusCode());
+		assertEquals(6, hits.get(), "the first request and five redirects");
+	}
+
+	@Test
+	void permanentAndFoundRedirectsKeepAPutAndItsBody() {
+		for (final int status : new int[]{301, 302}) {
+			final String path = "/put" + status;
+			server.createContext(path, exchange -> {
+				exchange.getRequestBody().readAllBytes();
+				exchange.getResponseHeaders().add("Location", "/context");
+				exchange.sendResponseHeaders(status, -1);
+				exchange.close();
+			});
+			final Transport.Response response = JdkHttpTransport.create().send(new Transport.Request("PUT",
+					base.resolve(path), Map.of("X-Test", "s"), "{\"e\":1}".getBytes(StandardCharsets.UTF_8))).join();
+			assertEquals("PUT null s application/json; charset=UTF-8 {\"e\":1}",
+					new String(response.body(), StandardCharsets.UTF_8), "a redirected publish keeps its events");
+		}
+	}
+
+	@Test
+	void seeOtherTurnsIntoAGetWithoutContentType() {
+		server.createContext("/other", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			exchange.getResponseHeaders().add("Location", "/context");
+			exchange.sendResponseHeaders(303, -1);
+			exchange.close();
+		});
+		final Transport.Response response = JdkHttpTransport.create().send(new Transport.Request("PUT",
+				base.resolve("/other"), Map.of("X-Test", "o"), new byte[]{1})).join();
+		assertEquals("GET null o null ", new String(response.body(), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	void redirectHopsShareOneDeadline() {
+		server.createContext("/slow-hop", exchange -> {
+			try {
+				Thread.sleep(700);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			exchange.getResponseHeaders().add("Location", "/slow-end");
+			exchange.sendResponseHeaders(302, -1);
+			exchange.close();
+		});
+		server.createContext("/slow-end", exchange -> {
+			try {
+				Thread.sleep(700);
+				exchange.sendResponseHeaders(200, -1);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			exchange.close();
+		});
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(1000))
+				.build();
+		final CompletionException error = assertThrows(CompletionException.class,
+				() -> transport.send(new Transport.Request("GET", base.resolve("/slow-hop"), Map.of(), null)).join());
+		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
 	}
 
 	@Test
@@ -275,6 +336,8 @@ class JdkHttpTransportTest {
 		assertFalse(JdkHttpTransport.sameOrigin(URI.create("https://a.io/v1"), URI.create("http://a.io/v1")));
 		assertFalse(JdkHttpTransport.sameOrigin(URI.create("https://a.io/v1"), URI.create("https://b.io/v1")));
 		assertFalse(JdkHttpTransport.sameOrigin(URI.create("http://a.io/v1"), URI.create("http://a.io:8080/v1")));
+		assertFalse(JdkHttpTransport.sameOrigin(URI.create("https://a.io:8443/"), URI.create("http://a.io:8443/")),
+				"a downgrade to http on the same port would send the API key in plaintext");
 	}
 
 	@Test

@@ -99,16 +99,20 @@ public final class JdkHttpTransport implements Transport {
 
 	private static final int MAX_REDIRECTS = 5;
 
+	// Each attempt (a first try or a retry) gets the full requestTimeout; the redirect hops within it share that one
+	// deadline, so a chain of redirects cannot stretch an attempt past the timeout.
 	private CompletableFuture<Response> attempt(final HttpRequest request, final int execCount) {
-		return attempt(request, execCount, 0);
+		final long deadline = (requestTimeout_ != null) ? (System.nanoTime() + requestTimeout_.toNanos()) : 0;
+		return attempt(request, execCount, 0, deadline);
 	}
 
 	// Redirects are followed here, not by the JDK client: it would send every request header, the API key included,
 	// to whatever host a redirect names. Only a redirect to the same scheme, host and port is followed; any other is
-	// returned to the caller as the 3xx response it is. 301/302/303 turn a non-GET into a GET without a body, as the
-	// JDK client and browsers do; 307/308 resend the same method and body.
+	// returned to the caller as the 3xx response it is. A 303, and a 301 or 302 answering a POST, turn into a GET
+	// without a body, as the JDK client does; every other redirect resends the same method and body, so a redirected
+	// publish (a PUT) is never silently dropped.
 	private CompletableFuture<Response> followRedirect(final HttpRequest request, final HttpResponse<byte[]> response,
-			final int execCount, final int redirects) {
+			final int execCount, final int redirects, final long deadline) {
 		final java.util.Optional<String> location = response.headers().firstValue("Location");
 		if (!location.isPresent() || (redirects >= MAX_REDIRECTS)) {
 			return null;
@@ -123,7 +127,8 @@ public final class JdkHttpTransport implements Transport {
 			return null;
 		}
 		final int status = response.statusCode();
-		final boolean keepMethod = (status == 307) || (status == 308);
+		final boolean keepMethod = (status == 307) || (status == 308)
+				|| (((status == 301) || (status == 302)) && !"POST".equalsIgnoreCase(request.method()));
 		final HttpRequest.Builder next = HttpRequest.newBuilder(target);
 		request.headers().map().forEach((name, values) -> {
 			if (keepMethod || !"Content-Type".equalsIgnoreCase(name)) {
@@ -137,7 +142,7 @@ public final class JdkHttpTransport implements Transport {
 		} else {
 			next.GET();
 		}
-		return attempt(next.build(), execCount, redirects + 1);
+		return attempt(next.build(), execCount, redirects + 1, deadline);
 	}
 
 	static boolean sameOrigin(final java.net.URI from, final java.net.URI to) {
@@ -158,7 +163,8 @@ public final class JdkHttpTransport implements Transport {
 				|| (statusCode == 308);
 	}
 
-	private CompletableFuture<Response> attempt(final HttpRequest request, final int execCount, final int redirects) {
+	private CompletableFuture<Response> attempt(final HttpRequest request, final int execCount, final int redirects,
+			final long deadline) {
 		final CompletableFuture<HttpResponse<byte[]>> sent = httpClient_.sendAsync(request,
 				HttpResponse.BodyHandlers.ofByteArray());
 		// HttpRequest.timeout stops applying once the headers arrive, so the deadline is also enforced on the whole
@@ -166,7 +172,7 @@ public final class JdkHttpTransport implements Transport {
 		// called on, and the original must stay incomplete so cancelling it still reaches the exchange. orTimeout fires
 		// on the JDK's shared delay thread, so everything after it runs on the callback executor.
 		final CompletableFuture<HttpResponse<byte[]>> timed = (requestTimeout_ != null)
-				? sent.copy().orTimeout(requestTimeout_.toMillis(), TimeUnit.MILLISECONDS)
+				? sent.copy().orTimeout(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
 				: sent;
 		return timed
 				.handleAsync((response, error) -> {
@@ -176,7 +182,7 @@ public final class JdkHttpTransport implements Transport {
 						}
 						if (isRedirect(response.statusCode())) {
 							final CompletableFuture<Response> redirected = followRedirect(request, response, execCount,
-									redirects);
+									redirects, deadline);
 							if (redirected != null) {
 								return redirected;
 							}
@@ -260,7 +266,8 @@ public final class JdkHttpTransport implements Transport {
 		}
 
 		/**
-		 * A timeout for each request attempt, from send to the end of the response (default: none, as in 1.x).
+		 * A timeout for each request attempt, from send to the end of the response, including any same-origin
+		 * redirects it follows (default: none, as in 1.x).
 		 * An expired attempt fails the request with {@link RequestTimeoutException} and is not retried. A connect
 		 * timeout ({@link #connectTimeout(Duration)}) is retried, and raises {@link RequestTimeoutException} when the
 		 * retries run out. On JDK 11 the JDK client cannot be stopped mid-response, so a timed-out body keeps
