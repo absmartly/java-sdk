@@ -37,11 +37,19 @@ def minify = tasks.register("minifyProbe", JavaExec) {
 	mainClass = "com.android.tools.r8.R8"
 	doFirst {
 		minified.get().asFile.parentFile.mkdirs()
-		args = ["--classfile", "--release", "--output", minified.get().asFile.path,
-			"--lib", System.getProperty("java.home"),
-			"--pg-conf", rules.path,
-			jar.archiveFile.get().asFile.path, shaded.get().asFile.path] +
-			configurations.probeRuntime.files.collect { it.path }
+		args = [
+			"--classfile",
+			"--release",
+			"--output",
+			minified.get().asFile.path,
+			"--lib",
+			System.getProperty("java.home"),
+			"--pg-conf",
+			rules.path,
+			jar.archiveFile.get().asFile.path,
+			shaded.get().asFile.path
+		] +
+		configurations.probeRuntime.files.collect { it.path }
 	}
 }
 
@@ -58,7 +66,10 @@ def extractAndroidLike = tasks.register("extractAndroidLikeLibrary") {
 		def out = androidLike.get().asFile
 		project.delete(out)
 		out.mkdirs()
-		["java.base", "java.logging"].each { module ->
+		[
+			"java.base",
+			"java.logging"
+		].each { module ->
 			def dir = new File(out, module)
 			project.exec {
 				commandLine jmodTool.path, "extract", "--dir", dir.path, new File(javaHome, "jmods/${module}.jmod").path
@@ -78,13 +89,27 @@ def minifyAndroid = tasks.register("minifyProbeForAndroid", JavaExec) {
 	mainClass = "com.android.tools.r8.R8"
 	doFirst {
 		output.get().asFile.parentFile.mkdirs()
-		def libs = ["java.base", "java.logging"].collectMany { module ->
-			["--lib", new File(androidLike.get().asFile, "${module}/classes").path]
+		def libs = [
+			"java.base",
+			"java.logging"
+		].collectMany { module ->
+			[
+				"--lib",
+				new File(androidLike.get().asFile, "${module}/classes").path
+			]
 		}
-		args = ["--classfile", "--release", "--output", output.get().asFile.path] + libs + [
-			"--pg-conf", rules.path,
-			jar.archiveFile.get().asFile.path, shaded.get().asFile.path] +
-			configurations.probeRuntime.files.collect { it.path }
+		args = [
+			"--classfile",
+			"--release",
+			"--output",
+			output.get().asFile.path
+		] + libs + [
+			"--pg-conf",
+			rules.path,
+			jar.archiveFile.get().asFile.path,
+			shaded.get().asFile.path
+		] +
+		configurations.probeRuntime.files.collect { it.path }
 	}
 }
 
