@@ -1748,7 +1748,7 @@ public final class Context implements AutoCloseable {
 		// falls back to a live resolution of `holdouts` in that case.
 		Assignment[] holdoutAssignments;
 		Map<String, Object> variables = Collections.emptyMap();
-		// The assigned variant's exact numeric variables (see ContextExperiment.exactNumbers).
+		// The assigned variant's exact numeric variables (see VariantVariables.exactNumbers).
 		Map<String, Object> exactNumbers = Collections.emptyMap();
 		int attrsSeq;
 

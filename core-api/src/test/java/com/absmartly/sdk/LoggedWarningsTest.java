@@ -34,12 +34,16 @@ class LoggedWarningsTest {
 		command.add(System.getProperty("java.class.path") + File.pathSeparator + logging);
 		command.add(LoggedWarningsTest.class.getName());
 		final Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-		final String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-		assertTrue(process.waitFor(30, TimeUnit.SECONDS));
-		assertEquals(0, process.exitValue(), output);
-		assertTrue(
-				output.contains("WARN com.absmartly.sdk.VariableConverter - ABsmartly variable 'wild' cannot be read "
-						+ "exactly"),
-				output);
+		try {
+			final String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+			assertEquals(0, process.exitValue(), output);
+			assertTrue(output.contains(
+					"WARN com.absmartly.sdk.VariableConverter - ABsmartly variable 'wild' cannot be read exactly"),
+					output);
+		} finally {
+			// A hung child must not outlive a timed-out test.
+			process.destroyForcibly();
+		}
 	}
 }

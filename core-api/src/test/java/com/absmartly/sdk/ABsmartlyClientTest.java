@@ -887,6 +887,60 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void malformedVariantConfigsDoNotShiftLaterVariants() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_shift\",\"unitType\":\"session_id\","
+				+ "\"iteration\":1,\"seedHi\":0,\"seedLo\":0,\"split\":[0.34,0.33,0.33],\"trafficSeedHi\":0,"
+				+ "\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":2,"
+				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\",\"config\":null},"
+				+ "{\"name\":\"B\",\"config\":\"not json\"},{\"name\":\"C\",\"config\":\"{\\\"x\\\":1.5}\"}]}]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		assertEquals(2, context.peekTreatment("exp_shift"));
+		assertEquals(1.5, context.peekVariableValue("x", null), "variant C keeps its own variables");
+		assertEquals(new BigDecimal("1.5"), context.peekVariable("x", BigDecimal.ZERO), "and its own exact numbers");
+	}
+
+	@Test
+	void aThrowingParserDoesNotShiftLaterVariants() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_shift\",\"unitType\":\"session_id\","
+				+ "\"iteration\":1,\"seedHi\":0,\"seedLo\":0,\"split\":[0.5,0.5],\"trafficSeedHi\":0,"
+				+ "\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":1,"
+				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\","
+				+ "\"config\":\"{\\\"x\\\":0.5}\"},{\"name\":\"B\",\"config\":\"{\\\"x\\\":1.5}\"}]}]}";
+		final VariableParser throwingForA = new VariableParser() {
+			private final VariableParser delegate = new DefaultVariableParser();
+
+			@Override
+			public Map<String, Object> parse(final Context context, final String experimentName,
+					final String variantName, final String variableValues) {
+				if ("A".equals(variantName)) {
+					throw new IllegalStateException("broken parser");
+				}
+				return delegate.parse(context, experimentName, variantName, variableValues);
+			}
+
+			@Override
+			public Object parse(final Context context, final String experimentName, final String variableValue) {
+				return delegate.parse(context, experimentName, variableValue);
+			}
+		};
+		final java.util.concurrent.ScheduledExecutorService scheduler = java.util.concurrent.Executors
+				.newSingleThreadScheduledExecutor();
+		try {
+			final Context context = new Context(com.absmartly.sdk.internal.Clock.systemUTC(), SESSION, scheduler,
+					CompletableFuture.completedFuture(ContextData.fromJson(json).payload()),
+					org.mockito.Mockito.mock(ContextDataProvider.class),
+					org.mockito.Mockito.mock(ContextEventHandler.class), null, throwingForA,
+					new AudienceMatcher(new DefaultAudienceDeserializer()), null, null);
+			assertEquals(1, context.peekTreatment("exp_shift"));
+			assertEquals(1.5, context.peekVariableValue("x", null), "variant B keeps its own variables");
+			assertEquals(new BigDecimal("1.5"), context.peekVariable("x", BigDecimal.ZERO));
+		} finally {
+			scheduler.shutdownNow();
+		}
+	}
+
+	@Test
 	void exactNumbersSkipNestedObjectsOfTheSameName() {
 		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
 				"{\"obj\":{\"price\":9.5},\"price\":1.25,\"later\":2.5}")));
