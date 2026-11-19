@@ -422,24 +422,32 @@ class JdkHttpTransportTest {
 				Thread.sleep(2000);
 			} catch (IOException | InterruptedException e) {}
 		});
-		// An uncut drain wait is 100 ms; with a 60 ms request deadline, it must be cut to what remains of it.
-		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(60)).build();
-		final java.util.List<Long> waits = new java.util.concurrent.CopyOnWriteArrayList<>();
-		final java.util.function.LongConsumer previous = JdkHttpTransport.drainWaitObserver;
-		JdkHttpTransport.drainWaitObserver = waits::add;
+		// An uncut drain wait is 100 ms; cut to the 30 ms request deadline, the request fails after about 30 ms. Only
+		// requests that reached the redirect hop count (a loaded host can time out before the redirect arrives), and
+		// the fastest of three is checked, so one slow scheduling cannot fail the test while an uncut wait always does.
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(30)).build();
+		final AtomicInteger hops = new AtomicInteger();
+		final java.util.List<Long> elapsed = new java.util.ArrayList<>();
+		final JdkHttpTransport.HopObserver previous = JdkHttpTransport.hopObserver;
+		JdkHttpTransport.hopObserver = hops::incrementAndGet;
 		try {
-			// A loaded host can time out before the redirect arrives; try again until one reaches the drain wait.
-			for (int attempt = 0; (attempt < 20) && waits.isEmpty(); ++attempt) {
+			for (int attempt = 0; (attempt < 30) && (elapsed.size() < 3); ++attempt) {
+				final int before = hops.get();
+				final long start = System.nanoTime();
 				final CompletionException error = assertThrows(CompletionException.class, () -> transport
 						.send(new Transport.Request("GET", base.resolve("/held-redirect"), Map.of(), null)).join());
+				final long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 				assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
+				if (hops.get() > before) {
+					elapsed.add(elapsedMs);
+				}
 			}
 		} finally {
-			JdkHttpTransport.drainWaitObserver = previous;
+			JdkHttpTransport.hopObserver = previous;
 		}
-		assertFalse(waits.isEmpty(), "a redirect reached the drain wait");
-		assertTrue(waits.get(0) <= TimeUnit.MILLISECONDS.toNanos(60),
-				"the drain wait is cut to the 60 ms deadline, not a fresh 100 ms: " + waits.get(0) + " ns");
+		assertEquals(3, elapsed.size(), "three requests reached the redirect hop");
+		assertTrue(java.util.Collections.min(elapsed) < 80,
+				"the drain wait is cut to the 30 ms deadline, not a fresh 100 ms: " + elapsed);
 	}
 
 	@Test
