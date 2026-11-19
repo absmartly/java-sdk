@@ -1748,7 +1748,6 @@ public final class Context implements AutoCloseable {
 		// falls back to a live resolution of `holdouts` in that case.
 		Assignment[] holdoutAssignments;
 		Map<String, Object> variables = Collections.emptyMap();
-		// The assigned variant's exact numeric variables (see VariantVariables.exactNumbers).
 		Map<String, Object> exactNumbers = Collections.emptyMap();
 		int attrsSeq;
 
@@ -2196,7 +2195,7 @@ public final class Context implements AutoCloseable {
 
 			if ((experiment != null) && experiment.data.variants != null && assignment.variant >= 0
 					&& (assignment.variant < experiment.data.variants.length)) {
-				final VariantVariables variant = experiment.variants.get(assignment.variant);
+				final VariantVariables variant = experiment.variants[assignment.variant];
 				assignment.variables = variant.variables;
 				assignment.exactNumbers = variant.exactNumbers;
 			}
@@ -2475,7 +2474,7 @@ public final class Context implements AutoCloseable {
 		AudienceMatcher.ParsedRules assignmentRules;
 		Experiment[] holdouts;
 		// One entry per variant, in variant order.
-		List<VariantVariables> variants;
+		VariantVariables[] variants;
 		Map<String, ContextCustomFieldValue> customFieldValues;
 		// Assigned in setData under dataLock_ write: carried over from the previous index while the
 		// switchback identity is unchanged, otherwise a fresh value. Unused for unit experiments.
@@ -2563,12 +2562,14 @@ public final class Context implements AutoCloseable {
 				contextExperiment.switchbackSourceTypes = SwitchbackServing.sourceTypes(experiment.switchbackClusters);
 				contextExperiment.switchbackSourcePaths = SwitchbackServing.sourcePaths(experiment.switchbackClusters);
 			}
-			contextExperiment.variants = new ArrayList<VariantVariables>(
-					experiment.variants != null ? experiment.variants.length : 0);
+			contextExperiment.variants = new VariantVariables[experiment.variants != null
+					? experiment.variants.length
+					: 0];
+			Arrays.fill(contextExperiment.variants, VariantVariables.EMPTY);
 
-			if (experiment.variants != null)
-				for (final ExperimentVariant variant : experiment.variants) {
-					if ((variant.config != null) && !variant.config.isEmpty()) {
+			for (int v = 0; v < contextExperiment.variants.length; ++v) {
+				final ExperimentVariant variant = experiment.variants[v];
+				if ((variant.config != null) && !variant.config.isEmpty()) {
 						try {
 							final Map<String, Object> variables = variableParser_.parse(this, experiment.name,
 									variant.name,
@@ -2597,19 +2598,14 @@ public final class Context implements AutoCloseable {
 
 								// Only a fractional or exponent number (parsed as a Double) can differ from what was
 								// written; integers are exact already, so most configs are never parsed twice.
-								contextExperiment.variants.add(new VariantVariables(variables, hasDouble(variables)
+								contextExperiment.variants[v] = new VariantVariables(variables, hasDouble(variables)
 										? Json.readExactNumbers(variant.config)
-										: Collections.<String, Object> emptyMap()));
-							} else {
-								contextExperiment.variants.add(VariantVariables.EMPTY);
+										: Collections.<String, Object> emptyMap());
 							}
 						} catch (Exception e) {
 							log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
 									experiment.name, variant.name, e.getMessage());
-							contextExperiment.variants.add(VariantVariables.EMPTY);
 						}
-					} else {
-						contextExperiment.variants.add(VariantVariables.EMPTY);
 					}
 				}
 

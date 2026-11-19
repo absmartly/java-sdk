@@ -47,7 +47,6 @@ class LoggedWarningsTest {
 					"WARN com.absmartly.sdk.VariableConverter - ABsmartly variable 'wild' cannot be read exactly"),
 					output);
 		} finally {
-			// A hung child must not outlive a timed-out test.
 			process.destroyForcibly();
 		}
 	}
