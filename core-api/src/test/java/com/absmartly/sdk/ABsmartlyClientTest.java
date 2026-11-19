@@ -856,12 +856,48 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void undecodableTypedReadLogsWhyItFellBack() {
+		final List<String> warned = new ArrayList<>();
+		final java.util.function.Consumer<String> original = VariableConverter.undecodableWarning;
+		VariableConverter.undecodableWarning = warned::add;
+		try {
+			assertEquals(-1, VariableConverter.convert("wild", com.absmartly.sdk.internal.Json.UNDECODABLE,
+					Integer.class, -1));
+			assertEquals(List.of("wild"), warned);
+		} finally {
+			VariableConverter.undecodableWarning = original;
+		}
+	}
+
+	@Test
 	void undecodableTypedReadFallsBackEvenWhenTheConverterSeesTheMarker() {
 		assertEquals(-1,
 				VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, Integer.class, -1));
 		assertEquals("x",
 				VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, String.class, "x"));
 		assertNull(VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, Object.class, null));
+	}
+
+	@Test
+	void goalPropertiesArePublishedSortedByName() {
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = client(transport);
+		final Context context = client.context(SESSION);
+		final List<Goal> goals = new ArrayList<>();
+		context.onEvent(event -> {
+			if (event instanceof GoalEvent) {
+				goals.add(((GoalEvent) event).goal());
+			}
+		});
+		final Map<String, Object> properties = new java.util.LinkedHashMap<>();
+		properties.put("zeta", 1);
+		properties.put("alpha", 2);
+		context.track("goal", properties);
+		assertEquals(List.of("alpha", "zeta"), new ArrayList<>(goals.get(0).properties().keySet()));
+		context.publish();
+		final String body = new String(transport.requests.get(transport.requests.size() - 1).body(),
+				StandardCharsets.UTF_8);
+		assertTrue(body.contains("\"properties\":{\"alpha\":2,\"zeta\":1}"), body);
 	}
 
 	@Test

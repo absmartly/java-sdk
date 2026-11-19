@@ -917,10 +917,6 @@ public final class Context implements AutoCloseable {
 				exactVariable(getVariableAssignment(key, true, clock_.millis()), key, type), type, defaultValue);
 	}
 
-	// A variable's value for a typed read: as variableValue returns it, except that a number read as a concrete
-	// numeric type is taken from the variant's config JSON as the exact decimal it was written as (BigDecimal or
-	// BigInteger), so a typed read can tell 1.0000000000000001 from 1 and 1e-400 from 0. variableValue, and typed
-	// reads as Object or Number, keep the 1.x Double/Integer values.
 	// Goal properties sorted by name (the order 1.x published them in), with nested maps and lists copied.
 	private static Map<String, Object> sortedSnapshot(final Map<String, ?> properties) {
 		final TreeMap<String, Object> sorted = new TreeMap<String, Object>();
@@ -939,6 +935,10 @@ public final class Context implements AutoCloseable {
 		return false;
 	}
 
+	// A variable's value for a typed read: as variableValue returns it, except that a number read as a concrete
+	// numeric type is taken from the variant's config JSON as the exact decimal it was written as (BigDecimal or
+	// BigInteger), so a typed read can tell 1.0000000000000001 from 1 and 1e-400 from 0. variableValue, and typed
+	// reads as Object or Number, keep the 1.x Double/Integer values.
 	private static @Nullable Object exactVariable(final @Nullable Assignment assignment, final String key,
 			final Class<?> type) {
 		if (assignment == null) {
