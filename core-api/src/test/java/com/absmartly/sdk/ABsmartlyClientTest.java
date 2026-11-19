@@ -856,20 +856,6 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
-	void undecodableTypedReadLogsWhyItFellBack() {
-		final List<String> warned = new ArrayList<>();
-		final java.util.function.Consumer<String> original = VariableConverter.undecodableWarning;
-		VariableConverter.undecodableWarning = warned::add;
-		try {
-			assertEquals(-1, VariableConverter.convert("wild", com.absmartly.sdk.internal.Json.UNDECODABLE,
-					Integer.class, -1));
-			assertEquals(List.of("wild"), warned);
-		} finally {
-			VariableConverter.undecodableWarning = original;
-		}
-	}
-
-	@Test
 	void undecodableTypedReadFallsBackEvenWhenTheConverterSeesTheMarker() {
 		assertEquals(-1,
 				VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, Integer.class, -1));

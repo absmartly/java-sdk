@@ -20,6 +20,7 @@ sourceSets {
 
 configurations {
 	jdkImplementation.extendsFrom implementation
+	loggedWarningsRuntime
 }
 
 afterEvaluate {
@@ -44,6 +45,8 @@ dependencies {
 	implementation group: "com.fasterxml.jackson.core", name: "jackson-databind", version: jacksonVersion
 
 	testImplementation group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	// Only on the class path of the child JVM that LoggedWarningsTest starts, so the suite's own logging is unchanged.
+	loggedWarningsRuntime group: "org.slf4j", name: "slf4j-simple", version: slf4jVersion
 	testImplementation group: "org.jspecify", name: "jspecify", version: jspecifyVersion
 	// Kotlin's empty collections as typed-variable defaults: kotlin-sdk passes them straight through.
 	testImplementation group: "org.jetbrains.kotlin", name: "kotlin-stdlib", version: "1.9.24"
@@ -191,6 +194,7 @@ jacocoTestCoverageVerification {
 
 test {
 	useJUnitPlatform()
+	systemProperty "absmartly.loggedWarningsClasspath", configurations.loggedWarningsRuntime.asPath
 }
 
 publishToSonatype.dependsOn check
@@ -234,6 +238,7 @@ tasks.register("testJdk25", Test) {
 		languageVersion = JavaLanguageVersion.of(25)
 	}
 	useJUnitPlatform()
+	systemProperty "absmartly.loggedWarningsClasspath", configurations.loggedWarningsRuntime.asPath
 	jacoco {
 		enabled = false
 	}

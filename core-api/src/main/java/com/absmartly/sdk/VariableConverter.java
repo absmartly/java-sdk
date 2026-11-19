@@ -13,10 +13,6 @@ import com.absmartly.sdk.internal.Json;
 final class VariableConverter {
 	private static final Logger log = LoggerFactory.getLogger(VariableConverter.class);
 
-	// Package-private so tests can observe the fallback; the SDK always logs it.
-	static volatile java.util.function.Consumer<String> undecodableWarning = key -> log
-			.warn("ABsmartly variable '{}' cannot be read exactly", key);
-
 	private VariableConverter() {}
 
 	// The type a default value asks for: its own class, except that a collection default whose class cannot be built
@@ -92,7 +88,7 @@ final class VariableConverter {
 			return defaultValue;
 		}
 		if (value == Json.UNDECODABLE) {
-			undecodableWarning.accept(key);
+			log.warn("ABsmartly variable '{}' cannot be read exactly", key);
 			return defaultValue;
 		}
 		if (((value instanceof Double) || (value instanceof Float)) && !Double.isFinite(((Number) value).doubleValue())

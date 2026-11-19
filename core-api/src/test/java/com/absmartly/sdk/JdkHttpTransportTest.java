@@ -405,8 +405,8 @@ class JdkHttpTransportTest {
 				Thread.sleep(2000);
 			} catch (IOException | InterruptedException e) {}
 		});
-		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(60)).build();
-		// Warm up the connection and the JIT with retries: a cold first request can itself exceed 60 ms.
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(30)).build();
+		// Warm up the connection and the JIT with retries: a cold first request can itself exceed 30 ms.
 		for (int attempt = 0; attempt < 5; ++attempt) {
 			try {
 				transport.send(new Transport.Request("GET", base.resolve("/context"), Map.of(), null)).join();
@@ -420,8 +420,8 @@ class JdkHttpTransportTest {
 				.send(new Transport.Request("GET", base.resolve("/held-redirect"), Map.of(), null)).join());
 		final long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
-		// An uncut drain wait would take its full 100 ms; cut to the deadline, the request fails after about 60 ms.
-		assertTrue(elapsedMs < 90, "the drain wait is cut to the 60 ms deadline, not a fresh 100 ms: " + elapsedMs);
+		// An uncut drain wait would take its full 100 ms; cut to the deadline, the request fails after about 30 ms.
+		assertTrue(elapsedMs < 80, "the drain wait is cut to the 30 ms deadline, not a fresh 100 ms: " + elapsedMs);
 	}
 
 	@Test
