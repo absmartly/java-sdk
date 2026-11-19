@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import com.absmartly.sdk.internal.Json;
 
@@ -22,6 +23,7 @@ class LoggedWarningsTest {
 	}
 
 	@Test
+	@Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 	void anUndecodableTypedReadLogsAWarning() throws Exception {
 		final String logging = System.getProperty("absmartly.loggedWarningsClasspath");
 		assertNotNull(logging, "the build passes the slf4j-simple class path");
