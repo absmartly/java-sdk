@@ -2570,44 +2570,44 @@ public final class Context implements AutoCloseable {
 			for (int v = 0; v < contextExperiment.variants.length; ++v) {
 				final ExperimentVariant variant = experiment.variants[v];
 				if ((variant.config != null) && !variant.config.isEmpty()) {
-						try {
-							final Map<String, Object> variables = variableParser_.parse(this, experiment.name,
-									variant.name,
-									variant.config);
-							if (variables != null) {
-								for (final String key : variables.keySet()) {
-									List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
-									if (keyExperimentVariables == null) {
-										keyExperimentVariables = new ArrayList<ContextExperiment>();
-										indexVariables.put(key, keyExperimentVariables);
-									}
-
-									int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
-											new Comparator<ContextExperiment>() {
-												@Override
-												public int compare(ContextExperiment a, ContextExperiment b) {
-													return Integer.valueOf(a.data.id).compareTo(b.data.id);
-												}
-											});
-
-									if (at < 0) {
-										at = -at - 1;
-										keyExperimentVariables.add(at, contextExperiment);
-									}
+					try {
+						final Map<String, Object> variables = variableParser_.parse(this, experiment.name,
+								variant.name,
+								variant.config);
+						if (variables != null) {
+							for (final String key : variables.keySet()) {
+								List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
+								if (keyExperimentVariables == null) {
+									keyExperimentVariables = new ArrayList<ContextExperiment>();
+									indexVariables.put(key, keyExperimentVariables);
 								}
 
-								// Only a fractional or exponent number (parsed as a Double) can differ from what was
-								// written; integers are exact already, so most configs are never parsed twice.
-								contextExperiment.variants[v] = new VariantVariables(variables, hasDouble(variables)
-										? Json.readExactNumbers(variant.config)
-										: Collections.<String, Object> emptyMap());
+								int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
+										new Comparator<ContextExperiment>() {
+											@Override
+											public int compare(ContextExperiment a, ContextExperiment b) {
+												return Integer.valueOf(a.data.id).compareTo(b.data.id);
+											}
+										});
+
+								if (at < 0) {
+									at = -at - 1;
+									keyExperimentVariables.add(at, contextExperiment);
+								}
 							}
-						} catch (Exception e) {
-							log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
-									experiment.name, variant.name, e.getMessage());
+
+							// Only a fractional or exponent number (parsed as a Double) can differ from what was
+							// written; integers are exact already, so most configs are never parsed twice.
+							contextExperiment.variants[v] = new VariantVariables(variables, hasDouble(variables)
+									? Json.readExactNumbers(variant.config)
+									: Collections.<String, Object> emptyMap());
 						}
+					} catch (Exception e) {
+						log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
+								experiment.name, variant.name, e.getMessage());
 					}
 				}
+			}
 
 			contextExperiment.customFieldValues = new HashMap<String, ContextCustomFieldValue>();
 			if (experiment.customFieldValues != null) {

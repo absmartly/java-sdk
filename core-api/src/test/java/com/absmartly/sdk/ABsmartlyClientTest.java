@@ -901,19 +901,42 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void malformedVariantConfigsDoNotInheritEarlierVariants() {
+		final String json = "{\"experiments\":[" + afterGoodVariant(1, "exp_null", "y", "null") + ","
+				+ afterGoodVariant(2, "exp_bad", "z", "\"not json\"") + "]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		assertEquals(1, context.peekTreatment("exp_null"));
+		assertNull(context.peekVariableValue("y", null), "a null config after a configured variant has no variables");
+		assertEquals(1, context.peekTreatment("exp_bad"));
+		assertNull(context.peekVariableValue("z", null), "an unparseable config after a configured variant too");
+	}
+
+	// An experiment served variant B, whose config follows variant A's {"<key>":1.5}.
+	private static String afterGoodVariant(final int id, final String name, final String key, final String config) {
+		return "{\"id\":" + id + ",\"name\":\"" + name + "\",\"unitType\":\"session_id\",\"iteration\":1,"
+				+ "\"seedHi\":0,\"seedLo\":0,\"split\":[0.5,0.5],\"trafficSeedHi\":0,\"trafficSeedLo\":0,"
+				+ "\"trafficSplit\":[0,1],\"fullOnVariant\":1,\"applications\":[{\"name\":\"website\"}],"
+				+ "\"variants\":[{\"name\":\"A\",\"config\":\"{\\\"" + key + "\\\":1.5}\"},"
+				+ "{\"name\":\"B\",\"config\":" + config + "}]}";
+	}
+
+	@Test
 	void aThrowingParserDoesNotShiftLaterVariants() {
 		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_shift\",\"unitType\":\"session_id\","
 				+ "\"iteration\":1,\"seedHi\":0,\"seedLo\":0,\"split\":[0.5,0.5],\"trafficSeedHi\":0,"
 				+ "\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":1,"
 				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\","
-				+ "\"config\":\"{\\\"x\\\":0.5}\"},{\"name\":\"B\",\"config\":\"{\\\"x\\\":1.5}\"}]}]}";
+				+ "\"config\":\"{\\\"x\\\":0.5}\"},{\"name\":\"B\",\"config\":\"{\\\"x\\\":1.5}\"}]},"
+				+ afterGoodVariant(2, "exp_after", "w", "\"{\\\"w\\\":2.5}\"") + "]}";
 		final VariableParser throwingForA = new VariableParser() {
 			private final VariableParser delegate = new DefaultVariableParser();
 
 			@Override
 			public Map<String, Object> parse(final Context context, final String experimentName,
 					final String variantName, final String variableValues) {
-				if ("A".equals(variantName)) {
+				// Throws for exp_shift's first variant and for exp_after's second.
+				if ("A".equals(variantName) == "exp_shift".equals(experimentName)) {
 					throw new IllegalStateException("broken parser");
 				}
 				return delegate.parse(context, experimentName, variantName, variableValues);
@@ -935,6 +958,8 @@ class ABsmartlyClientTest extends TestUtils {
 			assertEquals(1, context.peekTreatment("exp_shift"));
 			assertEquals(1.5, context.peekVariableValue("x", null), "variant B keeps its own variables");
 			assertEquals(new BigDecimal("1.5"), context.peekVariable("x", BigDecimal.ZERO));
+			assertEquals(1, context.peekTreatment("exp_after"));
+			assertNull(context.peekVariableValue("w", null), "a throwing variant does not inherit variant A's");
 		} finally {
 			scheduler.shutdownNow();
 		}
