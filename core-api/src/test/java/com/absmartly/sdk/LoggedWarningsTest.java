@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -33,10 +34,14 @@ class LoggedWarningsTest {
 		command.add("-cp");
 		command.add(System.getProperty("java.class.path") + File.pathSeparator + logging);
 		command.add(LoggedWarningsTest.class.getName());
-		final Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+		// The output goes to a file and is read only after waitFor, so a hung child is detected and destroyed rather
+		// than blocking an uninterruptible read.
+		final File log = Files.createTempFile("absmartly-logged-warnings", ".log").toFile();
+		log.deleteOnExit();
+		final Process process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log).start();
 		try {
-			final String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-			assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+			assertTrue(process.waitFor(30, TimeUnit.SECONDS), "child JVM finished");
+			final String output = new String(Files.readAllBytes(log.toPath()), StandardCharsets.UTF_8);
 			assertEquals(0, process.exitValue(), output);
 			assertTrue(output.contains(
 					"WARN com.absmartly.sdk.VariableConverter - ABsmartly variable 'wild' cannot be read exactly"),
