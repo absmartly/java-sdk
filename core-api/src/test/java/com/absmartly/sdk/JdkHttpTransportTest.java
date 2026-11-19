@@ -422,23 +422,24 @@ class JdkHttpTransportTest {
 				Thread.sleep(2000);
 			} catch (IOException | InterruptedException e) {}
 		});
-		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(30)).build();
-		// Warm up the connection and the JIT with retries: a cold first request can itself exceed 30 ms.
-		for (int attempt = 0; attempt < 5; ++attempt) {
-			try {
-				transport.send(new Transport.Request("GET", base.resolve("/context"), Map.of(), null)).join();
-				break;
-			} catch (final CompletionException e) {
-				assertTrue(e.getCause() instanceof RequestTimeoutException, e.getCause().toString());
+		// An uncut drain wait is 100 ms; with a 60 ms request deadline, it must be cut to what remains of it.
+		final JdkHttpTransport transport = JdkHttpTransport.builder().requestTimeout(Duration.ofMillis(60)).build();
+		final java.util.List<Long> waits = new java.util.concurrent.CopyOnWriteArrayList<>();
+		final java.util.function.LongConsumer previous = JdkHttpTransport.drainWaitObserver;
+		JdkHttpTransport.drainWaitObserver = waits::add;
+		try {
+			// A loaded host can time out before the redirect arrives; try again until one reaches the drain wait.
+			for (int attempt = 0; (attempt < 20) && waits.isEmpty(); ++attempt) {
+				final CompletionException error = assertThrows(CompletionException.class, () -> transport
+						.send(new Transport.Request("GET", base.resolve("/held-redirect"), Map.of(), null)).join());
+				assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
 			}
+		} finally {
+			JdkHttpTransport.drainWaitObserver = previous;
 		}
-		final long start = System.nanoTime();
-		final CompletionException error = assertThrows(CompletionException.class, () -> transport
-				.send(new Transport.Request("GET", base.resolve("/held-redirect"), Map.of(), null)).join());
-		final long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
-		// An uncut drain wait would take its full 100 ms; cut to the deadline, the request fails after about 30 ms.
-		assertTrue(elapsedMs < 80, "the drain wait is cut to the 30 ms deadline, not a fresh 100 ms: " + elapsedMs);
+		assertFalse(waits.isEmpty(), "a redirect reached the drain wait");
+		assertTrue(waits.get(0) <= TimeUnit.MILLISECONDS.toNanos(60),
+				"the drain wait is cut to the 60 ms deadline, not a fresh 100 ms: " + waits.get(0) + " ns");
 	}
 
 	@Test
@@ -560,9 +561,9 @@ class JdkHttpTransportTest {
 		final java.util.concurrent.CountDownLatch cut = new java.util.concurrent.CountDownLatch(1);
 		server.createContext("/trickle", exchange -> {
 			exchange.getResponseHeaders().add("Location", "/context");
-			exchange.sendResponseHeaders(307, 25);
+			exchange.sendResponseHeaders(307, 60);
 			try (OutputStream out = exchange.getResponseBody()) {
-				for (int i = 0; i < 25; ++i) {
+				for (int i = 0; i < 60; ++i) {
 					out.write('x');
 					out.flush();
 					Thread.sleep(200);
@@ -577,7 +578,8 @@ class JdkHttpTransportTest {
 				.send(new Transport.Request("GET", base.resolve("/trickle"), Map.of(), null))
 				.orTimeout(5, TimeUnit.SECONDS).join().statusCode());
 		if (Runtime.version().feature() >= 16) {
-			assertTrue(cut.await(2500, TimeUnit.MILLISECONDS), "a drain still running after 1 s is cancelled");
+			// The body takes 12 s to send in full: a cut seen within 6 s can only come from the drain timeout.
+			assertTrue(cut.await(6, TimeUnit.SECONDS), "a drain still running after 1 s is cancelled");
 		}
 	}
 

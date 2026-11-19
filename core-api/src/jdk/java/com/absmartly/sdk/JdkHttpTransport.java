@@ -137,6 +137,7 @@ public final class JdkHttpTransport implements Transport {
 		final long waitNanos = (requestTimeout_ != null)
 				? Math.max(0, Math.min(TimeUnit.MILLISECONDS.toNanos(DRAIN_WAIT_MS), deadline - System.nanoTime()))
 				: TimeUnit.MILLISECONDS.toNanos(DRAIN_WAIT_MS);
+		drainWaitObserver.accept(waitNanos);
 		return onCallbackExecutor(drained.copy().completeOnTimeout(null, waitNanos, TimeUnit.NANOSECONDS), hop)
 				.thenCompose(ignored -> {
 					hopObserver.onHop();
@@ -195,6 +196,9 @@ public final class JdkHttpTransport implements Transport {
 	}
 
 	static volatile HopObserver hopObserver = () -> {};
+
+	// For tests: given each redirect's drain wait, in nanoseconds.
+	static volatile java.util.function.LongConsumer drainWaitObserver = waitNanos -> {};
 
 	private static final class DiscardingSubscriber implements HttpResponse.BodySubscriber<byte[]> {
 		private static final long DRAIN_LIMIT = 64 * 1024;
