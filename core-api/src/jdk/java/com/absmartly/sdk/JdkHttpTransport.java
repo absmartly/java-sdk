@@ -201,6 +201,18 @@ public final class JdkHttpTransport implements Transport {
 
 		private final CompletableFuture<byte[]> body = new CompletableFuture<byte[]>();
 		final CompletableFuture<Void> drained = new CompletableFuture<Void>();
+		// Schedules the drain-cancel timer; tests substitute a manual timer to check the delay without waiting for it.
+		private final java.util.function.BiConsumer<Long, Runnable> timer;
+
+		DiscardingSubscriber() {
+			this((delayMs, task) -> CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS, Runnable::run)
+					.execute(task));
+		}
+
+		DiscardingSubscriber(final java.util.function.BiConsumer<Long, Runnable> timer) {
+			this.timer = timer;
+		}
+
 		private volatile java.util.concurrent.Flow.@Nullable Subscription subscription;
 		private long received;
 
@@ -213,7 +225,7 @@ public final class JdkHttpTransport implements Transport {
 		public void onSubscribe(final java.util.concurrent.Flow.Subscription subscription) {
 			this.subscription = subscription;
 			body.complete(new byte[0]);
-			CompletableFuture.delayedExecutor(DRAIN_TIMEOUT_MS, TimeUnit.MILLISECONDS, Runnable::run).execute(() -> {
+			timer.accept(DRAIN_TIMEOUT_MS, () -> {
 				if (!drained.isDone()) {
 					subscription.cancel();
 					drained.complete(null);

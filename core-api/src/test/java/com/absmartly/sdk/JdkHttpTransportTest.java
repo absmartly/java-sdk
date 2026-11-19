@@ -478,29 +478,59 @@ class JdkHttpTransportTest {
 
 	@Test
 	void redirectDrainCancellationHasAOneSecondDeadline() throws Exception {
+		// A manual timer: the scheduled delay is checked directly and the timer fired by hand, so the test does not
+		// depend on host timing.
+		final java.util.List<Long> delays = new java.util.ArrayList<>();
+		final java.util.List<Runnable> tasks = new java.util.ArrayList<>();
 		final Class<?> type = Class.forName("com.absmartly.sdk.JdkHttpTransport$DiscardingSubscriber");
-		final java.lang.reflect.Field delay = type.getDeclaredField("DRAIN_TIMEOUT_MS");
-		delay.setAccessible(true);
-		assertEquals(1000L, delay.getLong(null), "the drain cancellation deadline is one second");
-		final java.lang.reflect.Constructor<?> constructor = type.getDeclaredConstructor();
+		final java.lang.reflect.Constructor<?> constructor = type
+				.getDeclaredConstructor(java.util.function.BiConsumer.class);
 		constructor.setAccessible(true);
+		final java.util.function.BiConsumer<Long, Runnable> timer = (delay, task) -> {
+			delays.add(delay);
+			tasks.add(task);
+		};
 		final java.net.http.HttpResponse.BodySubscriber<?> subscriber = (java.net.http.HttpResponse.BodySubscriber<?>) constructor
-				.newInstance();
-		final java.util.concurrent.CountDownLatch cancelled = new java.util.concurrent.CountDownLatch(1);
-		final long start = System.nanoTime();
+				.newInstance(timer);
+		final AtomicInteger cancels = new AtomicInteger();
 		subscriber.onSubscribe(new java.util.concurrent.Flow.Subscription() {
 			@Override
 			public void request(final long count) {}
 
 			@Override
 			public void cancel() {
-				cancelled.countDown();
+				cancels.incrementAndGet();
 			}
 		});
-		assertTrue(cancelled.await(3, TimeUnit.SECONDS), "a stalled subscriber is cancelled");
-		final long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-		assertTrue((elapsedMs >= 900) && (elapsedMs < 1500),
-				"cancelled after about one second, not " + elapsedMs + " ms");
+		assertEquals(java.util.List.of(1000L), delays, "the drain is cancelled after one second");
+		assertEquals(0, cancels.get(), "nothing is cancelled before the timer fires");
+		tasks.get(0).run();
+		assertEquals(1, cancels.get(), "a still-draining body is cancelled when the timer fires");
+	}
+
+	@Test
+	void finishedDrainIsNotCancelledByTheTimer() throws Exception {
+		final java.util.List<Runnable> tasks = new java.util.ArrayList<>();
+		final Class<?> type = Class.forName("com.absmartly.sdk.JdkHttpTransport$DiscardingSubscriber");
+		final java.lang.reflect.Constructor<?> constructor = type
+				.getDeclaredConstructor(java.util.function.BiConsumer.class);
+		constructor.setAccessible(true);
+		final java.util.function.BiConsumer<Long, Runnable> timer = (delay, task) -> tasks.add(task);
+		final java.net.http.HttpResponse.BodySubscriber<?> subscriber = (java.net.http.HttpResponse.BodySubscriber<?>) constructor
+				.newInstance(timer);
+		final AtomicInteger cancels = new AtomicInteger();
+		subscriber.onSubscribe(new java.util.concurrent.Flow.Subscription() {
+			@Override
+			public void request(final long count) {}
+
+			@Override
+			public void cancel() {
+				cancels.incrementAndGet();
+			}
+		});
+		subscriber.onComplete();
+		tasks.get(0).run();
+		assertEquals(0, cancels.get(), "a body that finished draining is left alone");
 	}
 
 	@Test
