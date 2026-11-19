@@ -206,6 +206,23 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
+	void locationOnANonRedirectIsNotFollowed() {
+		server.createContext("/created", exchange -> {
+			exchange.getResponseHeaders().add("Location", "/context");
+			final byte[] bytes = "made".getBytes(StandardCharsets.UTF_8);
+			exchange.sendResponseHeaders(201, bytes.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(bytes);
+			}
+		});
+		final Transport.Response response = JdkHttpTransport.create()
+				.send(new Transport.Request("GET", base.resolve("/created"), Map.of(), null)).join();
+		assertEquals(201, response.statusCode());
+		assertEquals("made", new String(response.body(), StandardCharsets.UTF_8));
+		assertEquals(0, calls.get());
+	}
+
+	@Test
 	void followsSameOriginRedirectsWithTheirHeaders() {
 		server.createContext("/old", exchange -> {
 			exchange.getResponseHeaders().add("Location", "/context");

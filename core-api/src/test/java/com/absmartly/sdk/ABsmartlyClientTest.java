@@ -1047,6 +1047,15 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void aNegativeOverrideServesNoVariables() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		context.setOverride("exp_test_ab", -1);
+		assertEquals(-1, context.peekTreatment("exp_test_ab"));
+		assertNull(context.peekVariableValue("banner.size", null));
+	}
+
+	@Test
 	void clearedOverrideOfAnAbsentExperimentIsNoLongerServed() {
 		final ABsmartlyClient client = client(FakeTransport.ok("{\"experiments\":[]}"));
 		final Context context = client.context(SESSION, ContextData.fromJson("{\"experiments\":[]}"));
