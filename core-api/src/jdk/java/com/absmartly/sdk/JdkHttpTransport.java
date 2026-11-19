@@ -13,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.jspecify.annotations.Nullable;
 
@@ -111,13 +112,9 @@ public final class JdkHttpTransport implements Transport {
 	// returned to the caller as the 3xx response it is. A 303, and a 301 or 302 answering a POST, turn into a GET
 	// without a body, as the JDK client does; every other redirect resends the same method and body, so a redirected
 	// publish (a PUT) is never silently dropped.
-	private CompletableFuture<Response> followRedirect(final HttpRequest request, final HttpResponse<byte[]> response,
-			final int execCount, final int redirects, final long deadline, final CompletableFuture<Void> drained) {
-		final java.net.URI target = redirectTarget(request.uri(), response.headers(), redirects);
-		if (target == null) {
-			return null;
-		}
-		final int status = response.statusCode();
+	private CompletableFuture<Response> followRedirect(final HttpRequest request, final int status,
+			final java.net.URI target, final int execCount, final int redirects, final long deadline,
+			final CompletableFuture<Void> drained) {
 		final boolean keepMethod = (status == 307) || (status == 308)
 				|| (((status == 301) || (status == 302)) && !"POST".equalsIgnoreCase(request.method()));
 		final HttpRequest.Builder next = HttpRequest.newBuilder(target);
@@ -165,16 +162,20 @@ public final class JdkHttpTransport implements Transport {
 				|| (statusCode == 308);
 	}
 
-	// Followed redirects get a DiscardingSubscriber (see below); every other response's body is read in full.
+	// A followed redirect's target goes into redirectTo and its body to a DiscardingSubscriber (see below); every other
+	// response's body is read in full.
 	private HttpResponse.BodyHandler<byte[]> bodyHandler(final HttpRequest request, final int redirects,
-			final CompletableFuture<Void> redirectDrained) {
+			final CompletableFuture<Void> redirectDrained,
+			final AtomicReference<java.net.@Nullable URI> redirectTo) {
 		return info -> {
-			if (isRedirect(info.statusCode())) {
-				if (redirectTarget(request.uri(), info.headers(), redirects) != null) {
-					final DiscardingSubscriber discarding = new DiscardingSubscriber();
-					discarding.drained.whenComplete((ignored, error) -> redirectDrained.complete(null));
-					return discarding;
-				}
+			final java.net.@Nullable URI target = isRedirect(info.statusCode())
+					? redirectTarget(request.uri(), info.headers(), redirects)
+					: null;
+			if (target != null) {
+				redirectTo.set(target);
+				final DiscardingSubscriber discarding = new DiscardingSubscriber();
+				discarding.drained.whenComplete((ignored, error) -> redirectDrained.complete(null));
+				return discarding;
 			}
 			redirectDrained.complete(null);
 			return HttpResponse.BodySubscribers.ofByteArray();
@@ -201,7 +202,6 @@ public final class JdkHttpTransport implements Transport {
 
 		private final CompletableFuture<byte[]> body = new CompletableFuture<byte[]>();
 		final CompletableFuture<Void> drained = new CompletableFuture<Void>();
-		// Schedules the drain-cancel timer; tests substitute a manual timer to check the delay without waiting for it.
 		private final java.util.function.BiConsumer<Long, Runnable> timer;
 
 		DiscardingSubscriber() {
@@ -257,8 +257,7 @@ public final class JdkHttpTransport implements Transport {
 		}
 	}
 
-	// The redirect this transport follows (same origin, within MAX_REDIRECTS), or null: one rule for both choosing
-	// the body subscriber and building the next hop.
+	// The redirect this transport follows (same origin, within MAX_REDIRECTS), or null.
 	private static java.net.@Nullable URI redirectTarget(final java.net.URI from,
 			final java.net.http.HttpHeaders headers, final int redirects) {
 		final java.util.Optional<String> location = headers.firstValue("Location");
@@ -283,8 +282,9 @@ public final class JdkHttpTransport implements Transport {
 		}
 		exchangesStarted_.incrementAndGet();
 		final CompletableFuture<Void> redirectDrained = new CompletableFuture<Void>();
+		final AtomicReference<java.net.@Nullable URI> redirectTo = new AtomicReference<java.net.@Nullable URI>();
 		final CompletableFuture<HttpResponse<byte[]>> sent = httpClient_.sendAsync(request,
-				bodyHandler(request, redirects, redirectDrained));
+				bodyHandler(request, redirects, redirectDrained, redirectTo));
 		// HttpRequest.timeout stops applying once the headers arrive, so the deadline is also enforced on the whole
 		// exchange, up to the last byte of the body. The deadline goes on a copy: orTimeout completes the future it is
 		// called on, and the original must stay incomplete so cancelling it still reaches the exchange. orTimeout fires
@@ -298,12 +298,10 @@ public final class JdkHttpTransport implements Transport {
 						if (isRetryableStatus(response.statusCode()) && (execCount <= maxRetries_)) {
 							return retry(request, execCount);
 						}
-						if (isRedirect(response.statusCode())) {
-							final CompletableFuture<Response> redirected = followRedirect(request, response, execCount,
-									redirects, deadline, redirectDrained);
-							if (redirected != null) {
-								return redirected;
-							}
+						final java.net.@Nullable URI target = redirectTo.get();
+						if (target != null) {
+							return followRedirect(request, response.statusCode(), target, execCount, redirects,
+									deadline, redirectDrained);
 						}
 						return CompletableFuture.completedFuture(
 								new Response(response.statusCode(), "", response.body()));

@@ -2193,8 +2193,8 @@ public final class Context implements AutoCloseable {
 				}
 			}
 
-			if ((experiment != null) && experiment.data.variants != null && assignment.variant >= 0
-					&& (assignment.variant < experiment.data.variants.length)) {
+			if ((experiment != null) && (assignment.variant >= 0)
+					&& (assignment.variant < experiment.variants.length)) {
 				final VariantVariables variant = experiment.variants[assignment.variant];
 				assignment.variables = variant.variables;
 				assignment.exactNumbers = variant.exactNumbers;

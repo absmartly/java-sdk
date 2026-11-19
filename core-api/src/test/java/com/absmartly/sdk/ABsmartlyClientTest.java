@@ -912,7 +912,6 @@ class ABsmartlyClientTest extends TestUtils {
 		assertNull(context.peekVariableValue("z", null), "an unparseable config after a configured variant too");
 	}
 
-	// An experiment served variant B, whose config follows variant A's {"<key>":1.5}.
 	private static String afterGoodVariant(final int id, final String name, final String key, final String config) {
 		return "{\"id\":" + id + ",\"name\":\"" + name + "\",\"unitType\":\"session_id\",\"iteration\":1,"
 				+ "\"seedHi\":0,\"seedLo\":0,\"split\":[0.5,0.5],\"trafficSeedHi\":0,\"trafficSeedLo\":0,"
@@ -929,14 +928,14 @@ class ABsmartlyClientTest extends TestUtils {
 				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\","
 				+ "\"config\":\"{\\\"x\\\":0.5}\"},{\"name\":\"B\",\"config\":\"{\\\"x\\\":1.5}\"}]},"
 				+ afterGoodVariant(2, "exp_after", "w", "\"{\\\"w\\\":2.5}\"") + "]}";
-		final VariableParser throwingForA = new VariableParser() {
+		final VariableParser throwingParser = new VariableParser() {
 			private final VariableParser delegate = new DefaultVariableParser();
 
 			@Override
 			public Map<String, Object> parse(final Context context, final String experimentName,
 					final String variantName, final String variableValues) {
-				// Throws for exp_shift's first variant and for exp_after's second.
-				if ("A".equals(variantName) == "exp_shift".equals(experimentName)) {
+				final String broken = "exp_shift".equals(experimentName) ? "A" : "B";
+				if (broken.equals(variantName)) {
 					throw new IllegalStateException("broken parser");
 				}
 				return delegate.parse(context, experimentName, variantName, variableValues);
@@ -953,7 +952,7 @@ class ABsmartlyClientTest extends TestUtils {
 			final Context context = new Context(com.absmartly.sdk.internal.Clock.systemUTC(), SESSION, scheduler,
 					CompletableFuture.completedFuture(ContextData.fromJson(json).payload()),
 					org.mockito.Mockito.mock(ContextDataProvider.class),
-					org.mockito.Mockito.mock(ContextEventHandler.class), null, throwingForA,
+					org.mockito.Mockito.mock(ContextEventHandler.class), null, throwingParser,
 					new AudienceMatcher(new DefaultAudienceDeserializer()), null, null);
 			assertEquals(1, context.peekTreatment("exp_shift"));
 			assertEquals(1.5, context.peekVariableValue("x", null), "variant B keeps its own variables");

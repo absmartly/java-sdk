@@ -476,7 +476,6 @@ class JdkHttpTransportTest {
 		assertTrue(drained.isDone(), "a failed body must release the drain wait immediately");
 	}
 
-	// A DiscardingSubscriber, with the given drain-cancel timer, or the production one when it is null.
 	private static java.net.http.HttpResponse.BodySubscriber<?> discardingSubscriber(
 			final java.util.function.BiConsumer<Long, Runnable> timer) throws Exception {
 		final Class<?> type = Class.forName("com.absmartly.sdk.JdkHttpTransport$DiscardingSubscriber");
@@ -488,7 +487,6 @@ class JdkHttpTransportTest {
 				: constructor.newInstance());
 	}
 
-	// A subscription that only runs onCancel when cancelled.
 	private static java.util.concurrent.Flow.Subscription subscription(final Runnable onCancel) {
 		return new java.util.concurrent.Flow.Subscription() {
 			@Override
@@ -503,8 +501,6 @@ class JdkHttpTransportTest {
 
 	@Test
 	void redirectDrainCancellationHasAOneSecondDeadline() throws Exception {
-		// A manual timer: the scheduled delay is checked directly and the timer fired by hand, so the test does not
-		// depend on host timing.
 		final java.util.List<Long> delays = new java.util.ArrayList<>();
 		final java.util.List<Runnable> tasks = new java.util.ArrayList<>();
 		final java.net.http.HttpResponse.BodySubscriber<?> subscriber = discardingSubscriber((delay, task) -> {
@@ -521,7 +517,6 @@ class JdkHttpTransportTest {
 
 	@Test
 	void productionDrainTimerCancelsAfterOneSecond() throws Exception {
-		// The no-arg subscriber is the one real redirects get: its timer must wait the requested delay, not longer.
 		final CompletableFuture<Long> cancelledAt = new CompletableFuture<>();
 		final java.net.http.HttpResponse.BodySubscriber<?> subscriber = discardingSubscriber(null);
 		final long start = System.nanoTime();
@@ -544,7 +539,6 @@ class JdkHttpTransportTest {
 	}
 
 	@Test
-	// An upper-bound check on a real connection; the one-second timer is pinned by the subscriber tests above.
 	void tricklingRedirectBodyIsCancelledWithinTheDrainLimit() throws Exception {
 		final java.util.concurrent.CountDownLatch cut = new java.util.concurrent.CountDownLatch(1);
 		server.createContext("/trickle", exchange -> {
