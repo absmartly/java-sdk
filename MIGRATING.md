@@ -1,12 +1,11 @@
 # Migrating from 1.x to 2.0
 
-2.0 reshapes the API; apart from two exceptions, it does not change what the SDK decides or sends. Hashing,
-assignment, audiences, assignment rules, holdouts, switchbacks, exposures, goals and the wire format are the 1.x
-behaviour. The exceptions are custom
-objects in attribute and goal values (see [Custom objects](#units-attributes-overrides-custom-assignments)), and a list
-or map attribute in an audience condition, which now matches an equal list or object whatever its `List` or `Map`
-class (see the [CHANGELOG](CHANGELOG.md)). There is no compatibility
-shim: this guide maps every 1.x API to its 2.0 form.
+2.0 reshapes the API; apart from two exceptions, it does not change what the SDK decides or sends. Hashing, assignment,
+audiences, assignment rules, holdouts, switchbacks, exposures, goals and the wire format are the 1.x behaviour. The
+exceptions are custom objects in attribute and goal values (see [Custom
+objects](#units-attributes-overrides-custom-assignments)), and a list or map attribute in an audience condition, which
+now matches an equal list or object whatever its `List` or `Map` class (see the [CHANGELOG](CHANGELOG.md)). There is no
+compatibility shim: this guide maps every 1.x API to its 2.0 form.
 
 **Requirements.** Java 11 or later (1.x: Java 8, or Java 6 with `core-api-java6`). Android: API 24+ with core library
 desugaring and your own `Transport` (or use kotlin-sdk/android-sdk). `core-api-java6` has no 2.x release: stay on 1.x
