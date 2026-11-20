@@ -1,0 +1,1566 @@
+package com.absmartly.sdk;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Flow;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import com.absmartly.sdk.event.CloseEvent;
+import com.absmartly.sdk.event.ContextEvent;
+import com.absmartly.sdk.event.ErrorEvent;
+import com.absmartly.sdk.event.ExposureEvent;
+import com.absmartly.sdk.event.GoalEvent;
+import com.absmartly.sdk.event.PublishEvent;
+import com.absmartly.sdk.event.ReadyEvent;
+import com.absmartly.sdk.event.RefreshEvent;
+import com.absmartly.sdk.event.Subscription;
+import com.absmartly.sdk.internal.Clock;
+
+/** The 2.0 public surface: client, state, typed variables, typed errors and events, over a fake transport. */
+@Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+class ABsmartlyClientTest extends TestUtils {
+	static final String CONTEXT_JSON = new String(getResourceBytes("context.json"), StandardCharsets.UTF_8);
+	static final ContextOptions SESSION = ContextOptions.builder()
+			.unit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
+			.publishDelay(Duration.ofMillis(-1))
+			.build();
+
+	final List<AutoCloseable> closeables = new ArrayList<>();
+
+	@AfterEach
+	void tearDown() throws Exception {
+		for (final AutoCloseable closeable : closeables) {
+			closeable.close();
+		}
+	}
+
+	ABsmartlyClient client(final Transport transport) {
+		final ABsmartlyClient client = ABsmartlyClient.builder()
+				.endpoint(URI.create("https://acme.absmartly.io/v1"))
+				.apiKey("key")
+				.application("website")
+				.environment("production")
+				.transport(transport)
+				.clock(Clock.fixed(1_620_000_000_000L))
+				.build();
+		closeables.add(client);
+		return client;
+	}
+
+	@Test
+	void builderRequiresEveryConnectionSetting() {
+		final FakeTransport transport = FakeTransport.ok("{}");
+		assertEquals("Missing Endpoint configuration", assertThrows(IllegalArgumentException.class,
+				() -> ABsmartlyClient.builder().apiKey("k").application("a").environment("e").transport(transport)
+						.build())
+				.getMessage());
+		assertEquals("Missing APIKey configuration", assertThrows(IllegalArgumentException.class,
+				() -> ABsmartlyClient.builder().endpoint(URI.create("https://x")).application("a").environment("e")
+						.transport(transport).build())
+				.getMessage());
+		assertEquals("Missing Application configuration", assertThrows(IllegalArgumentException.class,
+				() -> ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k").environment("e")
+						.transport(transport).build())
+				.getMessage());
+		assertEquals("Missing Environment configuration", assertThrows(IllegalArgumentException.class,
+				() -> ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k").application("a")
+						.transport(transport).build())
+				.getMessage());
+		assertEquals("Missing Application configuration", assertThrows(IllegalArgumentException.class,
+				() -> ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k").application(" ")
+						.environment("e").transport(transport).build())
+				.getMessage());
+		assertFalse(transport.closed, "a caller-supplied transport stays open");
+	}
+
+	@Test
+	void defaultTransportIsTheJdkOneAndIsClosedWithTheClient() {
+		final ABsmartlyClient client = ABsmartlyClient.builder()
+				.endpoint(URI.create("https://acme.absmartly.io/v1"))
+				.apiKey("key")
+				.application("website")
+				.environment("production")
+				.applicationVersion(1004)
+				.build();
+		assertEquals("website", client.application());
+		assertEquals("production", client.environment());
+		client.close();
+		client.close();
+	}
+
+	@Test
+	void contextBlocksUntilReady() {
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = client(transport);
+		try (Context context = client.context(SESSION)) {
+			assertEquals(ContextState.READY, context.state());
+			assertNull(context.failure());
+			assertEquals(1, context.treatment("exp_test_ab"));
+			assertEquals(1, context.pendingEventCount());
+		}
+		assertEquals(2, transport.requests.size(), "close publishes the pending exposure");
+		assertEquals("PUT", transport.requests.get(1).method());
+	}
+
+	@Test
+	void contextAsyncCompletesReady() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.contextAsync(SESSION).join();
+		assertEquals(ContextState.READY, context.state());
+		assertSame(context, context.ready());
+		assertSame(context, context.readyAsync().join());
+	}
+
+	@Test
+	void failedLoadThrowsContextLoadException() {
+		final ABsmartlyClient client = client(new FakeTransport(r -> FakeTransport.status(500,
+				"Internal Server Error")));
+		final ContextLoadException error = assertThrows(ContextLoadException.class, () -> client.context(SESSION));
+		final HttpStatusException cause = (HttpStatusException) error.getCause();
+		assertEquals(500, cause.statusCode());
+		assertEquals("ABsmartly Context failed to load: Internal Server Error", error.getMessage());
+
+		final CompletionException async = assertThrows(CompletionException.class,
+				() -> client.contextAsync(SESSION).join());
+		assertTrue(async.getCause() instanceof ContextLoadException);
+	}
+
+	@Test
+	void newContextLoadsInTheBackgroundAndStaysUsableWhenFailed() {
+		final CompletableFuture<Transport.Response> response = new CompletableFuture<>();
+		final ABsmartlyClient client = client(new FakeTransport(r -> response));
+		final Context context = client.newContext(SESSION);
+		assertEquals(ContextState.LOADING, context.state());
+		assertThrows(ContextNotReadyException.class, () -> context.treatment("exp_test_ab"));
+
+		response.completeExceptionally(new java.io.IOException("connection reset"));
+		assertThrows(ContextLoadException.class, context::ready);
+		assertEquals(ContextState.FAILED, context.state());
+		assertTrue(context.failure() instanceof TransportException);
+		assertEquals(0, context.treatment("exp_test_ab"));
+		assertEquals("blue", context.variable("button.color", "blue"));
+		context.close();
+		assertEquals(ContextState.CLOSED, context.state());
+	}
+
+	@Test
+	void prefetchedDataMakesNoRequest() {
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = client(transport);
+		final ContextData data = client.contextData();
+		assertEquals(1, transport.requests.size());
+		assertEquals(data, client.contextDataAsync().join());
+
+		final Context context = client.context(SESSION, data);
+		assertEquals(ContextState.READY, context.state());
+		assertEquals(data, context.data());
+		assertEquals(2, transport.requests.size());
+
+		final Context fromJson = client.context(SESSION, ContextData.fromJson(CONTEXT_JSON));
+		assertEquals(context.experiments(), fromJson.experiments());
+	}
+
+	@Test
+	void closedClientRejectsNewContexts() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final ContextData data = client.contextData();
+		client.close();
+		assertThrows(ContextClosedException.class, () -> client.context(SESSION));
+		assertThrows(ContextClosedException.class, () -> client.newContext(SESSION));
+		assertThrows(ContextClosedException.class, () -> client.context(SESSION, data));
+		assertThrows(ContextClosedException.class, client::contextData);
+	}
+
+	@Test
+	void closeLeavesSuppliedSchedulerAndTransportRunning() {
+		final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1);
+		final FakeTransport transport = FakeTransport.ok("{}");
+		try {
+			ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k").application("a").environment("e")
+					.transport(transport).scheduler(scheduler).executor(Runnable::run).build().close();
+			assertFalse(scheduler.isShutdown());
+			assertFalse(transport.closed);
+		} finally {
+			scheduler.shutdownNow();
+		}
+	}
+
+	@Test
+	void stateFollowsTheLifecycle() {
+		final CompletableFuture<Transport.Response> publish = new CompletableFuture<>();
+		final ABsmartlyClient client = client(new FakeTransport(r -> "GET".equals(r.method())
+				? CompletableFuture.completedFuture(new Transport.Response(200, "OK",
+						CONTEXT_JSON.getBytes(StandardCharsets.UTF_8)))
+				: publish));
+		final Context context = client.context(SESSION);
+		context.treatment("exp_test_ab");
+		final CompletableFuture<Void> closing = context.closeAsync();
+		assertEquals(ContextState.CLOSING, context.state());
+		assertThrows(ContextClosedException.class, () -> context.track("goal"));
+		publish.complete(new Transport.Response(200, "OK", null));
+		closing.join();
+		assertEquals(ContextState.CLOSED, context.state());
+		assertEquals("ABsmartly Context is closed",
+				assertThrows(ContextClosedException.class, () -> context.setAttribute("a", 1)).getMessage());
+	}
+
+	@Test
+	void publishFailureKeepsEventsAndThrowsTheCause() {
+		final ABsmartlyClient client = client(new FakeTransport(r -> "GET".equals(r.method())
+				? CompletableFuture.completedFuture(new Transport.Response(200, "OK",
+						CONTEXT_JSON.getBytes(StandardCharsets.UTF_8)))
+				: FakeTransport.status(503, "Service Unavailable")));
+		final Context context = client.context(SESSION);
+		context.track("purchase", Map.of("total", 19.99));
+		final HttpStatusException error = assertThrows(HttpStatusException.class, context::publish);
+		assertEquals(503, error.statusCode());
+		assertEquals(1, context.pendingEventCount());
+		assertThrows(HttpStatusException.class, context::close);
+		assertEquals(ContextState.READY, context.state(), "a failed close leaves the context open to retry");
+	}
+
+	@Test
+	void typedVariables() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+
+		final String size = context.variable("banner.size", "small");
+		assertEquals("large", size);
+		final int border = context.variable("banner.border", 0);
+		assertEquals(1, border);
+		assertEquals(1L, context.variable("banner.border", 0L));
+		assertEquals(1.0, context.variable("banner.border", 0.0));
+		assertEquals(BigDecimal.ONE, context.variable("banner.border", BigDecimal.ZERO));
+		assertEquals(BigInteger.ONE, context.variable("banner.border", BigInteger.TEN));
+		assertEquals((short) 1, context.variable("banner.border", (short) 0));
+		assertEquals((byte) 1, context.variable("banner.border", (byte) 0));
+		assertEquals(1.0f, context.variable("banner.border", 0.0f));
+
+		assertEquals(7, context.variable("banner.size", 7), "a string is not an int: the default");
+		assertEquals("dflt", context.variable("banner.border", "dflt"), "no number-to-string coercion");
+		assertEquals("dflt", context.variable("missing", "dflt"));
+		assertNull(context.variable("missing", String.class, null));
+		assertEquals("large", context.variable("banner.size", String.class, null));
+		assertEquals("large", context.variableValue("banner.size", null));
+		assertNull(context.variableValue("missing", null));
+	}
+
+	@Test
+	void collectionDefaultsInferTheirInterface() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_list\",\"unitType\":\"session_id\","
+				+ "\"iteration\":1,\"seedHi\":0,\"seedLo\":0,\"split\":[0,1],\"trafficSeedHi\":0,"
+				+ "\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":1,"
+				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\",\"config\":null},"
+				+ "{\"name\":\"B\",\"config\":\"{\\\"items\\\":[\\\"actual\\\"],"
+				+ "\\\"limits\\\":{\\\"cart\\\":3}}\"}]}]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+
+		final List<String> peekedEmpty = context.peekVariable("items", Collections.emptyList());
+		assertEquals(List.of("actual"), peekedEmpty);
+		assertEquals(List.of("actual"), context.peekVariable("items", List.of("fallback")));
+		assertEquals(Map.of("cart", 3), context.peekVariable("limits", Collections.emptyMap()));
+		assertEquals(0, context.pendingEventCount());
+
+		final List<String> items = context.variable("items", Collections.emptyList());
+		assertEquals(List.of("actual"), items);
+		assertEquals(Map.of("cart", 3), context.variable("limits", Map.of("cart", 1)));
+		assertEquals(List.of("fallback"), context.variable("missing", List.of("fallback")));
+		assertEquals(Collections.emptyMap(), context.variable("items", Collections.emptyMap()),
+				"an array is not a map: the default");
+
+		// A constructible collection default keeps its class.
+		final java.util.TreeMap<String, Object> limits = context.peekVariable("limits", new java.util.TreeMap<>());
+		assertEquals(new java.util.TreeMap<>(Map.of("cart", 3)), limits);
+		final java.util.LinkedList<String> linked = context.peekVariable("items", new java.util.LinkedList<>());
+		assertEquals(new java.util.LinkedList<>(List.of("actual")), linked);
+		final java.util.TreeMap<String, Object> fallback = new java.util.TreeMap<>(Map.of("x", 1));
+		assertSame(fallback, context.peekVariable("items", fallback), "an array is not a map: the default");
+		final java.util.LinkedList<String> listFallback = new java.util.LinkedList<>();
+		assertSame(listFallback, context.peekVariable("limits", listFallback), "an object is not a list");
+
+		// Non-constructible sorted and set defaults convert into a class of the same shape.
+		final java.util.SortedMap<String, Object> sorted = context.peekVariable("limits",
+				Collections.emptySortedMap());
+		assertEquals(new java.util.TreeMap<>(Map.of("cart", 3)), sorted);
+		final java.util.NavigableMap<String, Object> navigable = context.peekVariable("limits",
+				Collections.unmodifiableNavigableMap(new java.util.TreeMap<>()));
+		assertEquals(Map.of("cart", 3), navigable);
+		final java.util.Set<String> set = context.peekVariable("items", Collections.emptySet());
+		assertEquals(java.util.Set.of("actual"), set);
+		final java.util.SortedSet<String> sortedSet = context.peekVariable("items", Collections.emptySortedSet());
+		assertEquals(new java.util.TreeSet<>(List.of("actual")), sortedSet);
+		assertEquals(1, context.pendingEventCount());
+	}
+
+	@Test
+	void longVariablesKeepTheirFullValue() {
+		assertEquals(5_000_000_000L, VariableConverter.convert("big", 5_000_000_000L, Long.class, 0L));
+		assertEquals(5_000_000_000L, VariableConverter.convert("big", new BigInteger("5000000000"), Long.class, 0L));
+		assertEquals(0, VariableConverter.convert("big", 5_000_000_000L, Integer.class, 0));
+		assertEquals(0L, VariableConverter.convert("big", new BigInteger("99999999999999999999"), Long.class, 0L));
+		assertEquals(-5_000_000_000L, VariableConverter.convert("big", -5_000_000_000.0, Long.class, 0L));
+	}
+
+	@Test
+	void floatingReadsRejectOverflowAndInexactWholeNumbers() {
+		assertEquals(-1.0, VariableConverter.convert("n", new BigInteger("9007199254740993"), Double.class, -1.0),
+				"2^53 + 1 is not a double: an ID must not silently change");
+		assertEquals(-1.0, VariableConverter.convert("n", (1L << 53) + 1, Double.class, -1.0),
+				"a Long ID, as Jackson parses one, must not silently change");
+		assertEquals(-1.0f, VariableConverter.convert("n", 16777217, Float.class, -1.0f));
+		assertEquals(-1.0, VariableConverter.convert("n", new BigDecimal("1e1000"), Double.class, -1.0));
+		assertEquals(-1.0f, VariableConverter.convert("n", Double.MAX_VALUE, Float.class, -1.0f));
+		assertEquals(-1.0f, VariableConverter.convert("n", 1.0e-50, Float.class, -1.0f), "underflows to zero");
+		assertEquals(-1.0f, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Float.class, -1.0f));
+		assertEquals(-1.0, VariableConverter.convert("n", Double.NaN, Double.class, -1.0));
+		assertEquals(0.0f, VariableConverter.convert("n", 0.0, Float.class, -1.0f));
+	}
+
+	@Test
+	void floatingReadsReturnTheNearestValue() {
+		assertEquals(0x1p60, VariableConverter.convert("n", 1L << 60, Double.class, -1.0));
+		assertEquals(0x1p40f, VariableConverter.convert("n", 1L << 40, Float.class, -1.0f));
+		assertEquals(0.5f, VariableConverter.convert("n", 0.5, Float.class, -1.0f));
+		assertEquals(0.1f, VariableConverter.convert("n", 0.1, Float.class, -1.0f));
+		assertEquals(0.3f, VariableConverter.convert("n", (double) 0.3f, Float.class, -1.0f));
+		assertEquals(1234.567f, VariableConverter.convert("n", 1234.567, Float.class, -1.0f));
+		assertEquals(1.23456789f, VariableConverter.convert("n", 1.23456789, Float.class, -1.0f),
+				"rounded to the nearest float, as (float) 1.23456789 is");
+		assertEquals(Float.MIN_VALUE, VariableConverter.convert("n", 1.4e-45, Float.class, -1.0f));
+		assertEquals(1.0e23, VariableConverter.convert("n", new BigDecimal("1e23"), Double.class, -1.0));
+		assertEquals(19.99, VariableConverter.convert("n", 19.99, Double.class, -1.0));
+		assertEquals(0, new BigDecimal("0.1234567890123456")
+				.compareTo(VariableConverter.convert("n", 0.1234567890123456, BigDecimal.class, BigDecimal.ONE)));
+		// Every finite float, written the way the JDK prints it, reads back as itself on every JDK.
+		for (int exponent = -149; exponent <= 127; ++exponent) {
+			final float power = Math.scalb(1.0f, exponent);
+			assertEquals(power, VariableConverter.convert("n", Double.parseDouble(Float.toString(power)),
+					Float.class, Float.NaN), "2^" + exponent);
+		}
+		final java.util.Random random = new java.util.Random(42);
+		for (int i = 0; i < 20000; ++i) {
+			final float f = Float.intBitsToFloat(random.nextInt());
+			if (Float.isFinite(f) && (f != 0)) {
+				assertEquals(f, VariableConverter.convert("n", Double.parseDouble(Float.toString(f)), Float.class,
+						Float.NaN), "float " + f);
+			}
+			final double d = Double.longBitsToDouble(random.nextLong());
+			if (Double.isFinite(d)) {
+				assertEquals(0, Double.compare(d, VariableConverter.shortestDecimal(d).doubleValue()), "double " + d);
+				assertEquals(d, VariableConverter.convert("n", d, Double.class, Double.NaN));
+			}
+		}
+		assertEquals(new BigDecimal("2E-3"), VariableConverter.shortestDecimal(2.0e-3));
+		assertEquals(new BigDecimal("1E+23"), VariableConverter.shortestDecimal(1.0e23));
+		assertEquals(new BigDecimal("0.1"), VariableConverter.shortestDecimal(0.1));
+		// A power of two whose shortest decimal is a neighbour of the exact value's rounding, not the rounding.
+		assertEquals(new BigDecimal("7.120236347223045E-307"),
+				VariableConverter.shortestDecimal(7.120236347223045E-307));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void defaultsWithNoConstructibleSubstituteFallBack() {
+		final java.util.EnumSet<TimeUnit> none = java.util.EnumSet.noneOf(TimeUnit.class);
+		assertTrue(java.util.EnumSet.class.isAssignableFrom(VariableConverter.inferType(none)),
+				"no substitute implements every interface of an EnumSet's class");
+		final java.util.EnumSet<TimeUnit> read = VariableConverter.convert("set", List.of("SECONDS"),
+				(Class<java.util.EnumSet<TimeUnit>>) VariableConverter.inferType(none), none);
+		assertSame(none, read, "an EnumSet default is returned rather than a LinkedHashSet");
+		assertEquals(java.util.TreeSet.class, VariableConverter.inferType(Collections.emptySortedSet()));
+		assertEquals(java.util.LinkedHashSet.class, VariableConverter.inferType(Collections.emptySet()));
+		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(List.of()));
+		assertEquals(java.util.TreeMap.class, VariableConverter.inferType(Collections.emptySortedMap()));
+		assertEquals(java.util.LinkedHashMap.class, VariableConverter.inferType(Map.of()));
+	}
+
+	// No no-argument constructor, so inferType reaches the substitute check instead of keeping the class.
+	public static final class Tags extends java.util.AbstractList<String> {
+		public Tags(final List<String> ignored) {}
+
+		@Override
+		public String get(final int index) {
+			throw new IndexOutOfBoundsException();
+		}
+
+		@Override
+		public int size() {
+			return 0;
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void finalCollectionDefaultsFallBack() {
+		final Tags tags = new Tags(List.of());
+		final Tags read = VariableConverter.convert("items", List.of("actual"),
+				(Class<Tags>) VariableConverter.inferType(tags), tags);
+		assertSame(tags, read, "a final collection default is returned, never a cast-failing ArrayList");
+		final java.util.Set<String> keySet = java.util.concurrent.ConcurrentHashMap.newKeySet();
+		assertEquals(keySet.getClass(), VariableConverter.inferType(keySet), "same answer on every JDK");
+	}
+
+	@Test
+	void onlyKotlinEmptyCollectionsAreExempt() throws Exception {
+		// UIntArray is another public final kotlin collection: no JDK substitute can stand in for it.
+		final Object unsigned = kotlin.UIntArray.class.getMethod("box-impl", int[].class).invoke(null,
+				(Object) new int[0]);
+		assertEquals(kotlin.UIntArray.class, VariableConverter.inferType(unsigned));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void kotlinEmptyCollectionDefaultsConvert() {
+		final List<String> kotlinList = kotlin.collections.CollectionsKt.emptyList();
+		final java.util.Set<String> kotlinSet = kotlin.collections.SetsKt.emptySet();
+		final Map<String, Object> kotlinMap = kotlin.collections.MapsKt.emptyMap();
+		assertEquals(java.util.ArrayList.class, VariableConverter.inferType(kotlinList));
+		assertEquals(java.util.LinkedHashSet.class, VariableConverter.inferType(kotlinSet));
+		assertEquals(java.util.LinkedHashMap.class, VariableConverter.inferType(kotlinMap));
+
+		assertEquals(List.of("actual"), VariableConverter.convert("items", List.of("actual"),
+				(Class<List<String>>) VariableConverter.inferType(kotlinList), kotlinList));
+		assertEquals(java.util.Set.of("actual"), VariableConverter.convert("items", List.of("actual"),
+				(Class<java.util.Set<String>>) VariableConverter.inferType(kotlinSet), kotlinSet));
+		assertEquals(Map.of("cart", 3), VariableConverter.convert("limits", Map.of("cart", 3),
+				(Class<Map<String, Object>>) VariableConverter.inferType(kotlinMap), kotlinMap));
+	}
+
+	@Test
+	void infinityIsKeptForUntypedReads() {
+		assertEquals(BigDecimal.ONE, VariableConverter.convert("n", Double.POSITIVE_INFINITY, BigDecimal.class,
+				BigDecimal.ONE));
+		assertEquals(Double.POSITIVE_INFINITY, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Object.class,
+				null));
+		assertEquals(Double.POSITIVE_INFINITY, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Number.class,
+				null));
+		assertEquals(-1.0, VariableConverter.convert("n", Double.POSITIVE_INFINITY, Double.class, -1.0));
+	}
+
+	@Test
+	void numericConversionNeverLosesPrecision() {
+		assertEquals(5, VariableConverter.convert("k", 5.0, Integer.class, 0));
+		assertEquals(0, VariableConverter.convert("k", 5.5, Integer.class, 0));
+		assertEquals(0, VariableConverter.convert("k", 3_000_000_000L, Integer.class, 0));
+		assertEquals((byte) 9, VariableConverter.convert("k", 300, Byte.class, (byte) 9));
+		assertEquals(3_000_000_000L, VariableConverter.convert("k", 3_000_000_000L, Long.class, 0L));
+		assertEquals(new BigDecimal("2.5"), VariableConverter.convert("k", 2.5, BigDecimal.class, null));
+		assertEquals(Boolean.TRUE, VariableConverter.convert("k", true, Boolean.class, false));
+		assertEquals(Boolean.FALSE, VariableConverter.convert("k", "true", Boolean.class, false));
+		assertNull(VariableConverter.convert("k", List.of(1), Integer.class, null));
+	}
+
+	public static final class Banner {
+		public String color;
+		public int size;
+	}
+
+	@Test
+	void objectVariablesMapToClasses() {
+		final Map<String, Object> json = Map.of("color", "red", "size", 3);
+		final Banner banner = VariableConverter.convert("banner", json, Banner.class, null);
+		assertEquals("red", banner.color);
+		assertEquals(3, banner.size);
+
+		final Banner fallback = new Banner();
+		assertSame(fallback, VariableConverter.convert("banner", Map.of("size", "huge"), Banner.class, fallback));
+		assertSame(json, VariableConverter.convert("banner", json, Map.class, null));
+		assertNull(VariableConverter.convert("banner", json, String.class, null));
+	}
+
+	@Test
+	void peekVariablesDoNotExpose() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		assertEquals("large", context.peekVariable("banner.size", "small"));
+		assertEquals("large", context.peekVariable("banner.size", String.class, "small"));
+		assertEquals(1, context.peekTreatment("exp_test_ab"));
+		assertEquals(0, context.pendingEventCount());
+		assertEquals("large", context.variable("banner.size", "small"));
+		assertEquals(1, context.pendingEventCount());
+	}
+
+	@Test
+	void accessorsReturnUnmodifiableSnapshots() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(ContextOptions.builder()
+				.unit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
+				.unit("user_id", 123)
+				.attribute("plan", "pro")
+				.override("exp_test_ab", 0)
+				.customAssignment("exp_test_abc", 2)
+				.build());
+
+		assertEquals("123", context.unit("user_id"));
+		assertEquals(123, context.unitValue("user_id"));
+		assertEquals(Map.of("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec", "user_id", "123"),
+				context.units());
+		assertThrows(UnsupportedOperationException.class, () -> context.units().put("x", "y"));
+		assertThrows(UnsupportedOperationException.class, () -> context.unitValues().clear());
+		assertEquals("pro", context.attribute("plan"));
+		assertEquals(Map.of("plan", "pro"), context.attributes());
+		assertThrows(UnsupportedOperationException.class, () -> context.attributes().clear());
+
+		assertEquals(Map.of("exp_test_ab", 0), context.overrides());
+		assertEquals(0, context.override("exp_test_ab"));
+		assertEquals(0, context.treatment("exp_test_ab"));
+		context.clearOverride("exp_test_ab");
+		assertNull(context.override("exp_test_ab"));
+		assertEquals(Collections.emptyMap(), context.overrides());
+		assertEquals(1, context.treatment("exp_test_ab"), "the override is gone: assigned normally again");
+
+		assertEquals(Map.of("exp_test_abc", 2), context.customAssignments());
+		assertEquals(2, context.customAssignment("exp_test_abc"));
+		context.clearCustomAssignment("exp_test_abc");
+		assertNull(context.customAssignment("exp_test_abc"));
+		assertThrows(UnsupportedOperationException.class, () -> context.customAssignments().put("x", 1));
+
+		assertEquals(List.of("exp_test_ab", "exp_test_abc", "exp_test_not_eligible", "exp_test_fullon"),
+				context.experiments());
+		assertThrows(UnsupportedOperationException.class, () -> context.experiments().add("x"));
+		assertEquals(Collections.emptyList(), context.customFieldKeys());
+		assertNull(context.customFieldType("exp_test_ab", "missing"));
+		assertEquals(List.of("exp_test_ab"), context.variableKeys().get("banner.size"));
+	}
+
+	@Test
+	void eventsAreTypedAndReachContextAndClientListeners() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final List<ContextEvent> clientEvents = Collections.synchronizedList(new ArrayList<>());
+		final List<ContextEvent> contextEvents = Collections.synchronizedList(new ArrayList<>());
+		client.onEvent(clientEvents::add);
+
+		final Context context = client.context(ContextOptions.builder()
+				.unit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
+				.publishDelay(Duration.ofMillis(-1))
+				.eventListener(contextEvents::add)
+				.build());
+		// context() can return just before READY is dispatched on the loading thread.
+		awaitSize(contextEvents, 1);
+		awaitSize(clientEvents, 1);
+		context.treatment("exp_test_ab");
+		context.track("purchase", Map.of("total", 19.99, "items", 2));
+		context.publish();
+		awaitSize(contextEvents, 4);
+		context.refresh();
+		// A future completes before its event is dispatched, so wait for each event before the next step.
+		awaitSize(contextEvents, 5);
+		context.close();
+		awaitSize(contextEvents, 6);
+		awaitSize(clientEvents, 6);
+
+		final List<ContextEvent.Type> expected = List.of(ContextEvent.Type.READY, ContextEvent.Type.EXPOSURE,
+				ContextEvent.Type.GOAL, ContextEvent.Type.PUBLISH, ContextEvent.Type.REFRESH, ContextEvent.Type.CLOSE);
+		assertEquals(expected, types(contextEvents));
+		assertEquals(expected, types(clientEvents));
+
+		final ReadyEvent ready = (ReadyEvent) contextEvents.get(0);
+		assertSame(context, ready.context());
+		assertEquals(1_620_000_000_000L, ready.timestamp());
+		assertEquals(4, ready.data().experimentNames().size());
+
+		final Exposure exposure = ((ExposureEvent) contextEvents.get(1)).exposure();
+		assertEquals(1, exposure.id());
+		assertEquals("exp_test_ab", exposure.name());
+		assertEquals("session_id", exposure.unit());
+		assertEquals(1, exposure.variant());
+		assertTrue(exposure.assigned());
+		assertTrue(exposure.eligible());
+		assertFalse(exposure.overridden() || exposure.fullOn() || exposure.custom() || exposure.audienceMismatch()
+				|| exposure.ruleOverride());
+		assertEquals(1_620_000_000_000L, exposure.exposedAt());
+
+		final Goal goal = ((GoalEvent) contextEvents.get(2)).goal();
+		assertEquals("purchase", goal.name());
+		assertEquals(Map.of("items", 2, "total", 19.99), goal.properties());
+		assertThrows(UnsupportedOperationException.class, () -> goal.properties().clear());
+
+		final PublishEvent publish = (PublishEvent) contextEvents.get(3);
+		assertEquals(List.of(exposure), publish.exposures());
+		assertEquals(List.of(goal), publish.goals());
+		assertTrue(publish.toJson().contains("\"hashed\":true"));
+
+		assertTrue(contextEvents.get(4) instanceof RefreshEvent);
+		assertTrue(contextEvents.get(5) instanceof CloseEvent);
+		for (final ContextEvent event : contextEvents) {
+			assertNotNull(event.toString());
+		}
+	}
+
+	@Test
+	void errorEventCarriesTheUnwrappedCause() {
+		final ABsmartlyClient client = client(new FakeTransport(r -> FakeTransport.status(401, "")));
+		final List<ContextEvent> events = Collections.synchronizedList(new ArrayList<>());
+		client.onEvent(events::add);
+		final Context context = client.newContext(SESSION);
+		assertThrows(ContextLoadException.class, context::ready);
+
+		// The ready future completes before the event is dispatched, so wait for the event.
+		awaitSize(events, 1);
+		assertEquals(List.of(ContextEvent.Type.ERROR), types(events));
+		final Throwable cause = ((ErrorEvent) events.get(0)).cause();
+		assertEquals(401, ((HttpStatusException) cause).statusCode());
+		assertEquals("Unauthorized", cause.getMessage());
+		assertSame(cause, context.failure());
+	}
+
+	@Test
+	void throwingListenerDoesNotBreakTheSdkOrOtherListeners() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final AtomicInteger seen = new AtomicInteger();
+		client.onEvent(event -> {
+			throw new IllegalStateException("listener bug");
+		});
+		client.onEvent(event -> {
+			if (event.type() == ContextEvent.Type.EXPOSURE) {
+				seen.incrementAndGet();
+			}
+		});
+		final Context context = client.context(SESSION);
+		assertEquals(1, context.treatment("exp_test_ab"));
+		assertEquals(1, seen.get());
+	}
+
+	@Test
+	void subscriptionRemovesTheListener() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final AtomicInteger seen = new AtomicInteger();
+		final Subscription subscription = context.onEvent(event -> {
+			if (event.type() == ContextEvent.Type.EXPOSURE) {
+				seen.incrementAndGet();
+			}
+		});
+		context.treatment("exp_test_ab");
+		subscription.close();
+		subscription.close();
+		context.treatment("exp_test_abc");
+		assertEquals(1, seen.get());
+	}
+
+	@Test
+	void flowPublisherStreamsEventsAndCompletesOnClose() throws InterruptedException {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final List<ContextEvent.Type> received = Collections.synchronizedList(new ArrayList<>());
+		final CountDownLatch completed = new CountDownLatch(1);
+		context.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				subscription.request(Long.MAX_VALUE);
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {
+				// A late READY from the load can reach a subscriber attached right after context() returned.
+				if (item.type() != ContextEvent.Type.READY) {
+					received.add(item.type());
+				}
+			}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {
+				completed.countDown();
+			}
+		});
+		assertSame(context.events(), context.events());
+		context.treatment("exp_test_ab");
+		context.close();
+
+		assertTrue(completed.await(5, TimeUnit.SECONDS));
+		assertEquals(List.of(ContextEvent.Type.EXPOSURE, ContextEvent.Type.PUBLISH, ContextEvent.Type.CLOSE),
+				received);
+	}
+
+	@Test
+	void clientStreamCompletesOnClientClose() throws InterruptedException {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final CountDownLatch completed = new CountDownLatch(1);
+		final List<ContextEvent.Type> received = Collections.synchronizedList(new ArrayList<>());
+		client.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				subscription.request(Long.MAX_VALUE);
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {
+				received.add(item.type());
+			}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {
+				completed.countDown();
+			}
+		});
+		final Context context = client.newContext(SESSION);
+		// The ready future can complete before READY is dispatched, so wait for the event before exposing.
+		awaitStreamed(received, 1);
+		context.treatment("exp_test_ab");
+		awaitStreamed(received, 2);
+		client.close();
+		assertTrue(completed.await(5, TimeUnit.SECONDS));
+		assertEquals(List.of(ContextEvent.Type.READY, ContextEvent.Type.EXPOSURE), received);
+	}
+
+	@Test
+	void contextStreamsUseTheClientExecutor() throws InterruptedException {
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors
+				.newSingleThreadExecutor(runnable -> new Thread(runnable, "client-executor"));
+		try {
+			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").transport(FakeTransport.ok(CONTEXT_JSON)).executor(pool)
+					.build();
+			closeables.add(client);
+			final Context context = client.context(SESSION);
+			final CountDownLatch received = new CountDownLatch(1);
+			final List<String> threads = Collections.synchronizedList(new ArrayList<>());
+			context.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {
+					if (item.type() == ContextEvent.Type.EXPOSURE) {
+						threads.add(Thread.currentThread().getName());
+						received.countDown();
+					}
+				}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			context.treatment("exp_test_ab");
+			assertTrue(received.await(5, TimeUnit.SECONDS));
+			assertEquals(List.of("client-executor"), threads, "the context's stream delivers on the client executor");
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	static String configJson(final String variantConfig) {
+		return "{\"experiments\":[{\"id\":1,\"name\":\"exp_num\",\"unitType\":\"session_id\",\"iteration\":1,"
+				+ "\"seedHi\":0,\"seedLo\":0,\"split\":[0,1],\"trafficSeedHi\":0,\"trafficSeedLo\":0,"
+				+ "\"trafficSplit\":[0,1],\"fullOnVariant\":1,\"applications\":[{\"name\":\"website\"}],"
+				+ "\"variants\":[{\"name\":\"A\",\"config\":null},{\"name\":\"B\",\"config\":"
+				+ new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(variantConfig) + "}]}]}";
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void nestedOptionsAndGoalPropertiesAreImmutableSnapshots() {
+		final List<String> tags = new ArrayList<>(List.of("original"));
+		final ContextOptions options = ContextOptions.builder().unit("session_id", "u")
+				.attribute("nested", Map.of("tags", tags)).build();
+		tags.add("changed");
+		final Map<String, Object> nested = (Map<String, Object>) options.attributes().get("nested");
+		assertEquals(List.of("original"), nested.get("tags"));
+		assertThrows(UnsupportedOperationException.class, () -> ((List<String>) nested.get("tags")).add("bad"));
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = client(transport);
+		final Context context = client.context(options);
+		final List<Goal> goals = new ArrayList<>();
+		context.onEvent(event -> {
+			if (event instanceof GoalEvent) {
+				goals.add(((GoalEvent) event).goal());
+			}
+		});
+		final List<String> items = new ArrayList<>(List.of("first"));
+		context.track("purchase", Map.of("items", items));
+		items.add("second");
+		final List<String> exposed = (List<String>) goals.get(0).properties().get("items");
+		assertEquals(List.of("first"), exposed);
+		assertThrows(UnsupportedOperationException.class, () -> exposed.add("injected"));
+		context.publish();
+		final String body = new String(transport.requests.get(transport.requests.size() - 1).body(),
+				StandardCharsets.UTF_8);
+		assertFalse(body.contains("second"));
+		assertFalse(body.contains("injected"));
+		assertFalse(body.contains("changed"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void setAttributeSnapshotsNestedContainersOnly() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final List<String> tags = new ArrayList<>(List.of("a"));
+		context.setAttribute("tags", tags);
+		tags.add("b");
+		assertEquals(List.of("a"), context.attribute("tags"), "a list attribute is copied when set");
+		final java.util.TreeSet<String> set = new java.util.TreeSet<>(List.of("vip"));
+		final String[] array = {"vip"};
+		final java.nio.file.Path path = java.nio.file.Paths.get("/tmp/x");
+		context.setAttribute("set", set);
+		context.setAttribute("array", array);
+		context.setAttribute("path", path);
+		assertSame(set, context.attribute("set"), "sets keep their type, as audiences see them in 1.x");
+		assertSame(array, context.attribute("array"), "arrays keep their type");
+		assertSame(path, context.attribute("path"), "an Iterable that is not a list is kept as is");
+		final Iterable<String> iterable = () -> List.of("x").iterator();
+		assertSame(iterable, com.absmartly.sdk.internal.JsonValues.snapshotValue(iterable));
+		context.track("goal", Map.of("path", path));
+		assertDoesNotThrow(context::publish);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void nestedContainersAreCopiedDeeplyAndSeparately() {
+		final Map<String, Object> inner = new java.util.HashMap<>(Map.of("k", 1));
+		final List<Object> shared = new ArrayList<>(List.of(inner));
+		final Map<String, Object> value = new java.util.LinkedHashMap<>();
+		value.put("first", shared);
+		value.put("second", shared);
+		final Map<String, Object> copy = (Map<String, Object>) com.absmartly.sdk.internal.JsonValues
+				.snapshotValue(value);
+		inner.put("k", 2);
+		shared.add("late");
+		for (final String key : List.of("first", "second")) {
+			final List<Object> list = (List<Object>) copy.get(key);
+			assertEquals(1, list.size(), key + " is a copy, not the shared list");
+			final Map<String, Object> item = (Map<String, Object>) list.get(0);
+			assertEquals(1, item.get("k"), key + "'s map inside the list is copied too");
+			assertThrows(UnsupportedOperationException.class, () -> item.put("x", 3));
+		}
+	}
+
+	@Test
+	void undecodableTypedReadFallsBackEvenWhenTheConverterSeesTheMarker() {
+		assertEquals(-1,
+				VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, Integer.class, -1));
+		assertEquals("x",
+				VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, String.class, "x"));
+		assertNull(VariableConverter.convert("k", com.absmartly.sdk.internal.Json.UNDECODABLE, Object.class, null));
+	}
+
+	@Test
+	void goalPropertiesArePublishedSortedByName() {
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = client(transport);
+		final Context context = client.context(SESSION);
+		final List<Goal> goals = new ArrayList<>();
+		context.onEvent(event -> {
+			if (event instanceof GoalEvent) {
+				goals.add(((GoalEvent) event).goal());
+			}
+		});
+		final Map<String, Object> properties = new java.util.LinkedHashMap<>();
+		properties.put("zeta", 1);
+		properties.put("alpha", 2);
+		context.track("goal", properties);
+		assertEquals(List.of("alpha", "zeta"), new ArrayList<>(goals.get(0).properties().keySet()));
+		context.publish();
+		final String body = new String(transport.requests.get(transport.requests.size() - 1).body(),
+				StandardCharsets.UTF_8);
+		assertTrue(body.contains("\"properties\":{\"alpha\":2,\"zeta\":1}"), body);
+	}
+
+	@Test
+	void malformedVariantConfigsDoNotShiftLaterVariants() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_shift\",\"unitType\":\"session_id\","
+				+ "\"iteration\":1,\"seedHi\":0,\"seedLo\":0,\"split\":[0.34,0.33,0.33],\"trafficSeedHi\":0,"
+				+ "\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":2,"
+				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\",\"config\":null},"
+				+ "{\"name\":\"B\",\"config\":\"not json\"},{\"name\":\"C\",\"config\":\"{\\\"x\\\":1.5}\"}]}]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		assertEquals(2, context.peekTreatment("exp_shift"));
+		assertEquals(1.5, context.peekVariableValue("x", null), "variant C keeps its own variables");
+		assertEquals(new BigDecimal("1.5"), context.peekVariable("x", BigDecimal.ZERO), "and its own exact numbers");
+	}
+
+	@Test
+	void malformedVariantConfigsDoNotInheritEarlierVariants() {
+		final String json = "{\"experiments\":[" + afterGoodVariant(1, "exp_null", "y", "null") + ","
+				+ afterGoodVariant(2, "exp_bad", "z", "\"not json\"") + "]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		assertEquals(1, context.peekTreatment("exp_null"));
+		assertNull(context.peekVariableValue("y", null), "a null config after a configured variant has no variables");
+		assertEquals(1, context.peekTreatment("exp_bad"));
+		assertNull(context.peekVariableValue("z", null), "an unparseable config after a configured variant too");
+	}
+
+	private static String afterGoodVariant(final int id, final String name, final String key, final String config) {
+		return "{\"id\":" + id + ",\"name\":\"" + name + "\",\"unitType\":\"session_id\",\"iteration\":1,"
+				+ "\"seedHi\":0,\"seedLo\":0,\"split\":[0.5,0.5],\"trafficSeedHi\":0,\"trafficSeedLo\":0,"
+				+ "\"trafficSplit\":[0,1],\"fullOnVariant\":1,\"applications\":[{\"name\":\"website\"}],"
+				+ "\"variants\":[{\"name\":\"A\",\"config\":\"{\\\"" + key + "\\\":1.5}\"},"
+				+ "{\"name\":\"B\",\"config\":" + config + "}]}";
+	}
+
+	@Test
+	void aThrowingParserDoesNotShiftLaterVariants() {
+		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_shift\",\"unitType\":\"session_id\","
+				+ "\"iteration\":1,\"seedHi\":0,\"seedLo\":0,\"split\":[0.5,0.5],\"trafficSeedHi\":0,"
+				+ "\"trafficSeedLo\":0,\"trafficSplit\":[0,1],\"fullOnVariant\":1,"
+				+ "\"applications\":[{\"name\":\"website\"}],\"variants\":[{\"name\":\"A\","
+				+ "\"config\":\"{\\\"x\\\":0.5}\"},{\"name\":\"B\",\"config\":\"{\\\"x\\\":1.5}\"}]},"
+				+ afterGoodVariant(2, "exp_after", "w", "\"{\\\"w\\\":2.5}\"") + "]}";
+		final VariableParser throwingParser = new VariableParser() {
+			private final VariableParser delegate = new DefaultVariableParser();
+
+			@Override
+			public Map<String, Object> parse(final Context context, final String experimentName,
+					final String variantName, final String variableValues) {
+				final String broken = "exp_shift".equals(experimentName) ? "A" : "B";
+				if (broken.equals(variantName)) {
+					throw new IllegalStateException("broken parser");
+				}
+				return delegate.parse(context, experimentName, variantName, variableValues);
+			}
+
+			@Override
+			public Object parse(final Context context, final String experimentName, final String variableValue) {
+				return delegate.parse(context, experimentName, variableValue);
+			}
+		};
+		final java.util.concurrent.ScheduledExecutorService scheduler = java.util.concurrent.Executors
+				.newSingleThreadScheduledExecutor();
+		try {
+			final Context context = new Context(com.absmartly.sdk.internal.Clock.systemUTC(), SESSION, scheduler,
+					CompletableFuture.completedFuture(ContextData.fromJson(json).payload()),
+					org.mockito.Mockito.mock(ContextDataProvider.class),
+					org.mockito.Mockito.mock(ContextEventHandler.class), null, throwingParser,
+					new AudienceMatcher(new DefaultAudienceDeserializer()), null, null);
+			assertEquals(1, context.peekTreatment("exp_shift"));
+			assertEquals(1.5, context.peekVariableValue("x", null), "variant B keeps its own variables");
+			assertEquals(new BigDecimal("1.5"), context.peekVariable("x", BigDecimal.ZERO));
+			assertEquals(1, context.peekTreatment("exp_after"));
+			assertNull(context.peekVariableValue("w", null), "a throwing variant does not inherit variant A's");
+		} finally {
+			scheduler.shutdownNow();
+		}
+	}
+
+	@Test
+	void exactNumbersSkipNestedObjectsOfTheSameName() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"obj\":{\"price\":9.5},\"price\":1.25,\"later\":2.5}")));
+		final Context context = client.context(SESSION);
+		assertEquals(1.25, context.variable("price", 0.0), "the top-level price, not the nested one");
+		assertEquals(2.5, context.variable("later", 0.0));
+		assertEquals(new BigDecimal("1.25"), context.variable("price", BigDecimal.ZERO));
+	}
+
+	@Test
+	void anUndecodableNumberAffectsOnlyItsOwnKey() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"fraction\":1.0000000000000001,\"nested\":[1e-2147483648],\"wild\":1e-2147483648,\"count\":3}")));
+		final Context context = client.context(SESSION);
+		assertEquals(-1, context.variable("fraction", -1), "an unrelated undecodable value changes nothing here");
+		assertEquals(new BigDecimal("1.0000000000000001"), context.variable("fraction", BigDecimal.ZERO));
+		assertEquals(-1.0, context.variable("wild", -1.0), "its own key falls back instead of using the rounded value");
+		assertEquals(3, context.variable("count", 0));
+		assertEquals(0.0, context.variableValue("wild", null), "raw reads are unchanged");
+	}
+
+	@Test
+	void clientCloseReleasesResourcesWhenStreamTerminationIsRejected() throws Exception {
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newCachedThreadPool();
+		final java.util.concurrent.atomic.AtomicBoolean refuse = new java.util.concurrent.atomic.AtomicBoolean();
+		final java.util.concurrent.Executor executor = command -> {
+			if (refuse.get()) {
+				throw new java.util.concurrent.RejectedExecutionException("shut down");
+			}
+			pool.execute(command);
+		};
+		final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+		final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+				.application("a").environment("e").transport(transport).executor(executor)
+				.defaultTransport(() -> transport).build();
+		try {
+			client.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			refuse.set(true);
+			assertDoesNotThrow(client::close);
+			assertFalse(transport.closed, "a caller-supplied transport stays open");
+			final FakeTransport owned = FakeTransport.ok(CONTEXT_JSON);
+			final ABsmartlyClient owning = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").executor(executor).defaultTransport(() -> owned).build();
+			refuse.set(false);
+			owning.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			refuse.set(true);
+			assertDoesNotThrow(owning::close);
+			assertTrue(owned.closed, "the owned transport is closed even when stream termination is rejected");
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	@Test
+	void anAudienceMatchesListAndMapAttributesByContent() {
+		final String json = "{\"experiments\":[" + strictAudience(1, "exp_list", "{\\\"eq\\\":[{\\\"var\\\":"
+				+ "\\\"arr\\\"},{\\\"value\\\":[1,2,3]}]}") + "," + strictAudience(2, "exp_map",
+						"{\\\"eq\\\":[{\\\"var\\\":\\\"obj\\\"},{\\\"value\\\":{\\\"a\\\":1}}]}")
+				+ "]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		context.setAttribute("arr", List.of(1, 2, 3));
+		context.setAttribute("obj", Map.of("a", 1));
+		assertEquals(1, context.peekTreatment("exp_list"), "a list attribute equals the same list literal");
+		assertEquals(1, context.peekTreatment("exp_map"), "a map attribute equals the same object literal");
+	}
+
+	@Test
+	void anInSearchForAListAttributeStopsAtTheFirstDifferentCandidate() {
+		final String json = "{\"experiments\":[" + strictAudience(1, "exp_first", "{\\\"in\\\":[{\\\"value\\\":"
+				+ "[[1],[2]]},{\\\"var\\\":\\\"arr\\\"}]}") + "," + strictAudience(2, "exp_second",
+						"{\\\"in\\\":[{\\\"value\\\":[[2],[1]]},{\\\"var\\\":\\\"arr\\\"}]}")
+				+ "]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		context.setAttribute("arr", List.of(1));
+		assertEquals(1, context.peekTreatment("exp_first"), "an equal first candidate matches");
+		assertEquals(0, context.peekTreatment("exp_second"), "as in 1.x, a different first candidate ends the search");
+	}
+
+	// A strict-audience experiment that serves variant 1 only when the audience filter matches.
+	private static String strictAudience(final int id, final String name, final String filter) {
+		return "{\"id\":" + id + ",\"name\":\"" + name + "\",\"unitType\":\"session_id\",\"iteration\":1,"
+				+ "\"seedHi\":0,\"seedLo\":0,\"split\":[0,1],\"trafficSeedHi\":0,\"trafficSeedLo\":0,"
+				+ "\"trafficSplit\":[0,1],\"fullOnVariant\":0,\"applications\":[{\"name\":\"website\"}],"
+				+ "\"audienceStrict\":true,\"audience\":\"{\\\"filter\\\":[" + filter + "]}\","
+				+ "\"variants\":[{\"name\":\"A\",\"config\":null},{\"name\":\"B\",\"config\":null}]}";
+	}
+
+	@Test
+	void aNegativeOverrideServesNoVariables() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		context.setOverride("exp_test_ab", -1);
+		assertEquals(-1, context.peekTreatment("exp_test_ab"));
+		assertNull(context.peekVariableValue("banner.size", null));
+	}
+
+	@Test
+	void clearedOverrideOfAnAbsentExperimentIsNoLongerServed() {
+		final ABsmartlyClient client = client(FakeTransport.ok("{\"experiments\":[]}"));
+		final Context context = client.context(SESSION, ContextData.fromJson("{\"experiments\":[]}"));
+		context.setOverride("unknown", 2);
+		assertEquals(2, context.peekTreatment("unknown"));
+		context.clearOverride("unknown");
+		assertNull(context.override("unknown"));
+		assertEquals(0, context.peekTreatment("unknown"), "a cleared override is not served from the cache");
+		assertEquals(0, context.treatment("unknown"));
+	}
+
+	@Test
+	void typedNumericReadsUseTheExactJsonToken() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"fraction\":1.0000000000000001,\"tiny\":1e-400,\"id\":9007199254740993,\"price\":19.99,"
+						+ "\"count\":3}")));
+		final Context context = client.context(SESSION);
+		assertEquals(-1, context.variable("fraction", -1), "not a whole number: the default");
+		assertEquals(-1.0, context.variable("tiny", -1.0), "underflows to zero: the default");
+		assertEquals(-1.0, context.variable("id", -1.0), "2^53 + 1 is not a double: the default");
+		assertEquals(9007199254740993L, context.variable("id", 0L));
+		assertEquals(new BigDecimal("1.0000000000000001"), context.variable("fraction", BigDecimal.ZERO));
+		assertEquals(19.99, context.variable("price", 0.0));
+		assertEquals(19.99f, context.variable("price", 0.0f));
+		assertEquals(3, context.variable("count", 0));
+		assertEquals(-1, context.peekVariable("fraction", -1));
+		// Untyped and Number reads keep the 1.x parsed values.
+		assertEquals(1.0, context.variableValue("fraction", null));
+		assertEquals(1.0, context.variable("fraction", Number.class, null));
+		assertEquals(0.0, context.peekVariableValue("tiny", null));
+	}
+
+	@Test
+	void integerOnlyConfigsAreParsedOnce() {
+		try (org.mockito.MockedStatic<com.absmartly.sdk.internal.Json> json = org.mockito.Mockito.mockStatic(
+				com.absmartly.sdk.internal.Json.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+			final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"count\":1000,\"name\":\"x\"}")));
+			// Created from fetched data, so the configs are parsed on this thread, where the static mock applies.
+			final Context context = client.context(SESSION, client.contextData());
+			assertSame(context.variableValue("count", null), context.variable("count", 0),
+					"an integer read returns the parsed Integer itself");
+			json.verify(() -> com.absmartly.sdk.internal.Json.readExactNumbers(org.mockito.ArgumentMatchers.any()),
+					org.mockito.Mockito.never());
+		}
+		try (org.mockito.MockedStatic<com.absmartly.sdk.internal.Json> json = org.mockito.Mockito.mockStatic(
+				com.absmartly.sdk.internal.Json.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+			final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"price\":19.99}")));
+			client.context(SESSION, client.contextData());
+			json.verify(() -> com.absmartly.sdk.internal.Json.readExactNumbers(org.mockito.ArgumentMatchers.any()),
+					org.mockito.Mockito.times(1));
+		}
+	}
+
+	@Test
+	void integerReadsUseTheParsedValueEvenBesideDoubles() {
+		// A config with a fractional number has exact numbers; an integer read must still return the parsed Integer
+		// itself, not a fresh BigInteger conversion (no allocation per read).
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"count\":1000,\"price\":19.99}")));
+		final Context context = client.context(SESSION);
+		assertSame(context.variableValue("count", null), context.variable("count", 0));
+		assertSame(context.peekVariableValue("count", null), context.peekVariable("count", 0));
+	}
+
+	@Test
+	void typedNumericReadsDoNotReparseTheConfig() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"count\":3,\"price\":19.99}")));
+		final Context context = client.context(SESSION, client.contextData());
+		try (org.mockito.MockedStatic<com.absmartly.sdk.internal.Json> json = org.mockito.Mockito.mockStatic(
+				com.absmartly.sdk.internal.Json.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+			for (int i = 0; i < 100; ++i) {
+				assertEquals(3, context.variable("count", 0));
+				assertEquals(19.99, context.peekVariable("price", 0.0));
+			}
+			json.verify(() -> com.absmartly.sdk.internal.Json.readExactNumbers(org.mockito.ArgumentMatchers.any()),
+					org.mockito.Mockito.never());
+		}
+	}
+
+	@Test
+	@Timeout(value = 1500, unit = TimeUnit.MILLISECONDS)
+	void hugeNegativeExponentsFallBackQuickly() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson("{\"tiny\":1e-10000000}")));
+		final Context context = client.context(SESSION);
+		assertEquals(-1, context.variable("tiny", -1));
+		assertEquals(-1L, context.variable("tiny", -1L));
+	}
+
+	@Test
+	@Timeout(value = 5, unit = TimeUnit.SECONDS)
+	void hugeExponentsFallBackQuickly() {
+		final ABsmartlyClient client = client(FakeTransport.ok(configJson(
+				"{\"huge\":1e10000000,\"big\":1e999999999,\"negzero\":-0.0}")));
+		final Context context = client.context(SESSION);
+		assertEquals(-1, context.variable("huge", -1));
+		assertEquals(-1L, context.variable("huge", -1L));
+		assertEquals(BigInteger.ONE, context.variable("huge", BigInteger.ONE));
+		assertEquals(BigDecimal.ONE, context.variable("big", BigDecimal.ONE));
+		assertEquals(-1.0, context.variable("huge", -1.0));
+		// Within the exponent bound, a number past every bounded integer type still falls back.
+		assertEquals(-1, VariableConverter.convert("n", new BigDecimal("1e3000"), Integer.class, -1));
+		assertEquals(BigInteger.ONE, VariableConverter.convert("n", new BigDecimal("1e4097"), BigInteger.class,
+				BigInteger.ONE), "past the exponent bound");
+		assertEquals(BigInteger.TEN.pow(4000),
+				VariableConverter.convert("n", new BigDecimal("1e4000"), BigInteger.class, BigInteger.ONE));
+		final double negativeZero = context.variable("negzero", 1.0);
+		assertEquals(Double.doubleToRawLongBits(-0.0), Double.doubleToRawLongBits(negativeZero), "-0.0 keeps its sign");
+	}
+
+	@Test
+	void asyncCheckoutClosesOnAOneThreadExecutor() throws Exception {
+		final java.util.concurrent.ExecutorService single = java.util.concurrent.Executors.newSingleThreadExecutor();
+		try {
+			final FakeTransport transport = FakeTransport.ok(CONTEXT_JSON);
+			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").transport(transport).executor(single).build();
+			closeables.add(client);
+			// The README's pattern: the context is used and closed inside a stage that runs on the executor.
+			final Integer variant = client.contextAsync(SESSION).thenApplyAsync(context -> {
+				try (context) {
+					return context.treatment("exp_test_ab");
+				}
+			}, single).get(5, TimeUnit.SECONDS);
+			assertEquals(1, variant);
+			assertEquals("PUT", transport.requests.get(transport.requests.size() - 1).method(), "close published");
+		} finally {
+			single.shutdownNow();
+		}
+	}
+
+	@Test
+	void rejectedStreamDeliveryDoesNotFailALoadedContext() throws Exception {
+		// Rejects only the event stream's delivery tasks (SubmissionPublisher's consumer tasks), as a saturated
+		// executor does: the SDK's own stages still run.
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newCachedThreadPool();
+		final java.util.concurrent.atomic.AtomicBoolean saturated = new java.util.concurrent.atomic.AtomicBoolean();
+		final java.util.concurrent.Executor refusing = command -> {
+			if (command.getClass().getName().contains("SubmissionPublisher")) {
+				if (saturated.get()) {
+					throw new java.util.concurrent.RejectedExecutionException("saturated");
+				}
+				// Finish subscription delivery before enabling rejection; an active consumer can otherwise drain
+				// later events without scheduling another task.
+				command.run();
+			} else {
+				pool.execute(command);
+			}
+		};
+		try {
+			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+					.application("a").environment("e").transport(FakeTransport.ok(CONTEXT_JSON)).executor(refusing)
+					.build();
+			closeables.add(client);
+			client.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+				@Override
+				public void onSubscribe(final Flow.Subscription subscription) {
+					subscription.request(Long.MAX_VALUE);
+				}
+
+				@Override
+				public void onNext(final ContextEvent item) {}
+
+				@Override
+				public void onError(final Throwable throwable) {}
+
+				@Override
+				public void onComplete() {}
+			});
+			// Subscribed; from now on the executor refuses the stream's delivery tasks.
+			saturated.set(true);
+			final Context context = client.newContext(SESSION);
+			context.ready();
+			assertEquals(ContextState.READY, context.state());
+			assertNull(context.failure());
+			assertEquals(1, context.treatment("exp_test_ab"), "a rejected delivery never reaches the caller");
+			// SubmissionPublisher drops a subscriber whose delivery was rejected: it sees nothing more.
+			final java.lang.reflect.Field field = EventDispatcher.class.getDeclaredField("stream_");
+			field.setAccessible(true);
+			final java.lang.reflect.Field events = ABsmartlyClient.class.getDeclaredField("events_");
+			events.setAccessible(true);
+			final EventStream stream = (EventStream) field.get(events.get(client));
+			final java.lang.reflect.Field publisher = EventStream.class.getDeclaredField("publisher_");
+			publisher.setAccessible(true);
+			assertEquals(0,
+					((java.util.concurrent.SubmissionPublisher<?>) publisher.get(stream)).getNumberOfSubscribers());
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	@Test
+	void submitAfterACloseInTheGapIsDropped() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		// isClosed() says open, then the owner closes on another thread before offer() runs.
+		final java.util.concurrent.SubmissionPublisher<ContextEvent> racing = new java.util.concurrent.SubmissionPublisher<ContextEvent>(
+				Runnable::run, Flow.defaultBufferSize()) {
+			@Override
+			public boolean isClosed() {
+				final boolean closed = super.isClosed();
+				close();
+				return closed;
+			}
+		};
+		final EventStream stream = new EventStream(racing);
+		assertDoesNotThrow(() -> stream.submit(new CloseEvent(context, 0)));
+	}
+
+	@Test
+	void submitRacingCloseNeverThrows() throws Exception {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		for (int round = 0; round < 200; ++round) {
+			final EventStream stream = new EventStream(Runnable::run);
+			final CountDownLatch start = new CountDownLatch(1);
+			final CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
+				try {
+					start.await();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+				for (int i = 0; i < 200; ++i) {
+					stream.submit(new CloseEvent(context, i));
+				}
+			});
+			start.countDown();
+			stream.close();
+			producer.get(5, TimeUnit.SECONDS);
+		}
+	}
+
+	@Test
+	void slowSubscriberNeverBlocksTheProducer() throws Exception {
+		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+		final EventStream stream = new EventStream(pool);
+		final CountDownLatch subscribed = new CountDownLatch(1);
+		stream.publisher().subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				subscribed.countDown();
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {}
+		});
+		assertTrue(subscribed.await(5, TimeUnit.SECONDS));
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
+			for (int i = 0; i < Flow.defaultBufferSize() * 4; ++i) {
+				stream.submit(new CloseEvent(context, i));
+			}
+		});
+		producer.get(5, TimeUnit.SECONDS);
+		// Nothing was requested, so every event past the buffer is lost and the producer is never blocked.
+		final int total = Flow.defaultBufferSize() * 4;
+		assertEquals(total - Flow.defaultBufferSize(), stream.droppedCount());
+		stream.close();
+		pool.shutdownNow();
+	}
+
+	@Test
+	void transportIsClosedWhenTheClientCannotBeBuilt() {
+		final FakeTransport created = FakeTransport.ok("{}");
+		assertThrows(IllegalArgumentException.class, () -> ABsmartlyClient.builder().endpoint(URI.create("ftp://x"))
+				.apiKey("k").application("a").environment("e").defaultTransport(() -> created).build());
+		assertTrue(created.closed, "a transport the client created is closed when construction fails");
+
+		final FakeTransport supplied = FakeTransport.ok("{}");
+		assertThrows(IllegalArgumentException.class, () -> ABsmartlyClient.builder().endpoint(URI.create("ftp://x"))
+				.apiKey("k").application("a").environment("e").transport(supplied).build());
+		assertFalse(supplied.closed, "a caller's transport stays open");
+	}
+
+	@Test
+	void clientClosesTheTransportItCreated() throws Exception {
+		final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
+				.application("a").environment("e").build();
+		final java.lang.reflect.Field field = ABsmartlyClient.class.getDeclaredField("client_");
+		field.setAccessible(true);
+		final Client inner = (Client) field.get(client);
+		final java.lang.reflect.Field transportField = Client.class.getDeclaredField("transport_");
+		transportField.setAccessible(true);
+		final JdkHttpTransport transport = (JdkHttpTransport) transportField.get(inner);
+		final java.lang.reflect.Field httpField = JdkHttpTransport.class.getDeclaredField("closed_");
+		httpField.setAccessible(true);
+		assertFalse((Boolean) httpField.get(transport));
+		client.close();
+		assertTrue((Boolean) httpField.get(transport));
+	}
+
+	@Test
+	void slowStreamSubscriberLosesOverflowWithoutBlocking() throws InterruptedException {
+		final EventStream stream = new EventStream(Runnable::run);
+		final List<ContextEvent> received = Collections.synchronizedList(new ArrayList<>());
+		final Flow.Subscription[] holder = new Flow.Subscription[1];
+		stream.publisher().subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				holder[0] = subscription;
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {
+				received.add(item);
+			}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {}
+		});
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		final int total = Flow.defaultBufferSize() * 3;
+		for (int i = 0; i < total; ++i) {
+			stream.submit(new com.absmartly.sdk.event.CloseEvent(context, i));
+		}
+		holder[0].request(Long.MAX_VALUE);
+		awaitSize(received, Flow.defaultBufferSize());
+		Thread.sleep(50);
+		assertTrue(received.size() < total, "events beyond the buffer are dropped, not queued");
+		assertTrue(received.size() >= Flow.defaultBufferSize() - 1, "the buffered events are delivered");
+		stream.close();
+	}
+
+	@Test
+	void streamFirstRequestedAfterCloseIsAlreadyComplete() throws InterruptedException {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		context.close();
+		assertTrue(awaitCompletion(context.events()), "context stream completes after close");
+		client.close();
+		assertTrue(awaitCompletion(client.events()), "client stream completes after close");
+	}
+
+	private static boolean awaitCompletion(final Flow.Publisher<ContextEvent> publisher)
+			throws InterruptedException {
+		final CountDownLatch completed = new CountDownLatch(1);
+		publisher.subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {
+				subscription.request(Long.MAX_VALUE);
+			}
+
+			@Override
+			public void onNext(final ContextEvent item) {}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {
+				completed.countDown();
+			}
+		});
+		return completed.await(5, TimeUnit.SECONDS);
+	}
+
+	@Test
+	void slowStreamSubscriberDropsEventsInsteadOfBlocking() {
+		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
+		final Context context = client.context(SESSION);
+		context.events().subscribe(new Flow.Subscriber<ContextEvent>() {
+			@Override
+			public void onSubscribe(final Flow.Subscription subscription) {}
+
+			@Override
+			public void onNext(final ContextEvent item) {}
+
+			@Override
+			public void onError(final Throwable throwable) {}
+
+			@Override
+			public void onComplete() {}
+		});
+		for (int i = 0; i < Flow.defaultBufferSize() + 10; ++i) {
+			context.track("goal" + i);
+		}
+		assertEquals(Flow.defaultBufferSize() + 10, context.pendingEventCount());
+	}
+
+	@Test
+	void blockingCallsRethrowUncheckedCausesAndWrapOthers() {
+		final IllegalStateException unchecked = new IllegalStateException("x");
+		assertSame(unchecked, Context.unwrap(new CompletionException(unchecked)));
+		final Exception checked = new Exception("checked");
+		final RuntimeException wrapped = Context.unwrap(new CompletionException(checked));
+		assertTrue(wrapped instanceof ABsmartlyException);
+		assertSame(checked, wrapped.getCause());
+		assertThrows(AssertionError.class, () -> Context.unwrap(new CompletionException(new AssertionError())));
+
+		final CompletableFuture<Void> cancelled = new CompletableFuture<>();
+		cancelled.cancel(false);
+		assertTrue(assertThrows(ABsmartlyException.class, () -> Context.join(cancelled))
+				.getCause() instanceof java.util.concurrent.CancellationException);
+	}
+
+	@Test
+	void exceptionAccessors() {
+		assertEquals("HTTP 418", new HttpStatusException(418, "").getMessage());
+		assertEquals(418, new HttpStatusException(418, "").statusCode());
+		assertEquals("", HttpStatusException.reasonPhrase(418));
+		assertEquals("Not Found", HttpStatusException.reasonPhrase(404));
+		assertEquals("ABsmartly Context failed to load: NullPointerException",
+				new ContextLoadException(new NullPointerException()).getMessage());
+		assertEquals("ABsmartly Context is not yet ready", new ContextNotReadyException().getMessage());
+		assertTrue(new RequestTimeoutException("t", null) instanceof TransportException);
+		assertTrue(new DecodingException("d", null) instanceof ABsmartlyException);
+	}
+
+	@Test
+	void valueTypesHaveValueSemantics() {
+		final Exposure a = new Exposure(1, "e", "u", 1, 2, true, true, false, false, false, false, false);
+		final Exposure b = new Exposure(1, "e", "u", 1, 2, true, true, false, false, false, false, false);
+		final Exposure c = new Exposure(1, "e", "u", 2, 2, true, true, false, false, false, false, false);
+		assertEquals(a, b);
+		assertEquals(a.hashCode(), b.hashCode());
+		assertNotEquals(a, c);
+		assertNotEquals(a, "e");
+		assertEquals(a, a);
+		final Goal g1 = new Goal("g", 1, null);
+		final Goal g2 = new Goal("g", 1, null);
+		assertEquals(g1, g2);
+		assertEquals(g1.hashCode(), g2.hashCode());
+		assertNotEquals(g1, new Goal("g", 2, null));
+		assertNotEquals(g1, "g");
+		assertEquals(g1, g1);
+		assertTrue(g1.toString().contains("g"));
+		assertNull(g1.properties());
+
+		final Transport.Request request = new Transport.Request("PUT", URI.create("https://x/context"),
+				Map.of("h", "v"), new byte[]{1});
+		assertEquals("PUT https://x/context", request.toString());
+		assertArrayEquals(new byte[]{1}, request.body());
+		assertNotSame(request.body(), request.body());
+		final Transport lambda = r -> FakeTransport.status(200, "OK");
+		lambda.close();
+		final Transport.Response response = new Transport.Response(200, "OK", null);
+		assertNull(response.body());
+		assertEquals("Response{200 OK}", response.toString());
+		assertEquals(new ContextData(new com.absmartly.sdk.internal.json.ContextPayload()),
+				new ContextData(new com.absmartly.sdk.internal.json.ContextPayload()));
+	}
+
+	private static void awaitSize(final List<?> list, final int size) {
+		final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+		while ((list.size() < size) && (System.nanoTime() < deadline)) {
+			Thread.onSpinWait();
+		}
+	}
+
+	private static void awaitStreamed(final List<?> list, final int size) {
+		awaitSize(list, size);
+	}
+
+	private static List<ContextEvent.Type> types(final List<ContextEvent> events) {
+		final List<ContextEvent.Type> types = new ArrayList<>();
+		synchronized (events) {
+			for (final ContextEvent event : events) {
+				types.add(event.type());
+			}
+		}
+		return types;
+	}
+}

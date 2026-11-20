@@ -3,8 +3,6 @@ package com.absmartly.sdk;
 import java.io.IOException;
 import java.util.Map;
 
-import javax.annotation.Nonnull;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +10,7 @@ import com.fasterxml.jackson.databind.ObjectReader;
 
 import com.absmartly.sdk.internal.JsonMapperUtils;
 
-public class DefaultAudienceDeserializer implements AudienceDeserializer {
+class DefaultAudienceDeserializer implements AudienceDeserializer {
 	private static final Logger log = LoggerFactory.getLogger(DefaultAudienceDeserializer.class);
 
 	private final ObjectReader reader_;
@@ -22,7 +20,7 @@ public class DefaultAudienceDeserializer implements AudienceDeserializer {
 	}
 
 	@Override
-	public Map<String, Object> deserialize(@Nonnull byte[] bytes, int offset, int length) {
+	public Map<String, Object> deserialize(byte[] bytes, int offset, int length) {
 		try {
 			return reader_.readValue(bytes, offset, length);
 		} catch (IOException e) {

@@ -26,12 +26,12 @@ import com.absmartly.sdk.internal.SdkVersion;
 /**
  * Hermetic end-to-end integration test that drives the public SDK API against a real local
  * HTTP server (JDK built-in {@link HttpServer}) on an ephemeral port. This exercises the
- * SDK's real Apache HttpAsyncClient transport (no Java-level mocking) and asserts the
-	 * on-the-wire request shape documented in the ABSmartly SDK ↔ Collector wire contract:
+ * SDK's real default transport ({@link JdkHttpTransport}, no Java-level mocking) and asserts the
+ * on-the-wire request shape documented in the ABsmartly SDK ↔ Collector wire contract:
  * <ul>
- * <li>GET /context with {@code application}/{@code environment} query params and NO auth
- * headers (Java authenticates the fetch via query params).</li>
- * <li>PUT /context publish with the full auth header set and a JSON body containing
+ * <li>GET /context with {@code application}/{@code environment} query params and the SDK
+ * headers.</li>
+ * <li>PUT /context publish with the same headers and a JSON body containing
  * {@code hashed}, {@code units}, {@code publishedAt}, plus {@code exposures}/{@code goals}
  * when present.</li>
  * </ul>
@@ -133,19 +133,19 @@ class LocalHttpServerIntegrationTest {
 		final String application = "www";
 		final String environment = "test-env";
 
-		final ABSmartly sdk = ABSmartly.builder()
-				.endpoint(endpoint)
+		final ABsmartlyClient sdk = ABsmartlyClient.builder()
+				.endpoint(java.net.URI.create(endpoint))
 				.apiKey("test-api-key")
 				.application(application)
 				.environment(environment)
 				.build();
 
 		try {
-			final ContextConfig contextConfig = ContextConfig.create()
+			final TestContextConfig contextConfig = TestContextConfig.create()
 					.setUnit("user_id", "123456");
 
-			final Context context = sdk.createContext(contextConfig);
-			context.waitUntilReady();
+			final Context context = sdk.newContext(contextConfig.toOptions());
+			context.awaitLoad();
 			assertTrue(context.isReady());
 
 			// --- Assert the real GET /context fetch ---
@@ -166,13 +166,13 @@ class LocalHttpServerIntegrationTest {
 			assertEquals("absmartly-java-sdk/" + SdkVersion.VERSION, get.headers.get("x-agent"));
 
 			// --- Queue an exposure + a goal, then publish ---
-			context.getTreatment("an_experiment");
+			context.treatment("an_experiment");
 
 			final Map<String, Object> properties = new HashMap<String, Object>();
 			properties.put("value", 125);
 			context.track("a_goal", properties);
 
-			assertTrue(context.getPendingCount() > 0, "expected pending events before publish");
+			assertTrue(context.pendingEventCount() > 0, "expected pending events before publish");
 
 			context.publish();
 
@@ -236,23 +236,23 @@ class LocalHttpServerIntegrationTest {
 				+ "{\\\"eq\\\":[{\\\"var\\\":\\\"environment\\\"},{\\\"value\\\":\\\"development\\\"}]},"
 				+ "{\\\"eq\\\":[{\\\"var\\\":\\\"application\\\"},{\\\"value\\\":\\\"www\\\"}]}]}\"}]}";
 
-		final ABSmartly sdk = ABSmartly.builder()
-				.endpoint(endpoint)
+		final ABsmartlyClient sdk = ABsmartlyClient.builder()
+				.endpoint(java.net.URI.create(endpoint))
 				.apiKey("test-api-key")
 				.application("www")
 				.environment("development")
 				.build();
 
 		try {
-			final ContextConfig contextConfig = ContextConfig.create()
+			final TestContextConfig contextConfig = TestContextConfig.create()
 					.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")
 					.setIncludeSystemAttributes(includeSystemAttributes);
 
-			final Context context = sdk.createContext(contextConfig);
-			context.waitUntilReady();
+			final Context context = sdk.newContext(contextConfig.toOptions());
+			context.awaitLoad();
 
 			context.setAttribute("user_type", "vip");
-			assertEquals(1, context.getTreatment("exp_environment"));
+			assertEquals(1, context.treatment("exp_environment"));
 			context.publish();
 
 			RecordedRequest put = null;
@@ -311,23 +311,22 @@ class LocalHttpServerIntegrationTest {
 				+ "\"trafficSplit\":[0.0,1.0],\"fullOnVariant\":0,"
 				+ "\"variants\":[{" + unknown + ",\"name\":\"A\",\"config\":null},{\"name\":\"B\",\"config\":null}]}]}";
 
-		final ABSmartly sdk = ABSmartly.builder()
-				.endpoint(endpoint)
+		final ABsmartlyClient sdk = ABsmartlyClient.builder()
+				.endpoint(java.net.URI.create(endpoint))
 				.apiKey("test-api-key")
 				.application("www")
 				.environment("development")
 				.build();
 
 		try {
-			final Context context = sdk.createContext(ContextConfig.create()
-					.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec"));
-			context.waitUntilReady();
+			final Context context = sdk.context(ContextOptions.builder()
+					.unit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec").build());
 
 			assertFalse(context.isFailed());
-			assertArrayEquals(new String[]{"exp_ordinary"}, context.getExperiments());
-			assertEquals(1, context.getTreatment("exp_ordinary"));
-			assertEquals("red", context.getVariableValue("color", "blue"));
-			assertEquals("team", context.getCustomFieldValue("exp_ordinary", "owner"));
+			assertEquals(java.util.Arrays.asList(new String[]{"exp_ordinary"}), context.experiments());
+			assertEquals(1, context.treatment("exp_ordinary"));
+			assertEquals("red", context.variableValue("color", "blue"));
+			assertEquals("team", context.customFieldValue("exp_ordinary", "owner"));
 		} finally {
 			sdk.close();
 		}

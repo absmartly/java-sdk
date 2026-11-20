@@ -1,469 +1,184 @@
 package com.absmartly.sdk;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.mockito.MockedConstruction;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 
 import com.absmartly.sdk.internal.SdkVersion;
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.PublishEvent;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.PublishPayload;
 
-// A request the mocked HTTP client was not stubbed for never completes, so bound every wait.
 @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class ClientTest extends TestUtils {
+	static Client client(final String endpoint, final String applicationVersion, final Transport transport) {
+		return new Client(endpoint, "test-api-key", "website", "dev", applicationVersion, transport, null);
+	}
+
+	static Map<String, String> sdkHeaders(final String applicationVersionHeader) {
+		return mapOf(
+				"X-API-Key", "test-api-key",
+				"X-Application", "website",
+				"X-Environment", "dev",
+				"X-Application-Version", applicationVersionHeader,
+				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
+	}
+
 	@Test
 	void createThrowsWithInvalidConfig() {
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ClientConfig config = ClientConfig.create()
-					.setAPIKey("test-api-key")
-					.setApplication("website")
-					.setEnvironment("dev");
-
-			Client.create(config);
-		}, "Missing Endpoint configuration");
-
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ClientConfig config = ClientConfig.create()
-					.setEndpoint("https://localhost/v1")
-					.setApplication("website")
-					.setEnvironment("dev");
-
-			Client.create(config);
-		}, "Missing APIKey configuration");
-
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ClientConfig config = ClientConfig.create()
-					.setEndpoint("https://localhost/v1")
-					.setAPIKey("test-api-key")
-					.setEnvironment("dev");
-
-			Client.create(config);
-		}, "Missing Application configuration");
-
-		assertThrows(IllegalArgumentException.class, () -> {
-			final ClientConfig config = ClientConfig.create()
-					.setEndpoint("https://localhost/v1")
-					.setAPIKey("test-api-key")
-					.setApplication("website");
-
-			Client.create(config);
-		}, "Missing Environment configuration");
+		final FakeTransport transport = FakeTransport.ok("{}");
+		assertEquals("Missing Endpoint configuration", assertThrows(IllegalArgumentException.class,
+				() -> new Client("", "k", "a", "e", null, transport, null)).getMessage());
+		assertEquals("Missing APIKey configuration", assertThrows(IllegalArgumentException.class,
+				() -> new Client("https://localhost/v1", "", "a", "e", null, transport, null)).getMessage());
+		assertEquals("Missing Application configuration", assertThrows(IllegalArgumentException.class,
+				() -> new Client("https://localhost/v1", "k", " ", "e", null, transport, null)).getMessage());
+		assertEquals("Missing Environment configuration", assertThrows(IllegalArgumentException.class,
+				() -> new Client("https://localhost/v1", "k", "a", "", null, transport, null)).getMessage());
+		assertThrows(IllegalArgumentException.class,
+				() -> new Client("ftp://localhost/v1", "k", "a", "e", null, transport, null));
+		assertDoesNotThrow(() -> new Client("http://localhost/v1", "k", "a", "e", null, transport, null));
 	}
 
 	@Test
-	void createWithDefaults() {
-		final ClientConfig config = ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("dev");
+	void getContextDataSendsQueryAndSdkHeaders() {
+		final FakeTransport transport = FakeTransport.ok(new String(getResourceBytes("context.json"),
+				StandardCharsets.UTF_8));
+		final ContextPayload data = client("https://localhost/v1", "1004", transport).getContextData().join();
 
-		final byte[] dataBytes = "{}".getBytes(StandardCharsets.UTF_8);
-		final ContextData expected = new ContextData();
-
-		final PublishEvent event = new PublishEvent();
-		final byte[] publishBytes = new byte[]{0};
-
-		try (final MockedConstruction<DefaultContextDataDeserializer> deserCtor = mockConstruction(
-				DefaultContextDataDeserializer.class,
-				(mock, context) -> when(mock.deserialize(dataBytes, 0, dataBytes.length)).thenReturn(expected));
-				final MockedConstruction<DefaultContextEventSerializer> serCtor = mockConstruction(
-						DefaultContextEventSerializer.class,
-						(mock, context) -> when(mock.serialize(event)).thenReturn(publishBytes));
-				final MockedStatic<DefaultHTTPClient> clientStatic = mockStatic(DefaultHTTPClient.class)) {
-			final DefaultHTTPClient httpClient = mock(DefaultHTTPClient.class);
-			clientStatic.when(() -> DefaultHTTPClient.create(any())).thenReturn(httpClient);
-
-			final Map<String, String> expectedQuery = mapOf(
-					"application", "website",
-					"environment", "dev");
-
-			final Map<String, String> expectedHeaders = mapOf(
-					"X-API-Key", "test-api-key",
-					"X-Application", "website",
-					"X-Environment", "dev",
-					"X-Application-Version", "0",
-					"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
-
-			when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
-					.thenReturn(getByteResponse(dataBytes));
-			when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, publishBytes))
-					.thenReturn(getByteResponse(publishBytes));
-
-			final Client client = Client.create(config);
-
-			client.getContextData();
-
-			client.publish(event);
-			assertDoesNotThrow(client::close);
-
-			verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
-					sdkHeaders());
-			verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null,
-					expectedHeaders, publishBytes);
-			verify(httpClient, Mockito.timeout(5000).times(1)).close();
-
-			verify(deserCtor.constructed().get(0), Mockito.timeout(5000).times(1)).deserialize(any(), anyInt(),
-					anyInt());
-			verify(deserCtor.constructed().get(0), Mockito.timeout(5000).times(1)).deserialize(dataBytes, 0,
-					dataBytes.length);
-
-			verify(serCtor.constructed().get(0), Mockito.timeout(5000).times(1)).serialize(any());
-			verify(serCtor.constructed().get(0), Mockito.timeout(5000).times(1)).serialize(event);
-		}
+		assertEquals(4, data.experiments.length);
+		assertEquals(1, transport.requests.size());
+		final Transport.Request request = transport.requests.get(0);
+		assertEquals("GET", request.method());
+		assertEquals(URI.create("https://localhost/v1/context?application=website&environment=dev"), request.uri());
+		assertEquals(sdkHeaders("1004"), request.headers());
+		assertNull(request.body());
 	}
 
 	@Test
-	void getContextData() throws ExecutionException, InterruptedException {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("dev")
-				.setContextDataDeserializer(deser), httpClient);
-
-		final byte[] bytes = "{}".getBytes(StandardCharsets.UTF_8);
-
-		final Map<String, String> expectedQuery = mapOf(
-				"application", "website",
-				"environment", "dev");
-
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
-				.thenReturn(getByteResponse(bytes));
-
-		final ContextData expected = new ContextData();
-		when(deser.deserialize(bytes, 0, bytes.length)).thenReturn(expected);
-
-		final CompletableFuture<ContextData> dataFuture = client.getContextData();
-		final ContextData actual = dataFuture.get();
-
-		assertEquals(expected, actual);
-		assertSame(expected, actual);
-	}
-
-	@Test
-	void getContextDataSendsSameSDKHeadersAsPublish() {
+	void getAndPublishSendTheSameHeaders() {
 		// cross-sdk scenario 320: the context GET carries the SDK headers, including X-Agent, like the publish PUT
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setApplicationVersion("1004")
-				.setEnvironment("dev")
-				.setContextDataDeserializer(deser)
-				.setContextEventSerializer(ser), httpClient);
-
-		final byte[] bytes = "{}".getBytes(StandardCharsets.UTF_8);
-		when(deser.deserialize(bytes, 0, bytes.length)).thenReturn(new ContextData());
-		when(httpClient.get(any(), any(), any())).thenReturn(getByteResponse(bytes));
-
-		final PublishEvent event = new PublishEvent();
-		when(ser.serialize(event)).thenReturn(new byte[]{0});
-		when(httpClient.put(any(), any(), any(), any())).thenReturn(getByteResponse(new byte[]{0}));
-
+		final FakeTransport transport = FakeTransport.ok("{}");
+		final Client client = client("https://localhost/v1", null, transport);
 		client.getContextData().join();
-		client.publish(event).join();
+		client.publish(null, new PublishPayload()).join();
 
-		final org.mockito.ArgumentCaptor<Map<String, String>> getHeaders = org.mockito.ArgumentCaptor
-				.forClass(Map.class);
-		verify(httpClient, Mockito.timeout(5000).times(1)).get(eq("https://localhost/v1/context"),
-				eq(mapOf("application", "website", "environment", "dev")), getHeaders.capture());
-
-		final org.mockito.ArgumentCaptor<Map<String, String>> putHeaders = org.mockito.ArgumentCaptor
-				.forClass(Map.class);
-		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), putHeaders.capture(), any());
-
-		assertNotNull(getHeaders.getValue());
-		assertTrue(getHeaders.getValue().get("X-Agent")
+		assertEquals(2, transport.requests.size());
+		final Map<String, String> publishHeaders = new java.util.HashMap<>(transport.requests.get(1).headers());
+		assertEquals("application/json; charset=UTF-8", publishHeaders.remove("Content-Type"));
+		assertEquals(transport.requests.get(0).headers(), publishHeaders);
+		assertTrue(transport.requests.get(0).headers().get("X-Agent")
 				.matches("^absmartly-[a-z0-9]+-sdk/[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+-]*)?$"));
-		assertEquals(mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "1004",
-				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION), getHeaders.getValue());
-		assertEquals(putHeaders.getValue(), getHeaders.getValue());
-	}
-
-	private CompletableFuture<HTTPClient.Response> getByteResponse(byte[] bytes) {
-		return CompletableFuture.completedFuture(new HTTPClient.Response() {
-			@Override
-			public int getStatusCode() {
-				return 200;
-			}
-
-			@Override
-			public String getStatusMessage() {
-				return "OK";
-			}
-
-			@Override
-			public String getContentType() {
-				return "application/json; charset=utf8";
-			}
-
-			@Override
-			public byte[] getContent() {
-				return bytes;
-			}
-		});
 	}
 
 	@Test
-	void getContextDataExceptionallyHTTP() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("dev")
-				.setContextDataDeserializer(deser), httpClient);
+	void endpointTrailingSlashIsNormalized() {
+		final FakeTransport transport = FakeTransport.ok("{}");
+		final Client client = client("https://localhost/v1/", null, transport);
+		client.getContextData().join();
+		client.publish(null, new PublishPayload()).join();
 
-		final Map<String, String> expectedQuery = mapOf(
-				"application", "website",
-				"environment", "dev");
-
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
-				.thenReturn(CompletableFuture.completedFuture(
-						new DefaultHTTPClient.DefaultResponse(500, "Internal Server Error", null, null)));
-
-		final CompletableFuture<ContextData> dataFuture = client.getContextData();
-		final CompletionException actual = assertThrows(CompletionException.class, dataFuture::join);
-		assertTrue(actual.getCause() instanceof Exception);
-		assertEquals("Internal Server Error", actual.getCause().getMessage());
-
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
-				sdkHeaders());
-		verify(deser, Mockito.timeout(5000).times(0)).deserialize(any(), anyInt(), anyInt());
+		assertEquals("/v1/context", transport.requests.get(0).uri().getPath());
+		assertEquals(URI.create("https://localhost/v1/context"), transport.requests.get(1).uri());
 	}
 
 	@Test
-	void getContextDataExceptionallyConnection() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextDataDeserializer deser = mock(ContextDataDeserializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("dev")
-				.setContextDataDeserializer(deser), httpClient);
-
-		final Map<String, String> expectedQuery = mapOf(
-				"application", "website",
-				"environment", "dev");
-
-		final Exception failure = new Exception("FAILED");
-		final CompletableFuture<HTTPClient.Response> responseFuture = failedFuture(failure);
-
-		when(httpClient.get("https://localhost/v1/context", expectedQuery, sdkHeaders()))
-				.thenReturn(responseFuture);
-
-		final CompletableFuture<ContextData> dataFuture = client.getContextData();
-		final CompletionException actual = assertThrows(CompletionException.class, dataFuture::join);
-		assertSame(actual.getCause(), failure);
-
-		verify(httpClient, Mockito.timeout(5000).times(1)).get("https://localhost/v1/context", expectedQuery,
-				sdkHeaders());
-		verify(deser, Mockito.timeout(5000).times(0)).deserialize(any(), anyInt(), anyInt());
+	void queryParametersAreEncoded() {
+		final FakeTransport transport = FakeTransport.ok("{}");
+		new Client("https://localhost/v1", "k", "my app", "pré&prod", null, transport, null).getContextData().join();
+		assertEquals("application=my%20app&environment=pr%C3%A9%26prod",
+				transport.requests.get(0).uri().getRawQuery());
 	}
 
 	@Test
-	void publish() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("dev")
-				.setContextEventSerializer(ser), httpClient);
+	void publishPutsJsonBody() {
+		final FakeTransport transport = FakeTransport.ok("{}");
+		final PublishPayload event = new PublishPayload();
+		event.hashed = true;
+		event.publishedAt = 123;
+		client("https://localhost/v1", null, transport).publish(null, event).join();
 
-		final Map<String, String> expectedHeaders = mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
-
-		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
-
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, bytes))
-				.thenReturn(getByteResponse(new byte[]{0}));
-
-		final CompletableFuture<Void> publishFuture = client.publish(event);
-		publishFuture.join();
-
-		verify(ser, Mockito.timeout(5000).times(1)).serialize(event);
-		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), any(), any());
-		verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null, expectedHeaders,
-				bytes);
+		final Transport.Request request = transport.requests.get(0);
+		assertEquals("PUT", request.method());
+		final Map<String, String> expectedHeaders = sdkHeaders("0");
+		expectedHeaders.put("Content-Type", "application/json; charset=UTF-8");
+		assertEquals(expectedHeaders, request.headers());
+		assertEquals("{\"hashed\":true,\"publishedAt\":123}", new String(request.body(), StandardCharsets.UTF_8));
 	}
 
 	@Test
-	void publishExceptionallyHTTP() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("dev")
-				.setContextEventSerializer(ser), httpClient);
-
-		final Map<String, String> expectedHeaders = mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
-
-		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
-
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, bytes))
-				.thenReturn(CompletableFuture.completedFuture(
-						new DefaultHTTPClient.DefaultResponse(500, "Internal Server Error", null, null)));
-
-		final CompletableFuture<Void> publishFuture = client.publish(event);
-		final CompletionException actual = assertThrows(CompletionException.class, publishFuture::join);
-		assertTrue(actual.getCause() instanceof Exception);
-		assertEquals("Internal Server Error", actual.getCause().getMessage());
-
-		verify(ser, Mockito.timeout(5000).times(1)).serialize(event);
-		verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null, expectedHeaders,
-				bytes);
+	void getContextDataFailsWithHttpStatus() {
+		final Client client = client("https://localhost/v1", null,
+				new FakeTransport(r -> FakeTransport.status(500, "Internal Server Error")));
+		final CompletionException actual = assertThrows(CompletionException.class,
+				() -> client.getContextData().join());
+		final HttpStatusException cause = (HttpStatusException) actual.getCause();
+		assertEquals(500, cause.statusCode());
+		assertEquals("Internal Server Error", cause.getMessage());
 	}
 
 	@Test
-	void publishExceptionallyConnection() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setEnvironment("dev")
-				.setContextEventSerializer(ser), httpClient);
+	void missingReasonPhraseUsesStandardOne() {
+		final Client client = client("https://localhost/v1", null,
+				new FakeTransport(r -> FakeTransport.status(503, "")));
+		final CompletionException actual = assertThrows(CompletionException.class,
+				() -> client.publish(null, new PublishPayload()).join());
+		assertEquals("Service Unavailable", actual.getCause().getMessage());
 
-		final Map<String, String> expectedHeaders = mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
-
-		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
-
-		final Exception failure = new Exception("FAILED");
-		final CompletableFuture<HTTPClient.Response> responseFuture = failedFuture(failure);
-
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, bytes)).thenReturn(responseFuture);
-
-		final CompletableFuture<Void> publishFuture = client.publish(event);
-		final CompletionException actual = assertThrows(CompletionException.class, publishFuture::join);
-		assertSame(actual.getCause(), failure);
-
-		verify(ser, Mockito.timeout(5000).times(1)).serialize(event);
-		verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null, expectedHeaders,
-				bytes);
+		final Client other = client("https://localhost/v1", null,
+				new FakeTransport(r -> FakeTransport.status(599, "")));
+		assertEquals("HTTP 599", assertThrows(CompletionException.class,
+				() -> other.getContextData().join()).getCause().getMessage());
 	}
 
 	@Test
-	void publishSendsVersionedAgentAndApplicationVersion() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setApplicationVersion("2.4.1")
-				.setEnvironment("dev")
-				.setContextEventSerializer(ser), httpClient);
-
-		final Map<String, String> expectedHeaders = mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
-
-		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
-
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put("https://localhost/v1/context", null, expectedHeaders, bytes))
-				.thenReturn(getByteResponse(new byte[]{0}));
-
-		client.publish(event).join();
-
-		verify(httpClient, Mockito.timeout(5000).times(1)).put("https://localhost/v1/context", null, expectedHeaders,
-				bytes);
+	void connectionFailureIsWrapped() {
+		final RuntimeException failure = new RuntimeException("connection refused");
+		final Client client = client("https://localhost/v1", null, new FakeTransport(r -> failedFuture(failure)));
+		final CompletionException actual = assertThrows(CompletionException.class,
+				() -> client.getContextData().join());
+		assertTrue(actual.getCause() instanceof TransportException);
+		assertSame(failure, actual.getCause().getCause());
+		assertEquals("GET /v1/context failed: connection refused", actual.getCause().getMessage());
 	}
 
 	@Test
-	void agentAndApplicationGetters() {
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setApplicationVersion(1004)
-				.setEnvironment("dev"), mock(HTTPClient.class));
-
-		assertEquals("absmartly-java-sdk", client.getAgentName());
-		assertEquals(SdkVersion.VERSION, client.getAgentVersion());
-		assertEquals("absmartly-java-sdk/" + SdkVersion.VERSION, client.getAgent());
-		assertTrue(client.getAgentVersion().matches("\\d+\\.\\d+\\.\\d+.*"));
-		assertEquals("website", client.getApplication());
-		assertEquals("1004", client.getApplicationVersion());
-		assertEquals("dev", client.getEnvironment());
+	void transportThatThrowsFailsTheFuture() {
+		final Client client = client("https://localhost/v1", null, new FakeTransport(r -> {
+			throw new IllegalStateException("boom");
+		}));
+		final CompletionException actual = assertThrows(CompletionException.class,
+				() -> client.publish(null, new PublishPayload()).join());
+		assertTrue(actual.getCause() instanceof TransportException);
 	}
 
 	@Test
-	void emptyApplicationVersionSendsZero() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setApplicationVersion("")
-				.setEnvironment("dev")
-				.setContextEventSerializer(ser), httpClient);
+	void transportAbsmartlyExceptionIsKept() {
+		final RequestTimeoutException timeout = new RequestTimeoutException("timed out", null);
+		final Client client = client("https://localhost/v1", null, new FakeTransport(r -> failedFuture(timeout)));
+		assertSame(timeout, assertThrows(CompletionException.class, () -> client.getContextData().join()).getCause());
+	}
 
-		final PublishEvent event = new PublishEvent();
-		final byte[] bytes = new byte[]{0};
-		when(ser.serialize(event)).thenReturn(bytes);
-		when(httpClient.put(any(), any(), any(), any())).thenReturn(getByteResponse(new byte[]{0}));
+	@Test
+	void emptyOrInvalidBodyFailsWithDecodingException() {
+		final Client empty = client("https://localhost/v1", null,
+				new FakeTransport(r -> CompletableFuture.completedFuture(new Transport.Response(200, "OK", null))));
+		assertTrue(assertThrows(CompletionException.class,
+				() -> empty.getContextData().join()).getCause() instanceof DecodingException);
 
-		client.publish(event).join();
+		final Client invalid = client("https://localhost/v1", null, FakeTransport.ok("invalid"));
+		assertTrue(assertThrows(CompletionException.class,
+				() -> invalid.getContextData().join()).getCause() instanceof DecodingException);
 
-		final org.mockito.ArgumentCaptor<Map<String, String>> headers = org.mockito.ArgumentCaptor.forClass(Map.class);
-		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), headers.capture(), any());
-		assertEquals("0", headers.getValue().get("X-Application-Version"));
-		assertEquals("0", client.getApplicationVersion());
+		final Client nullBody = client("https://localhost/v1", null, FakeTransport.ok("null"));
+		assertTrue(assertThrows(CompletionException.class,
+				() -> nullBody.getContextData().join()).getCause() instanceof DecodingException);
 	}
 
 	@Test
@@ -480,35 +195,21 @@ class ClientTest extends TestUtils {
 	}
 
 	@Test
-	void semverApplicationVersionKeepsFullValueButSendsZeroHeader() {
-		final HTTPClient httpClient = mock(HTTPClient.class);
-		final ContextEventSerializer ser = mock(ContextEventSerializer.class);
-		final Client client = Client.create(ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("test-api-key")
-				.setApplication("website")
-				.setApplicationVersion("2.4.1")
-				.setEnvironment("dev")
-				.setContextEventSerializer(ser), httpClient);
+	void applicationVersionIsNormalized() {
+		assertEquals("0", client("https://localhost/v1", null, FakeTransport.ok("{}")).getApplicationVersion());
+		assertEquals("0", client("https://localhost/v1", "  ", FakeTransport.ok("{}")).getApplicationVersion());
+		assertEquals("2.4.1", client("https://localhost/v1", " 2.4.1 ", FakeTransport.ok("{}"))
+				.getApplicationVersion());
 
-		final PublishEvent event = new PublishEvent();
-		when(ser.serialize(event)).thenReturn(new byte[]{0});
-		when(httpClient.put(any(), any(), any(), any())).thenReturn(getByteResponse(new byte[]{0}));
-
-		client.publish(event).join();
-
-		final org.mockito.ArgumentCaptor<Map<String, String>> headers = org.mockito.ArgumentCaptor.forClass(Map.class);
-		verify(httpClient, Mockito.timeout(5000).times(1)).put(any(), any(), headers.capture(), any());
-		assertEquals("0", headers.getValue().get("X-Application-Version"));
-		assertEquals("2.4.1", client.getApplicationVersion());
+		final FakeTransport transport = FakeTransport.ok("{}");
+		client("https://localhost/v1", "2.4.1", transport).getContextData().join();
+		assertEquals("0", transport.requests.get(0).headers().get("X-Application-Version"));
 	}
 
-	private static Map<String, String> sdkHeaders() {
-		return mapOf(
-				"X-API-Key", "test-api-key",
-				"X-Application", "website",
-				"X-Environment", "dev",
-				"X-Application-Version", "0",
-				"X-Agent", "absmartly-java-sdk/" + SdkVersion.VERSION);
+	@Test
+	void closeClosesTransport() {
+		final FakeTransport transport = FakeTransport.ok("{}");
+		client("https://localhost/v1", null, transport).close();
+		assertTrue(transport.closed);
 	}
 }

@@ -5,8 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.Exposure;
+import com.absmartly.sdk.internal.Clock;
+import com.absmartly.sdk.internal.json.ExposurePayload;
 
 // Helpers shared by the switchback test classes.
 final class SwitchbackTestSupport {
@@ -33,12 +33,12 @@ final class SwitchbackTestSupport {
 	}
 
 	static final class ExposureCapture implements ContextEventLogger {
-		final List<Exposure> exposures = new ArrayList<Exposure>();
+		final List<ExposurePayload> exposures = new ArrayList<ExposurePayload>();
 
 		@Override
 		public void handleEvent(Context context, EventType type, Object data) {
 			if (type == EventType.Exposure) {
-				exposures.add((Exposure) data);
+				exposures.add((ExposurePayload) data);
 			}
 		}
 	}

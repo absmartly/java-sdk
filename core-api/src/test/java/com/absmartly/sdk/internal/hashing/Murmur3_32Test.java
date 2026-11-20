@@ -2,12 +2,12 @@ package com.absmartly.sdk.internal.hashing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import com.absmartly.sdk.TestUtils;
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
 
 class Murmur3_32Test extends TestUtils {
 	@Test

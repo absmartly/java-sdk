@@ -9,9 +9,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Experiment;
+import com.absmartly.sdk.internal.Clock;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.Experiment;
 
 class ContextFixTest extends TestUtils {
 
@@ -33,17 +33,17 @@ class ContextFixTest extends TestUtils {
 		scheduler = mock(ScheduledExecutorService.class);
 	}
 
-	Context createReadyContext(ContextData data) {
-		final ContextConfig config = ContextConfig.create()
+	Context createReadyContext(ContextPayload data) {
+		final TestContextConfig config = TestContextConfig.create()
 				.setUnit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec");
 
-		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
+		return TestContexts.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, eventLogger, variableParser, audienceMatcher);
 	}
 
 	@Test
 	void setDataWithNullVariantsDoesNotThrowNPE() {
-		final ContextData data = new ContextData();
+		final ContextPayload data = new ContextPayload();
 		final Experiment experiment = new Experiment();
 		experiment.id = 1;
 		experiment.name = "exp_test";
@@ -56,12 +56,12 @@ class ContextFixTest extends TestUtils {
 
 	@Test
 	void setDataWithNullCustomFieldValuesDoesNotThrowNPE() {
-		final ContextData data = new ContextData();
+		final ContextPayload data = new ContextPayload();
 		final Experiment experiment = new Experiment();
 		experiment.id = 1;
 		experiment.name = "exp_test";
 		experiment.unitType = "session_id";
-		experiment.variants = new com.absmartly.sdk.json.ExperimentVariant[0];
+		experiment.variants = new com.absmartly.sdk.internal.json.ExperimentVariant[0];
 		experiment.customFieldValues = null;
 		data.experiments = new Experiment[]{experiment};
 
@@ -70,7 +70,7 @@ class ContextFixTest extends TestUtils {
 
 	@Test
 	void setDataWithNullExperimentVariantsReturnsDefaultTreatment() {
-		final ContextData data = new ContextData();
+		final ContextPayload data = new ContextPayload();
 		final Experiment experiment = new Experiment();
 		experiment.id = 1;
 		experiment.name = "exp_test";
@@ -83,7 +83,7 @@ class ContextFixTest extends TestUtils {
 		final Context context = createReadyContext(data);
 		assertTrue(context.isReady());
 
-		int treatment = context.getTreatment("exp_test");
+		int treatment = context.treatment("exp_test");
 		assertEquals(0, treatment);
 	}
 }

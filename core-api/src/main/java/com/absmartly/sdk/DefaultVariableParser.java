@@ -4,8 +4,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.annotation.Nonnull;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,7 +13,7 @@ import com.fasterxml.jackson.databind.type.TypeFactory;
 
 import com.absmartly.sdk.internal.JsonMapperUtils;
 
-public class DefaultVariableParser implements VariableParser {
+final class DefaultVariableParser implements VariableParser {
 	private static final Logger log = LoggerFactory.getLogger(DefaultVariableParser.class);
 
 	public DefaultVariableParser() {
@@ -26,8 +24,8 @@ public class DefaultVariableParser implements VariableParser {
 		this.readerGeneric_ = objectMapper.readerFor(Object.class);
 	}
 
-	public Map<String, Object> parse(@Nonnull final Context context, @Nonnull final String experimentName,
-			@Nonnull final String variantName, @Nonnull final String variableValues) {
+	public Map<String, Object> parse(final Context context, final String experimentName,
+			final String variantName, final String variableValues) {
 		try {
 			return reader_.readValue(variableValues);
 		} catch (IOException e) {
@@ -37,8 +35,8 @@ public class DefaultVariableParser implements VariableParser {
 		}
 	}
 
-	public Object parse(@Nonnull final Context context, @Nonnull final String experimentName,
-			@Nonnull final String variableValue) {
+	public Object parse(final Context context, final String experimentName,
+			final String variableValue) {
 		try {
 			return readerGeneric_.readValue(variableValue);
 		} catch (IOException e) {

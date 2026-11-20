@@ -1,9 +1,11 @@
 package com.absmartly.sdk;
 
-import java.io.Closeable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -18,28 +20,36 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.absmartly.sdk.event.ContextEvent;
+import com.absmartly.sdk.event.EventListener;
+import com.absmartly.sdk.event.Subscription;
 import com.absmartly.sdk.internal.Algorithm;
 import com.absmartly.sdk.internal.AsyncExecutor;
+import com.absmartly.sdk.internal.Clock;
 import com.absmartly.sdk.internal.Concurrency;
 import com.absmartly.sdk.internal.Futures;
+import com.absmartly.sdk.internal.Json;
 import com.absmartly.sdk.internal.SdkVersion;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.SwitchbackAttributePath;
 import com.absmartly.sdk.internal.SwitchbackServing;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.java.util.Objects;
-import com.absmartly.sdk.json.*;
+import com.absmartly.sdk.internal.json.*;
 
-public class Context implements Closeable {
+/**
+ * One user's (or request's) view of the experiments: create it with {@link ABsmartlyClient#context(ContextOptions)},
+ * read treatments and variables, track goals, and close it (try-with-resources) to publish what is pending.
+ *
+ * <p>
+ * Thread-safe. Reads are synchronous and never block on I/O; {@code publish}, {@code refresh} and {@code close} have a
+ * blocking form and an {@code ...Async} form returning a {@link CompletableFuture}.
+ */
+public final class Context implements AutoCloseable {
 	private static final int ASSIGNMENT_UNEXPOSED = 0;
 	private static final int ASSIGNMENT_EXPOSED = 1;
 	private static final int ASSIGNMENT_RETIRED = 2;
@@ -60,53 +70,33 @@ public class Context implements Closeable {
 		return noClientWarningLogged_.get();
 	}
 
-	/**
-	 * Creates a context with no client. Equivalent to the client-aware overload with a null client: the environment
-	 * is unknown, so assignment rules scoped to environments never match, audiences and rule conditions see no
-	 * application or environment attribute, and the publish-only system attributes (when enabled) carry only
-	 * sdk_name and sdk_version.
-	 */
-	public static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
-			@Nonnull final ScheduledExecutorService scheduler,
-			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
-			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
-			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher) {
-		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
-				variableParser, audienceMatcher, null);
-	}
-
-	/**
-	 * @param client
-	 *            the client whose configuration supplies the environment that assignment rules are scoped to, and the
-	 *            application and environment names always made available to audiences and rule conditions. It need not
-	 *            be the source of the context's data. May be null; see the overload without a client.
-	 */
-	static Context create(@Nonnull final Clock clock, @Nonnull final ContextConfig config,
-			@Nonnull final ScheduledExecutorService scheduler,
-			@Nonnull final CompletableFuture<ContextData> dataFuture, @Nonnull final ContextDataProvider dataProvider,
-			@Nonnull final ContextEventHandler eventHandler, @Nullable final ContextEventLogger eventLogger,
-			@Nonnull final VariableParser variableParser, @Nonnull AudienceMatcher audienceMatcher,
-			@Nullable final Client client) {
-		return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
-				variableParser, audienceMatcher, client);
-	}
-
-	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
-			CompletableFuture<ContextData> dataFuture, ContextDataProvider dataProvider,
-			ContextEventHandler eventHandler, ContextEventLogger eventLogger, VariableParser variableParser,
-			AudienceMatcher audienceMatcher, Client client) {
+	// eventLogger is the engine's raw hook (tests); events_ is this context's typed dispatcher, whose parent is the
+	// client's. client supplies the environment that assignment rules are scoped to, and the application and
+	// environment names always made available to audiences and rule conditions; it need not be the source of the
+	// context's data, and is null only in tests.
+	Context(final Clock clock, final ContextOptions options, final ScheduledExecutorService scheduler,
+			final CompletableFuture<ContextPayload> dataFuture, final ContextDataProvider dataProvider,
+			final ContextEventHandler eventHandler, final @Nullable ContextEventLogger eventLogger,
+			final VariableParser variableParser, final AudienceMatcher audienceMatcher, final @Nullable Client client,
+			final @Nullable EventDispatcher parentEvents) {
 		clock_ = clock;
-		includeSystemAttributes_ = config.getIncludeSystemAttributes();
+		events_ = new EventDispatcher(parentEvents, clock,
+				(parentEvents != null) ? parentEvents.executor() : AsyncExecutor.get());
+		final EventListener listener = options.eventListener();
+		if (listener != null) {
+			events_.addListener(listener);
+		}
+		includeSystemAttributes_ = options.includeSystemAttributes();
 		environmentName_ = client != null ? client.getEnvironment() : null;
 		applicationName_ = client != null ? client.getApplication() : null;
 		if (includeSystemAttributes_ && client == null && noClientWarningLogged_.compareAndSet(false, true)) {
 			log.warn("System attributes are enabled but the context has no client: only sdk_name and sdk_version "
 					+ "are included, and environment-scoped assignment rules never match");
 		}
-		publishDelay_ = config.getPublishDelay();
-		refreshInterval_ = config.getRefreshInterval();
+		publishDelay_ = options.publishDelayMillis();
+		refreshInterval_ = options.refreshIntervalMillis();
 		eventHandler_ = eventHandler;
-		eventLogger_ = config.getEventLogger() != null ? config.getEventLogger() : eventLogger;
+		eventLogger_ = eventLogger;
 		dataProvider_ = dataProvider;
 		variableParser_ = variableParser;
 		audienceMatcher_ = audienceMatcher;
@@ -114,30 +104,20 @@ public class Context implements Closeable {
 
 		units_ = new HashMap<String, Object>();
 
-		final Map<String, Object> units = config.getUnitValues();
-		if (units != null) {
-			setUnits(units);
-		}
+		setUnits(options.units());
 
 		assigners_ = new HashMap<String, VariantAssigner>(units_.size());
 		hashedUnits_ = new HashMap<String, byte[]>(units_.size());
 
-		final Map<String, Object> attributes = config.getAttributes();
-		if (attributes != null) {
-			setAttributes(attributes);
-		}
+		setAttributes(options.attributes());
 
-		final Map<String, Integer> overrides = config.getOverrides();
-		overrides_ = (overrides != null) ? new HashMap<String, Integer>(overrides) : new HashMap<String, Integer>();
-
-		final Map<String, Integer> cassignments = config.getCustomAssignments();
-		cassignments_ = (cassignments != null) ? new HashMap<String, Integer>(cassignments)
-				: new HashMap<String, Integer>();
+		overrides_ = new HashMap<String, Integer>(options.overrides());
+		cassignments_ = new HashMap<String, Integer>(options.customAssignments());
 
 		if (dataFuture.isDone()) {
-			dataFuture.thenAccept(new Consumer<ContextData>() {
+			dataFuture.thenAccept(new Consumer<ContextPayload>() {
 				@Override
-				public void accept(ContextData data) {
+				public void accept(ContextPayload data) {
 					Context.this.setData(data);
 					Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
 				}
@@ -152,9 +132,9 @@ public class Context implements Closeable {
 		} else {
 			final CompletableFuture<Void> newReadyFuture = Futures.incomplete();
 			readyFuture_.set(newReadyFuture);
-			dataFuture.thenAccept(new Consumer<ContextData>() {
+			dataFuture.thenAccept(new Consumer<ContextPayload>() {
 				@Override
-				public void accept(ContextData data) {
+				public void accept(ContextPayload data) {
 					Context.this.setData(data);
 					final CompletableFuture<Void> rf = readyFuture_.getAndSet(COMPLETED_VOID_FUTURE);
 					if (rf != null) {
@@ -163,7 +143,7 @@ public class Context implements Closeable {
 
 					Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
 
-					if (Context.this.getPendingCount() > 0) {
+					if (Context.this.pendingEventCount() > 0) {
 						Context.this.setTimeout();
 					}
 				}
@@ -184,70 +164,134 @@ public class Context implements Closeable {
 		}
 	}
 
-	public boolean isReady() {
+	boolean isReady() {
 		return data_ != null;
 	}
 
-	public boolean isFailed() {
+	boolean isFailed() {
 		return failed_;
 	}
 
-	public boolean isClosed() {
+	boolean isClosed() {
 		return closed_.get();
 	}
 
-	public boolean isClosing() {
+	boolean isClosing() {
 		return !closed_.get() && closing_.get();
 	}
 
-	public boolean isFinalized() {
-		return isClosed();
-	}
-
-	public boolean isFinalizing() {
-		return isClosing();
-	}
-
-	public CompletableFuture<Context> waitUntilReadyAsync() {
-		final CompletableFuture<Void> rf = readyFuture_.get();
-		if (rf != null) {
-			return rf.thenApply(new Function<Void, Context>() {
-				@Override
-				public Context apply(Void k) {
-					return Context.this;
-				}
-			});
+	/** Where the context is in its lifecycle. */
+	public ContextState state() {
+		if (closed_.get()) {
+			return ContextState.CLOSED;
 		}
-		return Futures.completed(this);
+		if (closing_.get()) {
+			return ContextState.CLOSING;
+		}
+		if (failed_) {
+			return ContextState.FAILED;
+		}
+		return (data_ != null) ? ContextState.READY : ContextState.LOADING;
 	}
 
-	public Context waitUntilReady() {
-		final CompletableFuture<Void> future = readyFuture_.get(); // cache here to avoid locking
-		if (future != null && !future.isDone()) {
+	/** Why the data failed to load, or null if it did not fail. */
+	public @Nullable Throwable failure() {
+		return readyError_;
+	}
+
+	/**
+	 * Completes with this context once its data is loaded, or fails with {@link ContextLoadException} if loading
+	 * failed. The context stays usable after a failure (see {@link ContextState#FAILED}).
+	 */
+	public CompletableFuture<Context> readyAsync() {
+		final CompletableFuture<Void> rf = readyFuture_.get();
+		final CompletableFuture<Void> loaded = (rf != null) ? rf : COMPLETED_VOID_FUTURE;
+		return loaded.thenApply(new Function<Void, Context>() {
+			@Override
+			public Context apply(Void ignored) {
+				final Throwable failure = readyError_;
+				if (failure != null) {
+					throw new ContextLoadException(failure);
+				}
+				return Context.this;
+			}
+		});
+	}
+
+	/** Blocks until the data is loaded and returns this context; throws {@link ContextLoadException} on failure. */
+	public Context ready() {
+		return join(readyAsync());
+	}
+
+	Context awaitLoad() {
+		final CompletableFuture<Void> future = readyFuture_.get();
+		if ((future != null) && !future.isDone()) {
 			future.join();
 		}
 		return this;
 	}
 
-	public String[] getExperiments() {
+	// The blocking twin of an async call: waits and rethrows the failure itself rather than a CompletionException.
+	static <T> T join(final CompletableFuture<T> future) {
+		try {
+			return future.join();
+		} catch (final CompletionException e) {
+			throw unwrap(e);
+		} catch (final CancellationException e) {
+			throw new ABsmartlyException("ABsmartly operation was cancelled", e);
+		}
+	}
+
+	static RuntimeException unwrap(final Throwable error) {
+		Throwable cause = error;
+		while ((cause instanceof CompletionException) && (cause.getCause() != null)) {
+			cause = cause.getCause();
+		}
+		if (cause instanceof RuntimeException) {
+			return (RuntimeException) cause;
+		}
+		if (cause instanceof Error) {
+			throw (Error) cause;
+		}
+		return new ABsmartlyException(ContextLoadException.describe(cause), cause);
+	}
+
+	/**
+	 * Adds a listener for this context's events. The client's listeners receive them too. Close the returned
+	 * subscription to remove the listener.
+	 */
+	public Subscription onEvent(final EventListener listener) {
+		return events_.addListener(listener);
+	}
+
+	/**
+	 * This context's events as a {@link java.util.concurrent.Flow.Publisher}, delivered asynchronously on the SDK's
+	 * executor and completed when the context closes. Needs Android API 30+; use {@link #onEvent(EventListener)}
+	 * below that.
+	 */
+	public java.util.concurrent.Flow.Publisher<ContextEvent> events() {
+		return events_.stream();
+	}
+
+	/** The names of the experiments in the loaded data. */
+	public List<String> experiments() {
 		checkReady(false);
 
 		try {
 			dataLock_.readLock().lock();
-			final String[] experimentNames = new String[data_.experiments.length];
-
-			int index = 0;
+			final List<String> experimentNames = new ArrayList<String>(data_.experiments.length);
 			for (final Experiment experiment : data_.experiments) {
-				experimentNames[index++] = experiment.name;
+				experimentNames.add(experiment.name);
 			}
 
-			return experimentNames;
+			return Collections.unmodifiableList(experimentNames);
 		} finally {
 			dataLock_.readLock().unlock();
 		}
 	}
 
-	public String[] getCustomFieldKeys() {
+	/** The custom field names used by any experiment in the loaded data, sorted. */
+	public List<String> customFieldKeys() {
 		checkReady(false);
 
 		final Set<String> keys = new HashSet<String>();
@@ -262,13 +306,16 @@ public class Context implements Closeable {
 				}
 			}
 
-			return keys.toArray(new String[0]);
+			final List<String> sorted = new ArrayList<String>(keys);
+			Collections.sort(sorted);
+			return Collections.unmodifiableList(sorted);
 		} finally {
 			dataLock_.readLock().unlock();
 		}
 	}
 
-	public Object getCustomFieldValue(@Nonnull final String experimentName, @Nonnull final String key) {
+	/** A custom field's value (parsed by its type), or null if the experiment or field does not exist. */
+	public @Nullable Object customFieldValue(final String experimentName, final String key) {
 		checkReady(false);
 
 		try {
@@ -286,7 +333,8 @@ public class Context implements Closeable {
 		}
 	}
 
-	public Object getCustomFieldValueType(@Nonnull final String experimentName, @Nonnull final String key) {
+	/** A custom field's type ("string", "number", "boolean", "json"...), or null if it does not exist. */
+	public @Nullable String customFieldType(final String experimentName, final String key) {
 		checkReady(false);
 
 		try {
@@ -304,26 +352,38 @@ public class Context implements Closeable {
 		}
 	}
 
-	public ContextData getData() {
+	/** The loaded data, for example to create more contexts from it without another fetch. */
+	public ContextData data() {
 		checkReady(true);
 
 		try {
 			dataLock_.readLock().lock();
-			return data_;
+			return new ContextData(data_);
 		} finally {
 			dataLock_.readLock().unlock();
 		}
 	}
 
-	public void setOverride(@Nonnull final String experimentName, final int variant) {
+	/** Forces a variant of an experiment, for QA. The exposure is flagged {@code overridden}. */
+	public void setOverride(final String experimentName, final int variant) {
 		Concurrency.putRW(contextLock_, overrides_, experimentName, variant);
 	}
 
-	public Integer getOverride(@Nonnull final String experimentName) {
+	/** Removes an override; the experiment is assigned normally again. */
+	public void clearOverride(final String experimentName) {
+		Concurrency.removeRW(contextLock_, overrides_, experimentName);
+	}
+
+	public @Nullable Integer override(final String experimentName) {
 		return Concurrency.getRW(contextLock_, overrides_, experimentName);
 	}
 
-	public void setOverrides(@Nonnull final Map<String, Integer> overrides) {
+	/** All overrides, as an unmodifiable snapshot. */
+	public Map<String, Integer> overrides() {
+		return Concurrency.snapshotRW(contextLock_, overrides_);
+	}
+
+	public void setOverrides(final Map<String, Integer> overrides) {
 		for (Map.Entry<String, Integer> entry : overrides.entrySet()) {
 			String key = entry.getKey();
 			Integer value = entry.getValue();
@@ -331,17 +391,30 @@ public class Context implements Closeable {
 		}
 	}
 
-	public void setCustomAssignment(@Nonnull final String experimentName, final int variant) {
+	/** Assigns a variant of an experiment by your own logic. The exposure is flagged {@code custom}. */
+	public void setCustomAssignment(final String experimentName, final int variant) {
 		checkNotClosed();
 
 		Concurrency.putRW(contextLock_, cassignments_, experimentName, variant);
 	}
 
-	public Integer getCustomAssignment(@Nonnull final String experimentName) {
+	/** Removes a custom assignment. */
+	public void clearCustomAssignment(final String experimentName) {
+		checkNotClosed();
+
+		Concurrency.removeRW(contextLock_, cassignments_, experimentName);
+	}
+
+	public @Nullable Integer customAssignment(final String experimentName) {
 		return Concurrency.getRW(contextLock_, cassignments_, experimentName);
 	}
 
-	public void setCustomAssignments(@Nonnull final Map<String, Integer> customAssignments) {
+	/** All custom assignments, as an unmodifiable snapshot. */
+	public Map<String, Integer> customAssignments() {
+		return Concurrency.snapshotRW(contextLock_, cassignments_);
+	}
+
+	public void setCustomAssignments(final Map<String, Integer> customAssignments) {
 		for (Map.Entry<String, Integer> entry : customAssignments.entrySet()) {
 			String key = entry.getKey();
 			Integer value = entry.getValue();
@@ -349,11 +422,14 @@ public class Context implements Closeable {
 		}
 	}
 
-	public String getUnit(@Nonnull final String unitType) {
-		return ContextConfig.unitString(getUnitValue(unitType));
+	/** A unit's UID in its canonical string form (the form that is hashed), or null if it is not set. */
+	public @Nullable String unit(final String unitType) {
+		final Object uid = unitValue(unitType);
+		return (uid != null) ? Hashing.unitToString(uid) : null;
 	}
 
-	public Object getUnitValue(@Nonnull final String unitType) {
+	/** A unit's UID as it was set: a String, or the Number it was set with. Null if it is not set. */
+	public @Nullable Object unitValue(final String unitType) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
@@ -363,15 +439,20 @@ public class Context implements Closeable {
 		}
 	}
 
-	public void setUnit(@Nonnull final String unitType, @Nonnull final String uid) {
+	/**
+	 * Sets a unit. Throws {@link IllegalArgumentException} if the UID is blank and {@link UnitAlreadySetException} if
+	 * the unit already has a different UID.
+	 */
+	public void setUnit(final String unitType, final String uid) {
 		putUnit(unitType, uid);
 	}
 
-	public void setUnit(@Nonnull final String unitType, @Nonnull final Number uid) {
+	/** Sets a numeric unit; it is hashed and published in its canonical string form. */
+	public void setUnit(final String unitType, final Number uid) {
 		putUnit(unitType, uid);
 	}
 
-	private void putUnit(final String unitType, final Object value) {
+	private void putUnit(final String unitType, final @Nullable Object value) {
 		checkNotClosed();
 
 		final Object uid;
@@ -393,7 +474,7 @@ public class Context implements Closeable {
 
 			final Object previous = units_.get(unitType);
 			if ((previous != null) && !sameUid(previous, uid)) {
-				throw new IllegalArgumentException(String.format("Unit '%s' UID already set.", unitType));
+				throw new UnitAlreadySetException(unitType);
 			}
 
 			units_.put(unitType, uid);
@@ -489,32 +570,34 @@ public class Context implements Closeable {
 		}
 	}
 
-	public Map<String, String> getUnits() {
-		return ContextConfig.unitStrings(getUnitValues());
-	}
-
-	public Map<String, Object> getUnitValues() {
-		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
-		try {
-			readLock.lock();
-			return new HashMap<String, Object>(units_);
-		} finally {
-			readLock.unlock();
+	/** Every unit's UID in canonical string form, as an unmodifiable snapshot. */
+	public Map<String, String> units() {
+		final Map<String, Object> values = unitValues();
+		final Map<String, String> units = new HashMap<String, String>(values.size());
+		for (final Map.Entry<String, Object> entry : values.entrySet()) {
+			units.put(entry.getKey(), Hashing.unitToString(entry.getValue()));
 		}
+		return Collections.unmodifiableMap(units);
 	}
 
-	public void setUnits(@Nonnull final Map<String, ?> units) {
+	/** Every unit's UID as it was set (String or Number), as an unmodifiable snapshot. */
+	public Map<String, Object> unitValues() {
+		return Concurrency.snapshotRW(contextLock_, units_);
+	}
+
+	public void setUnits(final Map<String, ?> units) {
 		for (Map.Entry<String, ?> entry : units.entrySet()) {
 			putUnit(entry.getKey(), entry.getValue());
 		}
 	}
 
-	public Object getAttribute(@Nonnull final String name) {
+	/** The latest value set for an attribute, or null if it was never set (or set to null). */
+	public @Nullable Object attribute(final String name) {
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
 			for (int i = attributes_.size(); i-- > 0;) {
-				final Attribute attr = attributes_.get(i);
+				final AttributePayload attr = attributes_.get(i);
 				if (name.equals(attr.name)) {
 					return attr.value;
 				}
@@ -526,36 +609,40 @@ public class Context implements Closeable {
 		}
 	}
 
-	public void setAttribute(@Nonnull final String name, @Nullable final Object value) {
+	public void setAttribute(final String name, @Nullable final Object value) {
 		checkNotClosed();
 
-		Concurrency.addRW(contextLock_, attributes_, new Attribute(name, value, clock_.millis()));
+		Concurrency.addRW(contextLock_, attributes_, new AttributePayload(name,
+				com.absmartly.sdk.internal.JsonValues.snapshotValue(value), clock_.millis()));
 		attrsSeq_.incrementAndGet();
 	}
 
-	public Map<String, Object> getAttributes() {
-		final HashMap<String, Object> result = new HashMap<String, Object>(attributes_.size());
+	/** The latest value of every attribute, as an unmodifiable snapshot. */
+	public Map<String, @Nullable Object> attributes() {
+		final HashMap<String, @Nullable Object> result = new HashMap<String, Object>(attributes_.size());
 		final ReentrantReadWriteLock.ReadLock readLock = contextLock_.readLock();
 		try {
 			readLock.lock();
-			for (final Attribute attr : attributes_) {
+			for (final AttributePayload attr : attributes_) {
 				result.put(attr.name, attr.value);
 			}
-			return result;
+			return Collections.unmodifiableMap(result);
 		} finally {
 			readLock.unlock();
 		}
 	}
 
-	public void setAttributes(@Nonnull final Map<String, Object> attributes) {
-		for (Map.Entry<String, Object> entry : attributes.entrySet()) {
-			String key = entry.getKey();
-			Object value = entry.getValue();
-			setAttribute(key, value);
+	public void setAttributes(final Map<String, ?> attributes) {
+		for (Map.Entry<String, ?> entry : attributes.entrySet()) {
+			setAttribute(entry.getKey(), entry.getValue());
 		}
 	}
 
-	public int getTreatment(@Nonnull final String experimentName) {
+	/**
+	 * The variant of an experiment for this context's units (0 is control), queuing an exposure the first time. Not
+	 * running and unknown experiments give 0.
+	 */
+	public int treatment(final String experimentName) {
 		checkReady(true);
 
 		final long now = clock_.millis();
@@ -659,7 +746,7 @@ public class Context implements Closeable {
 	// candidate that only fires holdouts), and setTimeout() is idempotent, so centralizing the
 	// call is strictly safer than tracking every call site individually.
 	private void enqueueExposure(final Assignment assignment, final long exposedAt) {
-		final Exposure exposure = new Exposure();
+		final ExposurePayload exposure = new ExposurePayload();
 		exposure.id = assignment.id;
 		exposure.name = assignment.name;
 		exposure.unit = assignment.unitType;
@@ -691,13 +778,15 @@ public class Context implements Closeable {
 		}
 	}
 
-	public int peekTreatment(@Nonnull final String experimentName) {
+	/** Like {@link #treatment(String)} but without queuing an exposure. */
+	public int peekTreatment(final String experimentName) {
 		checkReady(true);
 
 		return getAssignment(experimentName, clock_.millis()).variant;
 	}
 
-	public Map<String, List<String>> getVariableKeys() {
+	/** Every variable key, with the experiments that define it. */
+	public Map<String, List<String>> variableKeys() {
 		checkReady(true);
 
 		final Map<String, List<String>> variableKeys = new HashMap<String, List<String>>(indexVariables_.size());
@@ -720,7 +809,11 @@ public class Context implements Closeable {
 		return variableKeys;
 	}
 
-	public Object getVariableValue(@Nonnull final String key, final Object defaultValue) {
+	/**
+	 * A variable's raw JSON value (String, Number, Boolean, Map, List or null) from the experiment that assigns it, or
+	 * {@code defaultValue} when none does, queuing that experiment's exposure. Prefer {@link #variable(String, Object)}.
+	 */
+	public @Nullable Object variableValue(final String key, final @Nullable Object defaultValue) {
 		checkReady(true);
 
 		final long now = clock_.millis();
@@ -763,7 +856,8 @@ public class Context implements Closeable {
 		return current;
 	}
 
-	public Object peekVariableValue(@Nonnull final String key, final Object defaultValue) {
+	/** Like {@link #variableValue(String, Object)} but without queuing an exposure. */
+	public @Nullable Object peekVariableValue(final String key, final @Nullable Object defaultValue) {
 		checkReady(true);
 
 		final Assignment assignment = getVariableAssignment(key, true, clock_.millis());
@@ -777,13 +871,111 @@ public class Context implements Closeable {
 		return defaultValue;
 	}
 
-	public void track(@Nonnull final String goalName, final Map<String, Object> properties) {
+	/**
+	 * A variable's value converted to the type of {@code defaultValue}, queuing the assigning experiment's exposure.
+	 * Returns {@code defaultValue} when no running experiment assigns the key, or when its value cannot be converted
+	 * (for example {@code "red"} for an {@code Integer} default; logged). A numeric read uses the number exactly as
+	 * written in the config: to an integer type only when it is a whole number in range, to {@code Double}/{@code
+	 * Float} as the nearest value, never infinite, NaN or underflowing to zero. A whole-number JSON value (no decimal
+	 * point or exponent, like an ID) converts to {@code Double}/{@code Float} only when it is exact.
+	 *
+	 * <pre>{@code
+	 * String color = context.variable("button.color", "blue");
+	 * int limit = context.variable("cart.limit", 10);
+	 * }</pre>
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T variable(final String key, final T defaultValue) {
+		return variable(key, (Class<T>) VariableConverter.inferType(defaultValue), defaultValue);
+	}
+
+	/**
+	 * A variable's value converted to {@code type}: a String, a boxed primitive, a {@code Map} or {@code List}, or any
+	 * class Jackson-style property mapping can build (public fields or setters, or a no-argument constructor), for
+	 * a JSON object variable. Returns {@code defaultValue} when no running experiment assigns the key or the value
+	 * cannot be converted (logged).
+	 */
+	public <T> @Nullable T variable(final String key, final Class<T> type, final @Nullable T defaultValue) {
+		checkReady(true);
+
+		final long now = clock_.millis();
+		final Assignment assignment = exposeVariableAssignment(key, getVariableAssignment(key, false, now), now);
+		return VariableConverter.convert(key, exactVariable(assignment, key, type), type, defaultValue);
+	}
+
+	/** Like {@link #variable(String, Object)} but without queuing an exposure. */
+	@SuppressWarnings("unchecked")
+	public <T> T peekVariable(final String key, final T defaultValue) {
+		return peekVariable(key, (Class<T>) VariableConverter.inferType(defaultValue), defaultValue);
+	}
+
+	/** Like {@link #variable(String, Class, Object)} but without queuing an exposure. */
+	public <T> @Nullable T peekVariable(final String key, final Class<T> type, final @Nullable T defaultValue) {
+		checkReady(true);
+
+		return VariableConverter.convert(key,
+				exactVariable(getVariableAssignment(key, true, clock_.millis()), key, type), type, defaultValue);
+	}
+
+	// Goal properties sorted by name (the order 1.x published them in), with nested maps and lists copied.
+	private static Map<String, Object> sortedSnapshot(final Map<String, ?> properties) {
+		final TreeMap<String, Object> sorted = new TreeMap<String, Object>();
+		for (final Map.Entry<String, ?> entry : properties.entrySet()) {
+			sorted.put(entry.getKey(), com.absmartly.sdk.internal.JsonValues.snapshotValue(entry.getValue()));
+		}
+		return Collections.unmodifiableMap(sorted);
+	}
+
+	private static boolean hasDouble(final Map<String, Object> variables) {
+		for (final Object value : variables.values()) {
+			if (value instanceof Double) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// A variable's value for a typed read: as variableValue returns it, except that a number read as a concrete
+	// numeric type is taken from the variant's config JSON as the exact decimal it was written as (BigDecimal or
+	// BigInteger), so a typed read can tell 1.0000000000000001 from 1 and 1e-400 from 0. variableValue, and typed
+	// reads as Object or Number, keep the 1.x Double/Integer values.
+	private static @Nullable Object exactVariable(final @Nullable Assignment assignment, final String key,
+			final Class<?> type) {
+		if (assignment == null) {
+			return null;
+		}
+		final Object value = assignment.variables.get(key);
+		// Integers are parsed exactly already; only a Double can have lost the written value.
+		if (!(value instanceof Double) || (type == Number.class) || !Number.class.isAssignableFrom(type)) {
+			return value;
+		}
+		final Object exact = assignment.exactNumbers.get(key);
+		if (!(exact instanceof Number)) {
+			// The written value could not be decoded exactly: never validate the rounded Double in its place.
+			return Json.UNDECODABLE;
+		}
+		// -0.0 has no exact BigDecimal: keep the parsed value so its sign survives, as variableValue returns it.
+		if ((exact instanceof BigDecimal) && (((BigDecimal) exact).signum() == 0)
+				&& (Double.doubleToRawLongBits((Double) value) != 0)) {
+			return value;
+		}
+		return exact;
+	}
+
+	/** Queues a goal achievement without properties. */
+	public void track(final String goalName) {
+		track(goalName, null);
+	}
+
+	/** Queues a goal achievement. The properties are copied. */
+	public void track(final String goalName, final @Nullable Map<String, ?> properties) {
 		checkNotClosed();
 
 		final GoalAchievement achievement = new GoalAchievement();
 		achievement.achievedAt = clock_.millis();
 		achievement.name = goalName;
-		achievement.properties = (properties == null) ? null : new TreeMap<String, Object>(properties);
+		achievement.properties = (properties == null) ? null
+				: sortedSnapshot(properties);
 
 		try {
 			eventLock_.lock();
@@ -798,20 +990,27 @@ public class Context implements Closeable {
 		setTimeout();
 	}
 
+	/**
+	 * Publishes the queued exposures and goals now. Fails with the transport's {@link ABsmartlyException}; the events
+	 * stay queued for the next attempt.
+	 */
 	public CompletableFuture<Void> publishAsync() {
 		checkNotClosed();
 
 		return flush();
 	}
 
+	/** The blocking form of {@link #publishAsync()}. */
 	public void publish() {
-		publishAsync().join();
+		join(publishAsync());
 	}
 
-	public int getPendingCount() {
+	/** How many exposures and goals are queued and not yet published. */
+	public int pendingEventCount() {
 		return pendingCount_.get();
 	}
 
+	/** Fetches fresh experiment data and installs it. A no-op on a context whose initial load failed. */
 	public CompletableFuture<Void> refreshAsync() {
 		checkNotClosed();
 
@@ -823,9 +1022,9 @@ public class Context implements Closeable {
 			final CompletableFuture<Void> newRefreshFuture = Futures.incomplete();
 			refreshFuture_.set(newRefreshFuture);
 
-			dataProvider_.getContextData().thenAccept(new Consumer<ContextData>() {
+			dataProvider_.getContextData().thenAccept(new Consumer<ContextPayload>() {
 				@Override
-				public void accept(ContextData data) {
+				public void accept(ContextPayload data) {
 					Context.this.setData(data);
 					refreshing_.set(false);
 					newRefreshFuture.complete(null);
@@ -852,10 +1051,15 @@ public class Context implements Closeable {
 		return Futures.completed(null);
 	}
 
+	/** The blocking form of {@link #refreshAsync()}. */
 	public void refresh() {
-		refreshAsync().join();
+		join(refreshAsync());
 	}
 
+	/**
+	 * Publishes the queued events and closes the context. Idempotent: every caller gets the same outcome. If the
+	 * publish fails the events stay queued and the context stays open, so close can be retried.
+	 */
 	public CompletableFuture<Void> closeAsync() {
 		final CompletableFuture<Void> attempt;
 		// The decision to start a close and the publication of its future happen under one lock, so
@@ -910,28 +1114,23 @@ public class Context implements Closeable {
 		closing_.set(false);
 		attempt.complete(null);
 
-		logEvent(ContextEventLogger.EventType.Close, null);
+		try {
+			logEvent(ContextEventLogger.EventType.Close, null);
+		} finally {
+			events_.closeStream();
+		}
 	}
 
 	// Do not expose the internal completion gate: completing or cancelling a caller's dependent future
 	// must not release any other close caller.
 	private static CompletableFuture<Void> closeCallerFuture(final CompletableFuture<Void> attempt) {
-		return attempt.thenApply(new Function<Void, Void>() {
-			@Override
-			public Void apply(Void value) {
-				return null;
-			}
-		});
+		return attempt.thenApply(ignored -> null);
 	}
 
+	/** The blocking form of {@link #closeAsync()}, for try-with-resources. */
 	@Override
 	public void close() {
-		closeAsync().join();
-	}
-
-	@Deprecated
-	public CompletableFuture<Void> finalizeAsync() {
-		return closeAsync();
+		join(closeAsync());
 	}
 
 	private CompletableFuture<Void> flush() {
@@ -939,7 +1138,7 @@ public class Context implements Closeable {
 
 		if (!failed_) {
 			if (pendingCount_.get() > 0) {
-				Exposure[] exposures = null;
+				ExposurePayload[] exposures = null;
 				GoalAchievement[] achievements = null;
 				int eventCount;
 				final CompletableFuture<Void> result = Futures.incomplete();
@@ -962,7 +1161,7 @@ public class Context implements Closeable {
 
 					if (eventCount > 0) {
 						if (!exposures_.isEmpty()) {
-							exposures = exposures_.toArray(new Exposure[0]);
+							exposures = exposures_.toArray(new ExposurePayload[0]);
 							exposures_.clear();
 						}
 
@@ -978,7 +1177,7 @@ public class Context implements Closeable {
 				}
 
 				if (eventCount > 0) {
-					final PublishEvent event = new PublishEvent();
+					final PublishPayload event = new PublishPayload();
 					event.hashed = true;
 					event.publishedAt = clock_.millis();
 
@@ -1001,7 +1200,7 @@ public class Context implements Closeable {
 					event.exposures = exposures;
 					event.goals = achievements;
 
-					final Exposure[] finalExposures = exposures;
+					final ExposurePayload[] finalExposures = exposures;
 					final GoalAchievement[] finalAchievements = achievements;
 					final int finalEventCount = eventCount;
 
@@ -1079,15 +1278,15 @@ public class Context implements Closeable {
 
 	private void checkNotClosed() {
 		if (closed_.get()) {
-			throw new IllegalStateException("ABSmartly Context is closed");
+			throw new ContextClosedException("ABsmartly Context is closed");
 		} else if (closing_.get()) {
-			throw new IllegalStateException("ABSmartly Context is closing");
+			throw new ContextClosedException("ABsmartly Context is closing");
 		}
 	}
 
 	private void checkReady(final boolean expectNotClosed) {
 		if (!isReady()) {
-			throw new IllegalStateException("ABSmartly Context is not yet ready");
+			throw new ContextNotReadyException();
 		} else if (expectNotClosed) {
 			checkNotClosed();
 		}
@@ -1213,7 +1412,7 @@ public class Context implements Closeable {
 				experiment.data.switchbackClusterValues, units, new SwitchbackServing.AttributeReader() {
 					@Override
 					public Object read(final SwitchbackAttributePath path) {
-						final Attribute attribute = latestAttribute(path.rootKey(), now);
+						final AttributePayload attribute = latestAttribute(path.rootKey(), now);
 						return (attribute != null) ? path.resolveAttribute(attribute.value) : null;
 					}
 				});
@@ -1230,9 +1429,9 @@ public class Context implements Closeable {
 	// The attribute the Collector records with an exposure at `now` (ContextAPI.extractAttributes):
 	// among attributes set at or before now whose trimmed name matches, the greatest setAt wins and
 	// a tie goes to the one set last. Caller holds contextLock_.
-	private Attribute latestAttribute(final String name, final long now) {
-		Attribute selected = null;
-		for (final Attribute attribute : attributes_) {
+	private AttributePayload latestAttribute(final String name, final long now) {
+		AttributePayload selected = null;
+		for (final AttributePayload attribute : attributes_) {
 			if ((attribute.setAt <= now) && (attribute.name != null) && name.equals(attribute.name.trim())
 					&& ((selected == null) || (attribute.setAt >= selected.setAt))) {
 				selected = attribute;
@@ -1313,7 +1512,7 @@ public class Context implements Closeable {
 
 	// Records a switchback resolution under the current epoch. At most SWITCHBACK_RETAINED_PERIODS
 	// period indices are kept; the lowest index other than periodIndex is evicted, so the entry
-	// just installed always survives. Exposure dedup therefore holds only within the retained
+	// just installed always survives. ExposurePayload dedup therefore holds only within the retained
 	// window: re-entering an evicted period (clock rewind, or a caller delayed across two
 	// boundaries) creates one new assignment for it, which then stays cached like any other.
 	private void retainSwitchbackPeriod(final String experimentName, final ContextExperiment experiment,
@@ -1549,6 +1748,7 @@ public class Context implements Closeable {
 		// falls back to a live resolution of `holdouts` in that case.
 		Assignment[] holdoutAssignments;
 		Map<String, Object> variables = Collections.emptyMap();
+		Map<String, Object> exactNumbers = Collections.emptyMap();
 		int attrsSeq;
 
 		// Switchback grid this assignment was resolved under; compared by switchbackConfigMatches.
@@ -1643,8 +1843,9 @@ public class Context implements Closeable {
 							: !assignment.switchback);
 		} else if (experiment == null) {
 			// previously not-running experiment. A rule-won assignment is not "assigned" either, but its
-			// variant came from the experiment's rules, so it must be rebuilt once the experiment is gone.
-			return !assignment.assigned && !assignment.ruleOverride;
+			// variant came from the experiment's rules, so it must be rebuilt once the experiment is gone. An
+			// overridden one is stale once its override has been cleared.
+			return !assignment.assigned && !assignment.ruleOverride && !assignment.overridden;
 		} else if (assignment.ruleOverride || Objects.equals(custom, assignment.customAssignment)) {
 			// A matching rule wins over a custom assignment, so a custom change is not staleness.
 			return experimentMatches(experiment, assignment) && ruleMatches(experiment, assignment)
@@ -1992,9 +2193,11 @@ public class Context implements Closeable {
 				}
 			}
 
-			if ((experiment != null) && experiment.data.variants != null && assignment.variant >= 0
-					&& (assignment.variant < experiment.data.variants.length)) {
-				assignment.variables = experiment.variables.get(assignment.variant);
+			if ((experiment != null) && (assignment.variant >= 0)
+					&& (assignment.variant < experiment.variants.length)) {
+				final VariantVariables variant = experiment.variants[assignment.variant];
+				assignment.variables = variant.variables;
+				assignment.exactNumbers = variant.exactNumbers;
 			}
 
 			final Assignment reused = reuseExposedRuleAssignment(experiment, cached, assignment);
@@ -2270,7 +2473,8 @@ public class Context implements Closeable {
 		// lookups never re-parse the JSON and an invalid string is logged once per refresh.
 		AudienceMatcher.ParsedRules assignmentRules;
 		Experiment[] holdouts;
-		List<Map<String, Object>> variables;
+		// One entry per variant, in variant order.
+		VariantVariables[] variants;
 		Map<String, ContextCustomFieldValue> customFieldValues;
 		// Assigned in setData under dataLock_ write: carried over from the previous index while the
 		// switchback identity is unchanged, otherwise a fresh value. Unused for unit experiments.
@@ -2279,6 +2483,21 @@ public class Context implements Closeable {
 		// Paths are null when the map is missing, empty or unreadable: the legacy path.
 		String[] switchbackSourceTypes;
 		SwitchbackAttributePath[] switchbackSourcePaths;
+	}
+
+	// A variant's parsed variables, and its top-level numbers as the exact BigDecimal/BigInteger written in the config
+	// JSON (parsed once with the data for typed reads, see exactVariable; empty unless a variable parsed as a Double).
+	private static final class VariantVariables {
+		static final VariantVariables EMPTY = new VariantVariables(Collections.<String, Object> emptyMap(),
+				Collections.<String, Object> emptyMap());
+
+		final Map<String, Object> variables;
+		final Map<String, Object> exactNumbers;
+
+		VariantVariables(final Map<String, Object> variables, final Map<String, Object> exactNumbers) {
+			this.variables = variables;
+			this.exactNumbers = exactNumbers;
+		}
 	}
 
 	private static class ContextCustomFieldValue {
@@ -2316,7 +2535,7 @@ public class Context implements Closeable {
 		return applicable.toArray(new Experiment[0]);
 	}
 
-	private void setData(final ContextData data) {
+	private void setData(final ContextPayload data) {
 		if (data == null) {
 			throw new IllegalArgumentException("Context data cannot be null");
 		}
@@ -2343,51 +2562,52 @@ public class Context implements Closeable {
 				contextExperiment.switchbackSourceTypes = SwitchbackServing.sourceTypes(experiment.switchbackClusters);
 				contextExperiment.switchbackSourcePaths = SwitchbackServing.sourcePaths(experiment.switchbackClusters);
 			}
-			contextExperiment.variables = new ArrayList<Map<String, Object>>(
-					experiment.variants != null ? experiment.variants.length : 0);
+			contextExperiment.variants = new VariantVariables[experiment.variants != null
+					? experiment.variants.length
+					: 0];
+			Arrays.fill(contextExperiment.variants, VariantVariables.EMPTY);
 
-			if (experiment.variants != null)
-				for (final ExperimentVariant variant : experiment.variants) {
-					if ((variant.config != null) && !variant.config.isEmpty()) {
-						try {
-							final Map<String, Object> variables = variableParser_.parse(this, experiment.name,
-									variant.name,
-									variant.config);
-							if (variables != null) {
-								for (final String key : variables.keySet()) {
-									List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
-									if (keyExperimentVariables == null) {
-										keyExperimentVariables = new ArrayList<ContextExperiment>();
-										indexVariables.put(key, keyExperimentVariables);
-									}
-
-									int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
-											new Comparator<ContextExperiment>() {
-												@Override
-												public int compare(ContextExperiment a, ContextExperiment b) {
-													return Integer.valueOf(a.data.id).compareTo(b.data.id);
-												}
-											});
-
-									if (at < 0) {
-										at = -at - 1;
-										keyExperimentVariables.add(at, contextExperiment);
-									}
+			for (int v = 0; v < contextExperiment.variants.length; ++v) {
+				final ExperimentVariant variant = experiment.variants[v];
+				if ((variant.config != null) && !variant.config.isEmpty()) {
+					try {
+						final Map<String, Object> variables = variableParser_.parse(this, experiment.name,
+								variant.name,
+								variant.config);
+						if (variables != null) {
+							for (final String key : variables.keySet()) {
+								List<ContextExperiment> keyExperimentVariables = indexVariables.get(key);
+								if (keyExperimentVariables == null) {
+									keyExperimentVariables = new ArrayList<ContextExperiment>();
+									indexVariables.put(key, keyExperimentVariables);
 								}
 
-								contextExperiment.variables.add(variables);
-							} else {
-								contextExperiment.variables.add(Collections.<String, Object> emptyMap());
+								int at = Collections.binarySearch(keyExperimentVariables, contextExperiment,
+										new Comparator<ContextExperiment>() {
+											@Override
+											public int compare(ContextExperiment a, ContextExperiment b) {
+												return Integer.valueOf(a.data.id).compareTo(b.data.id);
+											}
+										});
+
+								if (at < 0) {
+									at = -at - 1;
+									keyExperimentVariables.add(at, contextExperiment);
+								}
 							}
-						} catch (Exception e) {
-							log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
-									experiment.name, variant.name, e.getMessage());
-							contextExperiment.variables.add(Collections.<String, Object> emptyMap());
+
+							// Only a fractional or exponent number (parsed as a Double) can differ from what was
+							// written; integers are exact already, so most configs are never parsed twice.
+							contextExperiment.variants[v] = new VariantVariables(variables, hasDouble(variables)
+									? Json.readExactNumbers(variant.config)
+									: Collections.<String, Object> emptyMap());
 						}
-					} else {
-						contextExperiment.variables.add(Collections.<String, Object> emptyMap());
+					} catch (Exception e) {
+						log.error("Failed to parse variant config for experiment '{}', variant '{}': {}",
+								experiment.name, variant.name, e.getMessage());
 					}
 				}
+			}
 
 			contextExperiment.customFieldValues = new HashMap<String, ContextCustomFieldValue>();
 			if (experiment.customFieldValues != null) {
@@ -2459,17 +2679,16 @@ public class Context implements Closeable {
 		}
 	}
 
-	public Throwable readyError() {
-		return readyError_;
-	}
-
-	private void setDataFailed(final Throwable exception) {
+	private void setDataFailed(Throwable exception) {
+		while ((exception instanceof CompletionException) && (exception.getCause() != null)) {
+			exception = exception.getCause();
+		}
 		try {
 			dataLock_.writeLock().lock();
 			index_ = new HashMap<String, ContextExperiment>();
 			indexVariables_ = new HashMap<String, List<ContextExperiment>>();
 			holdoutsById_ = new HashMap<Integer, Experiment>();
-			data_ = new ContextData();
+			data_ = new ContextPayload();
 			failed_ = true;
 			readyError_ = exception;
 		} finally {
@@ -2477,19 +2696,22 @@ public class Context implements Closeable {
 		}
 	}
 
-	private void logEvent(ContextEventLogger.EventType event, Object data) {
-		if (eventLogger_ != null) {
-			eventLogger_.handleEvent(this, event, data);
+	// The raw hook runs first and may throw (the engine is written to tolerate that); typed listeners are isolated.
+	private void logEvent(ContextEventLogger.EventType event, @Nullable Object data) {
+		try {
+			if (eventLogger_ != null) {
+				eventLogger_.handleEvent(this, event, data);
+			}
+		} finally {
+			events_.dispatch(this, event, data);
 		}
 	}
 
 	private void logError(Throwable error) {
-		if (eventLogger_ != null) {
-			while (error instanceof CompletionException) {
-				error = error.getCause();
-			}
-			eventLogger_.handleEvent(this, ContextEventLogger.EventType.Error, error);
+		while ((error instanceof CompletionException) && (error.getCause() != null)) {
+			error = error.getCause();
 		}
+		logEvent(ContextEventLogger.EventType.Error, error);
 	}
 
 	// Variables available to audience filters and assignment-rule conditions. The configured application and
@@ -2501,7 +2723,7 @@ public class Context implements Closeable {
 		final Map<String, Object> attrs = new HashMap<String, Object>(attributes_.size() + 2);
 		putIfNotEmpty(attrs, "application", applicationName_);
 		putIfNotEmpty(attrs, "environment", environmentName_);
-		for (final Attribute attr : attributes_) {
+		for (final AttributePayload attr : attributes_) {
 			attrs.put(attr.name, attr.value);
 		}
 		return attrs;
@@ -2509,11 +2731,11 @@ public class Context implements Closeable {
 
 	// The collector only applies attributes with setAt <= an event's time, so system attributes are stamped with the
 	// earliest event in the batch to describe every event in it.
-	private static long earliestEventAt(final Exposure[] exposures, final GoalAchievement[] achievements,
+	private static long earliestEventAt(final ExposurePayload[] exposures, final GoalAchievement[] achievements,
 			final long publishedAt) {
 		long earliest = publishedAt;
 		if (exposures != null) {
-			for (final Exposure exposure : exposures) {
+			for (final ExposurePayload exposure : exposures) {
 				earliest = Math.min(earliest, exposure.exposedAt);
 			}
 		}
@@ -2528,24 +2750,24 @@ public class Context implements Closeable {
 	// System attributes the user has set themselves are left out: the collector picks the latest setAt among
 	// duplicates, which would otherwise let a synthetic value supersede the user's. Called with contextLock_ held.
 	// Only sdk_name and sdk_version are published here; the collector adds application and environment server-side.
-	private Attribute[] buildPublishAttributes(final long systemSetAt) {
-		final List<Attribute> attrs = new ArrayList<Attribute>(attributes_.size() + 2);
+	private AttributePayload[] buildPublishAttributes(final long systemSetAt) {
+		final List<AttributePayload> attrs = new ArrayList<AttributePayload>(attributes_.size() + 2);
 		if (includeSystemAttributes_) {
 			final Set<String> userNames = new HashSet<String>();
-			for (final Attribute attr : attributes_) {
+			for (final AttributePayload attr : attributes_) {
 				userNames.add(attr.name);
 			}
 			addSystemAttribute(attrs, userNames, "sdk_name", SdkVersion.NAME, systemSetAt);
 			addSystemAttribute(attrs, userNames, "sdk_version", SdkVersion.VERSION, systemSetAt);
 		}
 		attrs.addAll(attributes_);
-		return attrs.isEmpty() ? null : attrs.toArray(new Attribute[0]);
+		return attrs.isEmpty() ? null : attrs.toArray(new AttributePayload[0]);
 	}
 
-	private static void addSystemAttribute(final List<Attribute> attrs, final Set<String> userNames,
+	private static void addSystemAttribute(final List<AttributePayload> attrs, final Set<String> userNames,
 			final String name, final Object value, final long setAt) {
 		if (value != null && !userNames.contains(name)) {
-			attrs.add(new Attribute(name, value, setAt));
+			attrs.add(new AttributePayload(name, value, setAt));
 		}
 	}
 
@@ -2571,7 +2793,8 @@ public class Context implements Closeable {
 	private final long publishDelay_;
 	private final long refreshInterval_;
 	private final ContextEventHandler eventHandler_;
-	private final ContextEventLogger eventLogger_;
+	private final @Nullable ContextEventLogger eventLogger_;
+	private final EventDispatcher events_;
 	private final ContextDataProvider dataProvider_;
 	private final VariableParser variableParser_;
 	private final AudienceMatcher audienceMatcher_;
@@ -2581,7 +2804,7 @@ public class Context implements Closeable {
 	private volatile Throwable readyError_;
 
 	private final ReentrantReadWriteLock dataLock_ = new ReentrantReadWriteLock();
-	private volatile ContextData data_;
+	private volatile ContextPayload data_;
 	private Map<String, ContextExperiment> index_;
 	private Map<String, List<ContextExperiment>> indexVariables_;
 	// Id-keyed view of the holdouts installed by the most recent setData, used to resolve a
@@ -2614,10 +2837,10 @@ public class Context implements Closeable {
 	private final Map<HoldoutCacheKey, HoldoutAssignment> holdoutAssignmentCache_ = new HashMap<HoldoutCacheKey, HoldoutAssignment>();
 
 	private final ReentrantLock eventLock_ = new ReentrantLock();
-	private final ArrayList<Exposure> exposures_ = new ArrayList<Exposure>();
+	private final ArrayList<ExposurePayload> exposures_ = new ArrayList<ExposurePayload>();
 	private final ArrayList<GoalAchievement> achievements_ = new ArrayList<GoalAchievement>();
 
-	private final List<Attribute> attributes_ = new ArrayList<Attribute>();
+	private final List<AttributePayload> attributes_ = new ArrayList<AttributePayload>();
 	private final Map<String, Integer> overrides_;
 	private final Map<String, Integer> cassignments_;
 	private final AtomicInteger attrsSeq_ = new AtomicInteger(0);

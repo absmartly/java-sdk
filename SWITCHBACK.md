@@ -10,9 +10,9 @@ Collector. There are no hashed buckets.
 
 ## Minimum SDK version
 
-Switchback serving is supported from the first release after **1.8.0** of `core-api` and
-`core-api-java6`. Every release up to and including 1.8.0 lacks it. This change does not bump
-`VERSION`; the release that ships it sets the number.
+Switchback serving is supported in every 2.x release. No 1.x release has it yet: 1.9.0 shipped without it, and
+whether the 1.x line gets it depends on where `release/1.x` is cut (an owner decision: from `v1.9.0`, or from the
+last 1.x commit on `main`, which has it).
 
 ## What the SDK does
 
@@ -23,7 +23,7 @@ every experiment a unit experiment for this SDK.
 | Field | Meaning |
 | --- | --- |
 | `randomizationType` | `"unit"` or `"switchback"`. Absent means `"unit"`. |
-| `switchbackClusters` | Object mapping a unit type name to an attribute path, in the order served (unit type id ascending). The order is significant and is preserved, so `Experiment.equals` and `hashCode` compare it: two experiments whose maps hold the same entries in a different order are not equal. |
+| `switchbackClusters` | Object mapping a unit type name to an attribute path, in the order served (unit type id ascending). The order is significant and is preserved, so the SDK's experiment comparison takes it into account: two experiments whose maps hold the same entries in a different order are not equal. |
 | `switchbackClusterValues` | Allowed cluster values. Null or empty (`[]`) allows every value, as in the Collector: it serves an experiment that has no allow-list rows with this field absent, and builds its filter only for a non-empty list. |
 | `switchbackStartAt` | Grid start (anchor), epoch milliseconds. Must be hour aligned and in `[0, 10000-01-01T00:00:00Z)`; see *Anchor*. Null before the experiment starts. |
 | `switchbackPeriodMs` | Period length in milliseconds. |
@@ -39,7 +39,7 @@ unreadable `switchbackClusters`: a context unit of that type then gets an inelig
 ### Serving
 
 For a switchback experiment, at `now` (one reading of the context's `Clock`, taken by the
-`getTreatment`, `peekTreatment`, `getVariableValue` or `peekVariableValue` call):
+`treatment`, `peekTreatment`, `variable`/`variableValue` or `peekVariable`/`peekVariableValue` call):
 
 1. **Linked units.** The *sources* are the `switchbackClusters` entries in their declared order. If
    the context has no unit of any source's type, the experiment does not apply: variant 0, nothing
@@ -124,12 +124,12 @@ asserts this table.
 | Custom assignment | Custom | true | true | false | false | true | false | false |
 | Schedule draw (unit: split draw) | Drawn | true | true | false | false | false | false | false |
 
-Through `getTreatment`, every row records exactly one exposure. The switchback-only branches record
+Through `treatment`, every row records exactly one exposure. The switchback-only branches record
 none: an ineligible cluster, a pre-start or unservable draw, and a switchback with no linked unit.
 
-Through a variable key (`getVariableValue`, `peekVariableValue`), a strict-mismatched switchback,
+Through a variable key (`variable`/`variableValue`, `peekVariable`/`peekVariableValue`), a strict-mismatched switchback,
 like a unit experiment, is not assigned, so the next experiment that declares the key wins. Only
-`getVariableValue` exposes the winning experiment; `peekVariableValue` records nothing. With no
+`variable`/`variableValue` exposes the winning experiment; `peekVariable`/`peekVariableValue` records nothing. With no
 other experiment on the key, the default value is returned and nothing is recorded.
 
 ### Anchor
@@ -198,7 +198,7 @@ one just installed. Retention is by index, not recency: a cache hit does not pro
 eviction.
 
 - In normal forward time, the SDK emits one exposure per experiment and period. After a
-  boundary, the next `getTreatment`/`getVariableValue` returns the new period's variant and emits a
+  boundary, the next `treatment` or variable read returns the new period's variant and emits a
   new exposure.
 - Dedup holds only within the retained window. Re-entering an evicted period emits one more
   exposure for that period. This happens when the clock moves back by two or more periods, or a

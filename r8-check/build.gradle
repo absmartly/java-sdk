@@ -1,0 +1,126 @@
+description = """Minifies a probe app with R8 against the shaded core-api jar and runs it, so the consumer rules in
+META-INF/proguard are tested by what they keep, not only by being present."""
+
+apply plugin: "java"
+
+repositories {
+	google()
+}
+
+configurations {
+	r8
+	probeRuntime
+}
+
+def r8Version = "8.5.35"
+def kotlinVersion = "1.9.24"
+
+dependencies {
+	implementation project(path: ":core-api", configuration: "shadow")
+	implementation files(project(":core-api").tasks.named("shadowJar"))
+	implementation group: "org.jetbrains.kotlin", name: "kotlin-stdlib", version: kotlinVersion
+	r8 group: "com.android.tools", name: "r8", version: r8Version
+	probeRuntime group: "org.slf4j", name: "slf4j-api", version: slf4jVersion
+	probeRuntime group: "org.jspecify", name: "jspecify", version: jspecifyVersion
+	probeRuntime group: "org.jetbrains.kotlin", name: "kotlin-stdlib", version: kotlinVersion
+}
+
+def minified = layout.buildDirectory.file("r8/probe-minified.jar")
+
+def minify = tasks.register("minifyProbe", JavaExec) {
+	dependsOn jar, project(":core-api").tasks.named("shadowJar")
+	def shaded = project(":core-api").tasks.named("shadowJar").flatMap { it.archiveFile }
+	def rules = file("src/main/r8/probe.pro")
+	inputs.files(jar, shaded, rules, configurations.probeRuntime)
+	outputs.file(minified)
+	classpath = configurations.r8
+	mainClass = "com.android.tools.r8.R8"
+	doFirst {
+		minified.get().asFile.parentFile.mkdirs()
+		args = [
+			"--classfile",
+			"--release",
+			"--output",
+			minified.get().asFile.path,
+			"--lib",
+			System.getProperty("java.home"),
+			"--pg-conf",
+			rules.path,
+			jar.archiveFile.get().asFile.path,
+			shaded.get().asFile.path
+		] +
+		configurations.probeRuntime.files.collect { it.path }
+	}
+}
+
+// An Android-like library, stricter than Android: only java.base and java.logging. Like Android it has no
+// java.net.http, java.beans.ConstructorProperties or java.beans.Transient (Android does have parts of java.sql and
+// java.beans; this has none), so the shipped rules must silence every reference to them or R8 fails.
+def androidLike = layout.buildDirectory.dir("r8/android-like")
+def extractAndroidLike = tasks.register("extractAndroidLikeLibrary") {
+	inputs.property("javaHome", System.getProperty("java.home"))
+	outputs.dir(androidLike)
+	doLast {
+		def javaHome = new File(System.getProperty("java.home"))
+		def jmodTool = new File(javaHome, "bin/jmod")
+		def out = androidLike.get().asFile
+		project.delete(out)
+		out.mkdirs()
+		[
+			"java.base",
+			"java.logging"
+		].each { module ->
+			def dir = new File(out, module)
+			project.exec {
+				commandLine jmodTool.path, "extract", "--dir", dir.path, new File(javaHome, "jmods/${module}.jmod").path
+			}
+		}
+	}
+}
+
+def minifyAndroid = tasks.register("minifyProbeForAndroid", JavaExec) {
+	dependsOn jar, extractAndroidLike, project(":core-api").tasks.named("shadowJar")
+	def shaded = project(":core-api").tasks.named("shadowJar").flatMap { it.archiveFile }
+	def rules = file("src/main/r8/probe.pro")
+	def output = layout.buildDirectory.file("r8/probe-android.jar")
+	inputs.files(jar, shaded, rules, configurations.probeRuntime)
+	outputs.file(output)
+	classpath = configurations.r8
+	mainClass = "com.android.tools.r8.R8"
+	doFirst {
+		output.get().asFile.parentFile.mkdirs()
+		def libs = [
+			"java.base",
+			"java.logging"
+		].collectMany { module ->
+			[
+				"--lib",
+				new File(androidLike.get().asFile, "${module}/classes").path
+			]
+		}
+		args = [
+			"--classfile",
+			"--release",
+			"--output",
+			output.get().asFile.path
+		] + libs + [
+			"--pg-conf",
+			rules.path,
+			jar.archiveFile.get().asFile.path,
+			shaded.get().asFile.path
+		] +
+		configurations.probeRuntime.files.collect { it.path }
+	}
+}
+
+// Runs the minified probe alone on the class path: everything it needs must have survived R8.
+def runMinified = tasks.register("runMinifiedProbe", JavaExec) {
+	dependsOn minify
+	classpath = files(minified)
+	mainClass = "com.absmartly.r8check.Probe"
+}
+
+// R8 comes from Google's Maven repository: pass -PskipR8Check to build offline.
+if (!project.hasProperty("skipR8Check")) {
+	check.dependsOn runMinified, minifyAndroid
+}

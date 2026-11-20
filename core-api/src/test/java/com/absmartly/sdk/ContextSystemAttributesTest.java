@@ -13,12 +13,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
+import com.absmartly.sdk.internal.Clock;
 import com.absmartly.sdk.internal.SdkVersion;
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.Attribute;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Exposure;
-import com.absmartly.sdk.json.PublishEvent;
+import com.absmartly.sdk.internal.json.AttributePayload;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.ExposurePayload;
+import com.absmartly.sdk.internal.json.PublishPayload;
 
 class ContextSystemAttributesTest extends TestUtils {
 	static final String EXP = "exp_test_ab";
@@ -37,13 +37,13 @@ class ContextSystemAttributesTest extends TestUtils {
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 	}
 
-	ContextData audienceData() {
+	ContextPayload audienceData() {
 		final byte[] bytes = getResourceBytes("audience_context.json");
-		return new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+		return new TestJson.Deserializer().deserialize(bytes, 0, bytes.length);
 	}
 
-	ContextData strictAudience(String filter) {
-		final ContextData data = audienceData();
+	ContextPayload strictAudience(String filter) {
+		final ContextPayload data = audienceData();
 		data.experiments[0].audienceStrict = true;
 		data.experiments[0].trafficSplit = new double[]{0.0, 1.0};
 		data.experiments[0].split = new double[]{0.0, 1.0};
@@ -56,19 +56,7 @@ class ContextSystemAttributesTest extends TestUtils {
 	}
 
 	Client client(String application, String environment, String applicationVersion) {
-		final ClientConfig config = ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("key");
-		if (application != null) {
-			config.setApplication(application);
-		}
-		if (environment != null) {
-			config.setEnvironment(environment);
-		}
-		if (applicationVersion != null) {
-			config.setApplicationVersion(applicationVersion);
-		}
-		return Client.create(config, mock(HTTPClient.class));
+		return TestJson.client(application, environment, applicationVersion);
 	}
 
 	// Client.create rejects an empty application or environment, so a context whose client has no such configuration
@@ -81,25 +69,25 @@ class ContextSystemAttributesTest extends TestUtils {
 		return client;
 	}
 
-	Context createContext(ContextConfig config, Client client, ContextData data) {
-		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
+	Context createContext(TestContextConfig config, Client client, ContextPayload data) {
+		return TestContexts.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, null, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
 				client);
 	}
 
-	ContextConfig config() {
-		return ContextConfig.create().setUnit("session_id", SESSION_ID);
+	TestContextConfig config() {
+		return TestContextConfig.create().setUnit("session_id", SESSION_ID);
 	}
 
-	PublishEvent publishAndCapture(Context context) {
+	PublishPayload publishAndCapture(Context context) {
 		context.publish();
-		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
+		final ArgumentCaptor<PublishPayload> captor = ArgumentCaptor.forClass(PublishPayload.class);
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), captor.capture());
 		return captor.getValue();
 	}
 
-	Exposure exposureOf(PublishEvent event, String name) {
-		for (final Exposure exposure : event.exposures) {
+	ExposurePayload exposureOf(PublishPayload event, String name) {
+		for (final ExposurePayload exposure : event.exposures) {
 			if (exposure.name.equals(name)) {
 				return exposure;
 			}
@@ -111,10 +99,10 @@ class ContextSystemAttributesTest extends TestUtils {
 	void strictAudienceOnEnvironmentMatches() {
 		final Context context = createContext(config(), client(),
 				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals("large", context.getVariableValue("banner.size", "default"));
+		assertEquals(1, context.treatment(EXP));
+		assertEquals("large", context.variableValue("banner.size", "default"));
 
-		final Exposure exposure = exposureOf(publishAndCapture(context), EXP);
+		final ExposurePayload exposure = exposureOf(publishAndCapture(context), EXP);
 		assertEquals(1, exposure.variant);
 		assertFalse(exposure.audienceMismatch);
 	}
@@ -123,9 +111,9 @@ class ContextSystemAttributesTest extends TestUtils {
 	void strictAudienceOnApplicationMatches() {
 		final Context context = createContext(config(), client(),
 				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"website\"}]}]"));
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
-		final Exposure exposure = exposureOf(publishAndCapture(context), EXP);
+		final ExposurePayload exposure = exposureOf(publishAndCapture(context), EXP);
 		assertFalse(exposure.audienceMismatch);
 	}
 
@@ -133,9 +121,9 @@ class ContextSystemAttributesTest extends TestUtils {
 	void strictAudienceOnAnotherEnvironmentGivesVariantZero() {
 		final Context context = createContext(config(), client(),
 				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]"));
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final Exposure exposure = exposureOf(publishAndCapture(context), EXP);
+		final ExposurePayload exposure = exposureOf(publishAndCapture(context), EXP);
 		assertEquals(0, exposure.variant);
 		assertTrue(exposure.audienceMismatch);
 	}
@@ -144,7 +132,7 @@ class ContextSystemAttributesTest extends TestUtils {
 	void strictAudienceOnAnotherApplicationGivesVariantZero() {
 		final Context context = createContext(config(), client(),
 				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"mobile\"}]}]"));
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 		assertTrue(exposureOf(publishAndCapture(context), EXP).audienceMismatch);
 	}
 
@@ -153,12 +141,12 @@ class ContextSystemAttributesTest extends TestUtils {
 		final Context staging = createContext(config(), client(),
 				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]"));
 		staging.setAttribute("environment", "staging");
-		assertEquals(1, staging.getTreatment(EXP));
+		assertEquals(1, staging.treatment(EXP));
 
 		final Context production = createContext(config(), client(),
 				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
 		production.setAttribute("environment", "staging");
-		assertEquals(0, production.getTreatment(EXP));
+		assertEquals(0, production.treatment(EXP));
 		assertTrue(exposureOf(publishAndCapture(production), EXP).audienceMismatch);
 	}
 
@@ -170,7 +158,7 @@ class ContextSystemAttributesTest extends TestUtils {
 
 		context.setAttribute("environment", "staging");
 		assertEquals(1, context.peekTreatment(EXP));
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		assertFalse(exposureOf(publishAndCapture(context), EXP).audienceMismatch);
 	}
 
@@ -181,7 +169,7 @@ class ContextSystemAttributesTest extends TestUtils {
 		assertEquals(1, context.peekTreatment(EXP));
 
 		context.setAttribute("environment", "staging");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 		assertTrue(exposureOf(publishAndCapture(context), EXP).audienceMismatch);
 	}
 
@@ -190,7 +178,7 @@ class ContextSystemAttributesTest extends TestUtils {
 		final Context context = createContext(config(), client(),
 				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"mobile\"}]}]"));
 		context.setAttribute("application", "mobile");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
@@ -198,11 +186,11 @@ class ContextSystemAttributesTest extends TestUtils {
 		for (final String environment : new String[]{null, ""}) {
 			final Context matching = createContext(config(), stubbedClient("website", environment, null),
 					strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
-			assertEquals(0, matching.getTreatment(EXP));
+			assertEquals(0, matching.treatment(EXP));
 
 			final Context absent = createContext(config(), stubbedClient("website", environment, null),
 					strictAudience("[{\"null\":{\"var\":\"environment\"}}]"));
-			assertEquals(1, absent.getTreatment(EXP));
+			assertEquals(1, absent.treatment(EXP));
 			final Map<String, Object> attrs = absent.buildAttributesMapForTest();
 			assertEquals(1, attrs.size());
 			assertEquals("website", attrs.get("application"));
@@ -213,7 +201,7 @@ class ContextSystemAttributesTest extends TestUtils {
 	void missingApplicationLeavesKeyOutOfMap() {
 		final Context context = createContext(config(), stubbedClient("", "production", null),
 				strictAudience("[{\"eq\":[{\"var\":\"application\"},{\"value\":\"\"}]}]"));
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 		final Map<String, Object> attrs = context.buildAttributesMapForTest();
 		assertEquals(1, attrs.size());
 		assertEquals("production", attrs.get("environment"));
@@ -226,7 +214,7 @@ class ContextSystemAttributesTest extends TestUtils {
 				final Context context = createContext(config().setIncludeSystemAttributes(include),
 						client("website", "production", version),
 						strictAudience("[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"" + version + "\"}]}]"));
-				assertEquals(0, context.getTreatment(EXP));
+				assertEquals(0, context.treatment(EXP));
 				final Map<String, Object> attrs = context.buildAttributesMapForTest();
 				assertEquals(2, attrs.size());
 				assertEquals("website", attrs.get("application"));
@@ -240,73 +228,73 @@ class ContextSystemAttributesTest extends TestUtils {
 		final Context context = createContext(config(), client("website", "production", "1.2.3"),
 				strictAudience("[{\"eq\":[{\"var\":\"app_version\"},{\"value\":\"1.2.3\"}]}]"));
 		context.setAttribute("app_version", "1.2.3");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void systemAttributesAreNotReportedAsUserAttributes() {
 		final Context context = createContext(config(), client(), audienceData());
 		context.setAttribute("age", 25);
-		final Map<String, Object> attrs = context.getAttributes();
+		final Map<String, Object> attrs = context.attributes();
 		assertEquals(1, attrs.size());
 		assertEquals(25, attrs.get("age"));
-		assertNull(context.getAttribute("environment"));
-		assertNull(context.getAttribute("application"));
+		assertNull(context.attribute("environment"));
+		assertNull(context.attribute("application"));
 	}
 
 	@Test
 	void evaluationUsesSystemAttributesRegardlessOfFlag() {
 		assertEquals(1, createContext(config(), client(),
-				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).getTreatment(EXP));
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).treatment(EXP));
 		assertEquals(1, createContext(config().setIncludeSystemAttributes(false), client(),
-				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).getTreatment(EXP));
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).treatment(EXP));
 		assertEquals(1, createContext(config().setIncludeSystemAttributes(true), client(),
-				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).getTreatment(EXP));
+				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]")).treatment(EXP));
 	}
 
 	@Test
 	void publishAddsNothingByDefault() {
-		final ContextConfig config = config();
-		assertFalse(config.getIncludeSystemAttributes());
+		final TestContextConfig config = config();
+		assertFalse(config.toOptions().includeSystemAttributes());
 
 		final Context context = createContext(config, client("website", "production", "2.4.1"), audienceData());
 		context.setAttribute("age", 21);
 		context.track("goal", null);
 
-		final PublishEvent event = publishAndCapture(context);
-		assertArrayEquals(new Attribute[]{new Attribute("age", 21, clock.millis())}, event.attributes);
+		final PublishPayload event = publishAndCapture(context);
+		assertArrayEquals(new AttributePayload[]{new AttributePayload("age", 21, clock.millis())}, event.attributes);
 	}
 
 	@Test
 	void publishPrependsOnlySdkAttributesWhenEnabled() {
-		final ContextConfig config = config().setIncludeSystemAttributes(true);
+		final TestContextConfig config = config().setIncludeSystemAttributes(true);
 		final Context context = createContext(config, client("website", "production", "2.4.1"),
 				strictAudience("[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}]"));
 		context.setAttribute("age", 21);
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
-		final PublishEvent event = publishAndCapture(context);
+		final PublishPayload event = publishAndCapture(context);
 		final long now = clock.millis();
-		assertArrayEquals(new Attribute[]{
-				new Attribute("sdk_name", "absmartly-java-sdk", now),
-				new Attribute("sdk_version", SdkVersion.VERSION, now),
-				new Attribute("age", 21, now),
+		assertArrayEquals(new AttributePayload[]{
+				new AttributePayload("sdk_name", "absmartly-java-sdk", now),
+				new AttributePayload("sdk_version", SdkVersion.VERSION, now),
+				new AttributePayload("age", 21, now),
 		}, event.attributes);
 	}
 
 	@Test
 	void publishWithoutClientSendsOnlySdkAttributes() {
-		final ContextConfig config = config().setIncludeSystemAttributes(true);
+		final TestContextConfig config = config().setIncludeSystemAttributes(true);
 		final Context context = createContext(config, null, audienceData());
 		context.setAttribute("age", 21);
 		context.track("goal", null);
 
-		final PublishEvent event = publishAndCapture(context);
+		final PublishPayload event = publishAndCapture(context);
 		final long now = clock.millis();
-		assertArrayEquals(new Attribute[]{
-				new Attribute("sdk_name", "absmartly-java-sdk", now),
-				new Attribute("sdk_version", SdkVersion.VERSION, now),
-				new Attribute("age", 21, now),
+		assertArrayEquals(new AttributePayload[]{
+				new AttributePayload("sdk_name", "absmartly-java-sdk", now),
+				new AttributePayload("sdk_version", SdkVersion.VERSION, now),
+				new AttributePayload("age", 21, now),
 		}, event.attributes);
 	}
 
@@ -328,8 +316,8 @@ class ContextSystemAttributesTest extends TestUtils {
 	@Test
 	void publishStampsSystemAttributesWithEarliestEvent() {
 		final MovingClock movingClock = new MovingClock(100);
-		final ContextConfig config = config().setIncludeSystemAttributes(true);
-		final Context context = Context.create(movingClock, config, scheduler,
+		final TestContextConfig config = config().setIncludeSystemAttributes(true);
+		final Context context = TestContexts.create(movingClock, config, scheduler,
 				CompletableFuture.completedFuture(audienceData()), dataProvider, eventHandler, null,
 				new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
 				client("website", "production", "2.4.1"));
@@ -337,15 +325,15 @@ class ContextSystemAttributesTest extends TestUtils {
 		movingClock.now = 250;
 		context.track("goal", null);
 		movingClock.now = 200;
-		context.getTreatment(EXP);
+		context.treatment(EXP);
 		movingClock.now = 300;
 
-		final PublishEvent event = publishAndCapture(context);
+		final PublishPayload event = publishAndCapture(context);
 		assertEquals(300, event.publishedAt);
-		assertArrayEquals(new Attribute[]{
-				new Attribute("sdk_name", "absmartly-java-sdk", 200),
-				new Attribute("sdk_version", SdkVersion.VERSION, 200),
-				new Attribute("age", 21, 100),
+		assertArrayEquals(new AttributePayload[]{
+				new AttributePayload("sdk_name", "absmartly-java-sdk", 200),
+				new AttributePayload("sdk_version", SdkVersion.VERSION, 200),
+				new AttributePayload("age", 21, 100),
 		}, event.attributes);
 	}
 
@@ -358,20 +346,20 @@ class ContextSystemAttributesTest extends TestUtils {
 			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 
 			final MovingClock movingClock = new MovingClock(100);
-			final ContextConfig config = config().setIncludeSystemAttributes(true);
-			final Context context = Context.create(movingClock, config, scheduler,
+			final TestContextConfig config = config().setIncludeSystemAttributes(true);
+			final Context context = TestContexts.create(movingClock, config, scheduler,
 					CompletableFuture.completedFuture(audienceData()), dataProvider, eventHandler, null,
 					new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
 					client("website", "production", "2.4.1"));
 			context.setAttribute("sdk_name", "custom-wrapper");
 			movingClock.now = eventAt;
-			context.getTreatment(EXP);
+			context.treatment(EXP);
 			movingClock.now = 300;
 
-			final PublishEvent event = publishAndCapture(context);
-			assertArrayEquals(new Attribute[]{
-					new Attribute("sdk_version", SdkVersion.VERSION, eventAt),
-					new Attribute("sdk_name", "custom-wrapper", 100),
+			final PublishPayload event = publishAndCapture(context);
+			assertArrayEquals(new AttributePayload[]{
+					new AttributePayload("sdk_version", SdkVersion.VERSION, eventAt),
+					new AttributePayload("sdk_name", "custom-wrapper", 100),
 			}, event.attributes);
 		}
 	}
@@ -382,24 +370,24 @@ class ContextSystemAttributesTest extends TestUtils {
 			reset(eventHandler);
 			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 
-			final ContextConfig config = config().setIncludeSystemAttributes(include);
+			final TestContextConfig config = config().setIncludeSystemAttributes(include);
 			final Context context = createContext(config, client("website", "production", "2.4.1"), audienceData());
 			context.setAttribute("app_version", "9.9.9");
 			context.setAttribute("application", "mobile");
 			context.setAttribute("environment", "staging");
 			context.track("goal", null);
 
-			final PublishEvent event = publishAndCapture(context);
+			final PublishPayload event = publishAndCapture(context);
 			final long now = clock.millis();
-			final Attribute[] user = new Attribute[]{
-					new Attribute("app_version", "9.9.9", now),
-					new Attribute("application", "mobile", now),
-					new Attribute("environment", "staging", now),
+			final AttributePayload[] user = new AttributePayload[]{
+					new AttributePayload("app_version", "9.9.9", now),
+					new AttributePayload("application", "mobile", now),
+					new AttributePayload("environment", "staging", now),
 			};
 			if (include) {
-				assertArrayEquals(new Attribute[]{
-						new Attribute("sdk_name", "absmartly-java-sdk", now),
-						new Attribute("sdk_version", SdkVersion.VERSION, now),
+				assertArrayEquals(new AttributePayload[]{
+						new AttributePayload("sdk_name", "absmartly-java-sdk", now),
+						new AttributePayload("sdk_version", SdkVersion.VERSION, now),
 						user[0], user[1], user[2],
 				}, event.attributes);
 			} else {
@@ -410,7 +398,7 @@ class ContextSystemAttributesTest extends TestUtils {
 
 	@Test
 	void noClientWarningIsLoggedOncePerJvm() {
-		final ContextConfig config = ContextConfig.create().setIncludeSystemAttributes(true);
+		final TestContextConfig config = TestContextConfig.create().setIncludeSystemAttributes(true);
 		createContext(config, null, audienceData());
 		assertTrue(Context.noClientWarningLogged());
 		createContext(config, null, audienceData());

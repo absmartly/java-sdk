@@ -15,11 +15,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
-import com.absmartly.sdk.java.time.Clock;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Experiment;
-import com.absmartly.sdk.json.Exposure;
-import com.absmartly.sdk.json.PublishEvent;
+import com.absmartly.sdk.internal.Clock;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.Experiment;
+import com.absmartly.sdk.internal.json.ExposurePayload;
+import com.absmartly.sdk.internal.json.PublishPayload;
 
 class ContextAssignmentRulesTest extends TestUtils {
 	static final String EXP = "exp_test_abc";
@@ -59,13 +59,13 @@ class ContextAssignmentRulesTest extends TestUtils {
 		return "{\"rules\":[" + String.join(",", rules) + "]}";
 	}
 
-	ContextData data(String assignmentRules) {
+	ContextPayload data(String assignmentRules) {
 		return data(assignmentRules, "{\"filter\":[{\"value\":true}]}", false);
 	}
 
-	ContextData data(String assignmentRules, String audience, boolean audienceStrict) {
+	ContextPayload data(String assignmentRules, String audience, boolean audienceStrict) {
 		final byte[] bytes = getResourceBytes("context.json");
-		final ContextData data = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+		final ContextPayload data = new TestJson.Deserializer().deserialize(bytes, 0, bytes.length);
 		for (final Experiment experiment : data.experiments) {
 			if (experiment.name.equals(EXP)) {
 				experiment.assignmentRules = assignmentRules;
@@ -77,38 +77,30 @@ class ContextAssignmentRulesTest extends TestUtils {
 	}
 
 	Client client() {
-		final ClientConfig config = ClientConfig.create()
-				.setEndpoint("https://localhost/v1")
-				.setAPIKey("key")
-				.setApplication("website")
-				.setApplicationVersion("2.4.1");
-		if (environment != null) {
-			config.setEnvironment(environment);
-		}
-		return environment != null ? Client.create(config, mock(HTTPClient.class)) : null;
+		return environment != null ? TestJson.client("website", environment, "2.4.1") : null;
 	}
 
-	Context create(ContextConfig config, ContextData data) {
-		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
+	Context create(TestContextConfig config, ContextPayload data) {
+		return TestContexts.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, null, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()),
 				client());
 	}
 
-	Context create(ContextData data) {
-		return create(ContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), data);
+	Context create(ContextPayload data) {
+		return create(TestContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), data);
 	}
 
-	Context createWithoutSession(ContextData data) {
-		return create(ContextConfig.create().setUnit("user_id", USER_ID), data);
+	Context createWithoutSession(ContextPayload data) {
+		return create(TestContextConfig.create().setUnit("user_id", USER_ID), data);
 	}
 
-	List<Exposure> publishedExposures(Context context) {
+	List<ExposurePayload> publishedExposures(Context context) {
 		context.publish();
-		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
+		final ArgumentCaptor<PublishPayload> captor = ArgumentCaptor.forClass(PublishPayload.class);
 		verify(eventHandler, Mockito.timeout(5000).times(1)).publish(any(), captor.capture());
-		final List<Exposure> result = new ArrayList<Exposure>();
+		final List<ExposurePayload> result = new ArrayList<ExposurePayload>();
 		if (captor.getValue().exposures != null) {
-			for (final Exposure exposure : captor.getValue().exposures) {
+			for (final ExposurePayload exposure : captor.getValue().exposures) {
 				if (exposure.name.equals(EXP)) {
 					result.add(exposure);
 				}
@@ -117,9 +109,9 @@ class ContextAssignmentRulesTest extends TestUtils {
 		return result;
 	}
 
-	final ContextData rulesData = data(rules(assign("US Internal Users", US, "[]", 1)));
-	final ContextData envScopedData = data(rules(assign("Production Only", US, "[\"production\"]", 1)));
-	final ContextData strictData = data(rules(assign("US Users", US, "[]", 1)),
+	final ContextPayload rulesData = data(rules(assign("US Internal Users", US, "[]", 1)));
+	final ContextPayload envScopedData = data(rules(assign("Production Only", US, "[\"production\"]", 1)));
+	final ContextPayload strictData = data(rules(assign("US Users", US, "[]", 1)),
 			"{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}", true);
 
 	@Test
@@ -131,14 +123,14 @@ class ContextAssignmentRulesTest extends TestUtils {
 						"\"name\":\"exp_test_ab\",\"assignmentRules\":\"{\\\"rules\\\":[{\\\"type\\\":\\\"assign\\\",\\\"variant\\\":1}]}\",");
 		assertTrue(json.contains("\"assignmentRules\":{\"rules\":[]}"));
 		final byte[] bytes = json.getBytes(utf8);
-		final ContextData parsed = new DefaultContextDataDeserializer().deserialize(bytes, 0, bytes.length);
+		final ContextPayload parsed = new TestJson.Deserializer().deserialize(bytes, 0, bytes.length);
 		assertNotNull(parsed);
 
 		final Context context = create(parsed);
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
-		assertEquals(1, context.getTreatment("exp_test_ab"));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
+		assertEquals(1, context.treatment("exp_test_ab"));
 	}
 
 	@Test
@@ -154,16 +146,16 @@ class ContextAssignmentRulesTest extends TestUtils {
 				return delegate.deserialize(bytes, offset, length);
 			}
 		};
-		final Context context = Context.create(clock,
-				ContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), scheduler,
+		final Context context = TestContexts.create(clock,
+				TestContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), scheduler,
 				CompletableFuture.completedFuture(data(throwing)), dataProvider, eventHandler, null,
 				new DefaultVariableParser(), new AudienceMatcher(deserializer), client());
 
 		assertTrue(context.isReady());
 		assertFalse(context.isFailed());
 		context.setAttribute("country", "US");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
-		assertEquals(1, context.getTreatment("exp_test_ab"));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
+		assertEquals(1, context.treatment("exp_test_ab"));
 	}
 
 	// Rules are parsed once when the data is installed, not on every lookup after an attribute
@@ -172,14 +164,14 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void rulesAreParsedOncePerDataInstall() {
 		final DefaultAudienceDeserializer deserializer = spy(new DefaultAudienceDeserializer());
 		final String invalid = "{\"rules\":[";
-		final Context context = Context.create(clock,
-				ContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), scheduler,
+		final Context context = TestContexts.create(clock,
+				TestContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID), scheduler,
 				CompletableFuture.completedFuture(data(invalid, null, false)), dataProvider, eventHandler, null,
 				new DefaultVariableParser(), new AudienceMatcher(deserializer), client());
 
 		for (int i = 0; i < 20; ++i) {
 			context.setAttribute("n", i);
-			assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+			assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 		}
 		verify(deserializer, times(1)).deserialize(eq(invalid.getBytes(java.nio.charset.Charset.forName("UTF-8"))),
 				eq(0), eq(invalid.length()));
@@ -189,7 +181,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void ruleVariantWhenRuleMatches() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
@@ -197,19 +189,19 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
 		context.setCustomAssignment(EXP, 2);
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 
 		context.setAttribute("country", "GB");
-		assertEquals(2, context.getTreatment(EXP));
+		assertEquals(2, context.treatment(EXP));
 	}
 
 	@Test
 	void normalAssignmentWhenNoRuleMatches() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "GB");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 	}
 
 	@Test
@@ -217,7 +209,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 		environment = "staging";
 		final Context context = create(envScopedData);
 		context.setAttribute("country", "US");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 	}
 
 	@Test
@@ -225,7 +217,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 		environment = null;
 		final Context context = create(envScopedData);
 		context.setAttribute("country", "US");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 	}
 
 	@Test
@@ -233,14 +225,14 @@ class ContextAssignmentRulesTest extends TestUtils {
 		environment = null;
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void matchesRuleForEnvironment() {
 		final Context context = create(envScopedData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
@@ -248,9 +240,9 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
 		context.setOverride(EXP, 0);
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final Exposure exposure = publishedExposures(context).get(0);
+		final ExposurePayload exposure = publishedExposures(context).get(0);
 		assertEquals(0, exposure.variant);
 		assertTrue(exposure.overridden);
 		assertFalse(exposure.ruleOverride);
@@ -261,12 +253,12 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void overrideFlagsWhenOverrideMatchesRuleVariant() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		context.setOverride(EXP, 1);
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
-		final List<Exposure> exposures = publishedExposures(context);
-		final Exposure last = exposures.get(exposures.size() - 1);
+		final List<ExposurePayload> exposures = publishedExposures(context);
+		final ExposurePayload last = exposures.get(exposures.size() - 1);
 		assertEquals(1, last.variant);
 		assertTrue(last.overridden);
 		assertFalse(last.ruleOverride);
@@ -276,19 +268,21 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void exposureFlagsWhenRuleMatches() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
-		assertEquals(new Exposure(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
-				true), publishedExposures(context).get(0));
+		assertEquals(
+				new ExposurePayload(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
+						true),
+				publishedExposures(context).get(0));
 	}
 
 	@Test
 	void exposureFlagsWhenNoRuleMatches() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "GB");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 
-		assertEquals(new Exposure(2, EXP, "session_id", NORMAL_VARIANT, clock.millis(), true, true, false, false,
+		assertEquals(new ExposurePayload(2, EXP, "session_id", NORMAL_VARIANT, clock.millis(), true, true, false, false,
 				false, false, false), publishedExposures(context).get(0));
 	}
 
@@ -296,9 +290,9 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void ruleSkipsAudienceAndAudienceStrict() {
 		final Context context = create(strictData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
-		final Exposure exposure = publishedExposures(context).get(0);
+		final ExposurePayload exposure = publishedExposures(context).get(0);
 		assertFalse(exposure.audienceMismatch);
 		assertTrue(exposure.ruleOverride);
 		assertFalse(exposure.assigned);
@@ -308,9 +302,9 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void audienceStrictWhenNoRuleMatches() {
 		final Context context = create(strictData);
 		context.setAttribute("country", "GB");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final Exposure exposure = publishedExposures(context).get(0);
+		final ExposurePayload exposure = publishedExposures(context).get(0);
 		assertTrue(exposure.audienceMismatch);
 		assertFalse(exposure.ruleOverride);
 	}
@@ -319,56 +313,56 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void ruleWonAssignmentIsNotInvalidatedByAudienceChanges() {
 		final Context context = create(strictData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		context.setAttribute("age", 30);
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
 	void invalidatesWhenRuleStartsMatching() {
 		final Context context = create(rulesData);
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void invalidatesWhenRuleStopsMatching() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		context.setAttribute("country", "GB");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 	}
 
 	@Test
 	void invalidatesWhenRuleSwitchesVariant() {
 		final Context context = create(data(rules(assign("US", US, "[]", 1), assign("GB", GB, "[]", 2))));
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		context.setAttribute("country", "GB");
-		assertEquals(2, context.getTreatment(EXP));
+		assertEquals(2, context.treatment(EXP));
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void keepsCacheWhenUnrelatedAttributeChanges() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		context.setAttribute("unrelated", true);
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
 	void variableValueFollowsRuleVariant() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals("blue", context.getVariableValue("button.color", "default"));
+		assertEquals(1, context.treatment(EXP));
+		assertEquals("blue", context.variableValue("button.color", "default"));
 		assertEquals("blue", context.peekVariableValue("button.color", "default"));
 	}
 
@@ -376,10 +370,10 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void variableValueFromRuleWithoutTreatmentCall() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals("blue", context.getVariableValue("button.color", "default"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals("blue", context.variableValue("button.color", "default"));
+		assertEquals(1, context.pendingEventCount());
 
-		final List<Exposure> exposures = publishedExposures(context);
+		final List<ExposurePayload> exposures = publishedExposures(context);
 		assertEquals(1, exposures.size());
 		assertEquals(1, exposures.get(0).variant);
 		assertTrue(exposures.get(0).ruleOverride);
@@ -391,18 +385,18 @@ class ContextAssignmentRulesTest extends TestUtils {
 	// exposure. The rule is an explicit author decision taking effect mid-session.
 	@Test
 	void refreshAddingRulesToExposedAssignmentReExposesWithRuleVariant() {
-		final ContextData before = data(null);
-		final ContextData after = data(rules(assign("US", US, "[]", 1)));
+		final ContextPayload before = data(null);
+		final ContextPayload after = data(rules(assign("US", US, "[]", 1)));
 		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(after));
 
 		final Context context = create(before);
 		context.setAttribute("country", "US");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 
 		context.refresh();
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
-		final List<Exposure> exposures = publishedExposures(context);
+		final List<ExposurePayload> exposures = publishedExposures(context);
 		assertEquals(2, exposures.size());
 		assertEquals(NORMAL_VARIANT, exposures.get(0).variant);
 		assertFalse(exposures.get(0).ruleOverride);
@@ -416,21 +410,21 @@ class ContextAssignmentRulesTest extends TestUtils {
 				+ "{\"eq\":[{\"var\":\"plan\"},{\"value\":\"pro\"}]}]}";
 		final Context context = create(data(rules(assign("US Pro", conditions, "[]", 1))));
 		context.setAttribute("country", "US");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 		context.setAttribute("plan", "pro");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void outOfRangeRuleVariantsFallBack() {
-		assertEquals(NORMAL_VARIANT, create(data(rules(assign("OOB", "null", "[]", 99)))).getTreatment(EXP));
-		assertEquals(NORMAL_VARIANT, create(data(rules(assign("Neg", "null", "[]", -1)))).getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, create(data(rules(assign("OOB", "null", "[]", 99)))).treatment(EXP));
+		assertEquals(NORMAL_VARIANT, create(data(rules(assign("Neg", "null", "[]", -1)))).treatment(EXP));
 	}
 
 	@Test
 	void outOfRangeRuleVariantIsNotARuleOverride() {
 		final Context context = create(data(rules(assign("OOB", "null", "[]", 99))));
-		context.getTreatment(EXP);
+		context.treatment(EXP);
 		assertFalse(publishedExposures(context).get(0).ruleOverride);
 	}
 
@@ -438,27 +432,27 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void outOfRangeChangesDoNotInvalidate() {
 		final Context context = create(data(rules(assign("US", US, "[]", 99), assign("GB", GB, "[]", 100))));
 		context.setAttribute("country", "US");
-		final int first = context.getTreatment(EXP);
+		final int first = context.treatment(EXP);
 		context.setAttribute("country", "GB");
-		assertEquals(first, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(first, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
 	void ruleForcingControlSetsRuleOverride() {
 		final Context context = create(data(rules(assign("Force Control", US, "[]", 0))));
 		context.setAttribute("country", "US");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final Exposure exposure = publishedExposures(context).get(0);
+		final ExposurePayload exposure = publishedExposures(context).get(0);
 		assertEquals(0, exposure.variant);
 		assertTrue(exposure.ruleOverride);
 	}
 
 	@Test
 	void invalidRulesJsonFallsBack() {
-		assertEquals(NORMAL_VARIANT, create(data("not json")).getTreatment(EXP));
-		assertEquals(NORMAL_VARIANT, create(data("")).getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, create(data("not json")).treatment(EXP));
+		assertEquals(NORMAL_VARIANT, create(data("")).treatment(EXP));
 	}
 
 	@Test
@@ -468,15 +462,15 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final String envRule = rules(assign("Production",
 				"{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}", "[]", 1));
 
-		final ContextConfig enabled = ContextConfig.create().setUnit("session_id", SESSION_ID)
+		final TestContextConfig enabled = TestContextConfig.create().setUnit("session_id", SESSION_ID)
 				.setIncludeSystemAttributes(true);
-		final ContextConfig disabled = ContextConfig.create().setUnit("session_id", SESSION_ID);
-		final ContextConfig explicitlyOff = ContextConfig.create().setUnit("session_id", SESSION_ID)
+		final TestContextConfig disabled = TestContextConfig.create().setUnit("session_id", SESSION_ID);
+		final TestContextConfig explicitlyOff = TestContextConfig.create().setUnit("session_id", SESSION_ID)
 				.setIncludeSystemAttributes(false);
 		for (final String rules : new String[]{appRule, envRule}) {
-			assertEquals(1, create(enabled, data(rules)).getTreatment(EXP));
-			assertEquals(1, create(disabled, data(rules)).getTreatment(EXP));
-			assertEquals(1, create(explicitlyOff, data(rules)).getTreatment(EXP));
+			assertEquals(1, create(enabled, data(rules)).treatment(EXP));
+			assertEquals(1, create(disabled, data(rules)).treatment(EXP));
+			assertEquals(1, create(explicitlyOff, data(rules)).treatment(EXP));
 		}
 	}
 
@@ -486,9 +480,9 @@ class ContextAssignmentRulesTest extends TestUtils {
 				"{\"semver_gte\":[{\"var\":\"app_version\"},{\"value\":\"2.4.0\"}]}", "[]", 1));
 
 		for (final boolean include : new boolean[]{false, true}) {
-			final ContextConfig config = ContextConfig.create().setUnit("session_id", SESSION_ID)
+			final TestContextConfig config = TestContextConfig.create().setUnit("session_id", SESSION_ID)
 					.setIncludeSystemAttributes(include);
-			assertEquals(NORMAL_VARIANT, create(config, data(versionRule)).getTreatment(EXP));
+			assertEquals(NORMAL_VARIANT, create(config, data(versionRule)).treatment(EXP));
 		}
 	}
 
@@ -498,10 +492,10 @@ class ContextAssignmentRulesTest extends TestUtils {
 				"{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}", "[]", 1));
 
 		final Context context = create(data(envRule));
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 
 		context.setAttribute("environment", "staging");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
@@ -512,38 +506,38 @@ class ContextAssignmentRulesTest extends TestUtils {
 
 		final Context production = create(data(productionScoped));
 		production.setAttribute("environment", "staging");
-		assertEquals(1, production.getTreatment(EXP));
+		assertEquals(1, production.treatment(EXP));
 
 		final Context staging = create(data(stagingScoped));
 		staging.setAttribute("environment", "staging");
-		assertEquals(NORMAL_VARIANT, staging.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, staging.treatment(EXP));
 	}
 
 	@Test
 	void refreshWithChangedRulesInvalidates() {
-		final ContextData before = data(rules(assign("US", US, "[]", 1)));
-		final ContextData after = data(rules(assign("US", US, "[]", 0)));
+		final ContextPayload before = data(rules(assign("US", US, "[]", 1)));
+		final ContextPayload after = data(rules(assign("US", US, "[]", 0)));
 		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(after));
 
 		final Context context = create(before);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
 		context.refresh();
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 	}
 
 	@Test
 	void refreshRemovingRulesInvalidates() {
-		final ContextData after = data(null);
+		final ContextPayload after = data(null);
 		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(after));
 
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
 		context.refresh();
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 	}
 
 	@Test
@@ -552,25 +546,25 @@ class ContextAssignmentRulesTest extends TestUtils {
 
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
 		context.refresh();
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
 	void refreshWithEquivalentRulesTextKeepsVariant() {
-		final ContextData after = data(rules(assign("US renamed", US, "[]", 1)));
+		final ContextPayload after = data(rules(assign("US renamed", US, "[]", 1)));
 		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(after));
 
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
 		context.refresh();
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	// With these seeds the unit hashes to ~0.748 with the experiment seed, so "70/10/20" lands on variant 1,
@@ -579,24 +573,26 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void splitHashesUnitWithExperimentSeed() {
 		final Context context = create(data(rules(split(US, "70/10/20"))));
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void splitAssignsOnlyNonZeroShare() {
 		final Context context = create(data(rules(split(US, "0/100/0"))));
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void splitExposureFlags() {
 		final Context context = create(data(rules(split(US, "0/100/0"))));
 		context.setAttribute("country", "US");
-		context.getTreatment(EXP);
+		context.treatment(EXP);
 
-		assertEquals(new Exposure(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
-				true), publishedExposures(context).get(0));
+		assertEquals(
+				new ExposurePayload(2, EXP, "session_id", 1, clock.millis(), false, true, false, false, false, false,
+						true),
+				publishedExposures(context).get(0));
 	}
 
 	@Test
@@ -604,14 +600,14 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final Context context = create(data(rules(split(US, "0/100/0"))));
 		context.setAttribute("country", "US");
 		context.setCustomAssignment(EXP, 2);
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 	}
 
 	@Test
 	void splitNotCoveringEveryVariantFallsBackWithoutLaterRules() {
 		final Context context = create(data(rules(split(US, "0/100"), assign("Everyone", "null", "[]", 1))));
 		context.setAttribute("country", "US");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 	}
 
 	@Test
@@ -632,8 +628,8 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertEquals(1, context.peekTreatment(EXP));
 
 		context.setUnit("session_id", SESSION_ID);
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
@@ -653,13 +649,13 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void exposedSplitWithoutUnitStaysPinned() {
 		final Context context = createWithoutSession(data(rules(split(US, "0/100/0"))));
 		context.setAttribute("country", "US");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
 		context.setUnit("session_id", SESSION_ID);
 		context.setAttribute("unrelated", true);
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final List<Exposure> exposures = publishedExposures(context);
+		final List<ExposurePayload> exposures = publishedExposures(context);
 		assertEquals(1, exposures.size());
 		assertEquals(0, exposures.get(0).variant);
 	}
@@ -671,16 +667,16 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final Context context = createWithoutSession(
 				data(rules(assign("GB", GB, "[]", 0), split(US, "0/100/0"))));
 		context.setAttribute("country", "GB");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
 		context.setAttribute("country", "US");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
 		context.setUnit("session_id", SESSION_ID);
-		assertEquals(0, context.getTreatment(EXP));
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final List<Exposure> exposures = publishedExposures(context);
+		final List<ExposurePayload> exposures = publishedExposures(context);
 		assertEquals(1, exposures.size());
 		assertEquals(0, exposures.get(0).variant);
 		assertTrue(exposures.get(0).ruleOverride);
@@ -691,15 +687,15 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final Context context = createWithoutSession(
 				data(rules(split(US, "0/100/0"), assign("GB", GB, "[]", 0))));
 		context.setAttribute("country", "US");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
 		context.setAttribute("country", "GB");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
 		context.setUnit("session_id", SESSION_ID);
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final List<Exposure> exposures = publishedExposures(context);
+		final List<ExposurePayload> exposures = publishedExposures(context);
 		assertEquals(1, exposures.size());
 		assertEquals(0, exposures.get(0).variant);
 	}
@@ -708,9 +704,9 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void ruleVariantDroppedWhenExperimentIsRemoved() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 
-		final ContextData without = data(rules(assign("US Internal Users", US, "[]", 1)));
+		final ContextPayload without = data(rules(assign("US Internal Users", US, "[]", 1)));
 		final List<Experiment> remaining = new ArrayList<Experiment>();
 		for (final Experiment experiment : without.experiments) {
 			if (!experiment.name.equals(EXP)) {
@@ -722,7 +718,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 		context.refresh();
 
 		assertEquals(0, context.peekTreatment(EXP));
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 	}
 
 	@Test
@@ -730,19 +726,19 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final Context context = createWithoutSession(data(rules(split(US, "0/100/0"))));
 		context.setAttribute("country", "US");
 		context.setCustomAssignment(EXP, 2);
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
 		context.setUnit("session_id", SESSION_ID);
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 
-		final List<Exposure> exposures = publishedExposures(context);
+		final List<ExposurePayload> exposures = publishedExposures(context);
 		assertEquals(1, exposures.size());
 		assertEquals(0, exposures.get(0).variant);
 	}
 
 	@Test
 	void splitWithoutUnitOnFullOnExperiment() {
-		final ContextData fullOn = data(rules(split("null", "0/100/0")));
+		final ContextPayload fullOn = data(rules(split("null", "0/100/0")));
 		for (final Experiment experiment : fullOn.experiments) {
 			if (experiment.name.equals(EXP)) {
 				experiment.fullOnVariant = 2;
@@ -757,7 +753,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 
 	@Test
 	void splitWithUnitTypeMissingFromExperiment() {
-		final ContextData noUnitType = data(rules(split("null", "0/100/0")));
+		final ContextPayload noUnitType = data(rules(split("null", "0/100/0")));
 		for (final Experiment experiment : noUnitType.experiments) {
 			if (experiment.name.equals(EXP)) {
 				experiment.unitType = null;
@@ -780,7 +776,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 	@Test
 	void splitReResolutionOnReadPathWithoutCachedHash() {
 		final Context context = create(
-				ContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID),
+				TestContextConfig.create().setUnit("session_id", SESSION_ID).setUnit("user_id", USER_ID),
 				data(rules(assign("GB", GB, "[]", 0), split(US, "0/100/0"))));
 		context.setAttribute("country", "GB");
 		assertEquals(0, context.peekTreatment(EXP));
@@ -790,7 +786,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 
 	@Test
 	void ruleOnExperimentWithoutVariants() {
-		final ContextData data = data(rules(assign("Any", "null", "[]", 0)));
+		final ContextPayload data = data(rules(assign("Any", "null", "[]", 0)));
 		for (final Experiment experiment : data.experiments) {
 			if (experiment.name.equals(EXP)) {
 				experiment.variants = null;
@@ -803,17 +799,17 @@ class ContextAssignmentRulesTest extends TestUtils {
 	void customAssignmentChangeKeepsRuleWonCache() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		context.setCustomAssignment(EXP, 0);
-		assertEquals(1, context.getTreatment(EXP));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.treatment(EXP));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
 	void customFieldAndVariableKeysUnaffected() {
 		final Context context = create(rulesData);
 		context.setAttribute("country", "US");
-		final Map<String, List<String>> keys = context.getVariableKeys();
+		final Map<String, List<String>> keys = context.variableKeys();
 		assertTrue(keys.containsKey("button.color"));
 	}
 
@@ -857,7 +853,7 @@ class ContextAssignmentRulesTest extends TestUtils {
 									context.setAttribute("country", (i % 3 == 0) ? "US" : (i % 3 == 1) ? "GB" : "PT");
 								} else {
 									final int variant = (i % 2 == 0) ? context.peekTreatment(EXP)
-											: context.getTreatment(EXP);
+											: context.treatment(EXP);
 									if (variant != 0 && variant != 1 && variant != NORMAL_VARIANT) {
 										throw new AssertionError("unexpected variant " + variant);
 									}
@@ -879,15 +875,15 @@ class ContextAssignmentRulesTest extends TestUtils {
 		assertNull(failure.get());
 
 		context.setAttribute("country", "US");
-		assertEquals(1, context.getTreatment(EXP));
+		assertEquals(1, context.treatment(EXP));
 		context.setAttribute("country", "GB");
-		assertEquals(0, context.getTreatment(EXP));
+		assertEquals(0, context.treatment(EXP));
 		context.setAttribute("country", "PT");
-		assertEquals(NORMAL_VARIANT, context.getTreatment(EXP));
+		assertEquals(NORMAL_VARIANT, context.treatment(EXP));
 
-		final List<Exposure> exposures = publishedExposures(context);
+		final List<ExposurePayload> exposures = publishedExposures(context);
 		assertFalse(exposures.isEmpty());
-		for (final Exposure exposure : exposures) {
+		for (final ExposurePayload exposure : exposures) {
 			if (exposure.ruleOverride) {
 				assertTrue(exposure.variant == 0 || exposure.variant == 1, exposure.toString());
 				assertFalse(exposure.assigned, exposure.toString());
@@ -919,12 +915,12 @@ class ContextAssignmentRulesTest extends TestUtils {
 			});
 			setter.start();
 			start.countDown();
-			final int first = context.getTreatment(EXP);
+			final int first = context.treatment(EXP);
 			setter.join(10000);
-			final int second = context.getTreatment(EXP);
+			final int second = context.treatment(EXP);
 
 			assertEquals(first, second);
-			final List<Exposure> exposures = publishedExposures(context);
+			final List<ExposurePayload> exposures = publishedExposures(context);
 			assertEquals(1, exposures.size());
 			assertEquals(first, exposures.get(0).variant);
 		}

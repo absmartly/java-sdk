@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -35,13 +36,12 @@ import com.absmartly.sdk.SwitchbackTestSupport.MutableClock;
 import com.absmartly.sdk.internal.SwitchbackAssigner;
 import com.absmartly.sdk.internal.VariantAssigner;
 import com.absmartly.sdk.internal.hashing.Hashing;
-import com.absmartly.sdk.java.nio.charset.StandardCharsets;
-import com.absmartly.sdk.json.ContextData;
-import com.absmartly.sdk.json.Experiment;
-import com.absmartly.sdk.json.ExperimentApplication;
-import com.absmartly.sdk.json.ExperimentVariant;
-import com.absmartly.sdk.json.Exposure;
-import com.absmartly.sdk.json.PublishEvent;
+import com.absmartly.sdk.internal.json.ContextPayload;
+import com.absmartly.sdk.internal.json.Experiment;
+import com.absmartly.sdk.internal.json.ExperimentApplication;
+import com.absmartly.sdk.internal.json.ExperimentVariant;
+import com.absmartly.sdk.internal.json.ExposurePayload;
+import com.absmartly.sdk.internal.json.PublishPayload;
 
 class ContextSwitchbackTest {
 	static final String UNIT_TYPE = "store_id";
@@ -120,46 +120,48 @@ class ContextSwitchbackTest {
 		return switchback(1, "exp_sb", armCount, periodMs);
 	}
 
-	static ContextData dataOf(Experiment... experiments) {
-		final ContextData data = new ContextData();
+	static ContextPayload dataOf(Experiment... experiments) {
+		final ContextPayload data = new ContextPayload();
 		data.experiments = experiments;
 		return data;
 	}
 
-	Context createContext(Map<String, String> units, ContextData data) {
+	Context createContext(Map<String, String> units, ContextPayload data) {
 		return createContext(units, data, new AudienceMatcher(new DefaultAudienceDeserializer()));
 	}
 
-	Context createContext(Map<String, String> units, ContextData data, AudienceMatcher audienceMatcher) {
-		final ContextConfig config = ContextConfig.create();
+	Context createContext(Map<String, String> units, ContextPayload data, AudienceMatcher audienceMatcher) {
+		final TestContextConfig config = TestContextConfig.create();
 		if (units != null) {
 			config.setUnits(units);
 		}
 		config.setAttribute(CLUSTER_PATH, CLUSTER_KEY);
-		return Context.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
+		return TestContexts.create(clock, config, scheduler, CompletableFuture.completedFuture(data), dataProvider,
 				eventHandler, null, new DefaultVariableParser(), audienceMatcher);
 	}
 
-	Context createContext(ContextData data) {
+	Context createContext(ContextPayload data) {
 		return createContext(TestUtils.mapOf(UNIT_TYPE, UID), data);
 	}
 
-	List<PublishEvent> publishAndCapture(Context context, int expectedPublishes) {
+	List<PublishPayload> publishAndCapture(Context context, int expectedPublishes) {
 		context.publish();
-		final ArgumentCaptor<PublishEvent> captor = ArgumentCaptor.forClass(PublishEvent.class);
+		final ArgumentCaptor<PublishPayload> captor = ArgumentCaptor.forClass(PublishPayload.class);
 		verify(eventHandler, Mockito.timeout(5000).times(expectedPublishes)).publish(Mockito.eq(context),
 				captor.capture());
 		return captor.getAllValues();
 	}
 
-	Exposure[] publishExposures(Context context) {
-		final List<PublishEvent> events = publishAndCapture(context, 1);
-		final Exposure[] exposures = events.get(0).exposures;
-		return (exposures != null) ? exposures : new Exposure[0];
+	ExposurePayload[] publishExposures(Context context) {
+		final List<PublishPayload> events = publishAndCapture(context, 1);
+		final ExposurePayload[] exposures = events.get(0).exposures;
+		return (exposures != null) ? exposures : new ExposurePayload[0];
 	}
 
-	static Exposure exposure(int id, String name, int variant, long exposedAt, boolean assigned, boolean eligible) {
-		return new Exposure(id, name, UNIT_TYPE, variant, exposedAt, assigned, eligible, false, false, false, false);
+	static ExposurePayload exposure(int id, String name, int variant, long exposedAt, boolean assigned,
+			boolean eligible) {
+		return new ExposurePayload(id, name, UNIT_TYPE, variant, exposedAt, assigned, eligible, false, false, false,
+				false);
 	}
 
 	int[] peekSchedule(Context context, String name, long periodMs, int periods) {
@@ -275,19 +277,19 @@ class ContextSwitchbackTest {
 
 		for (final long now : new long[]{ANCHOR, start - 1, start, ANCHOR + HOUR - 1}) {
 			clock.now = now;
-			assertEquals(0, context.getTreatment("exp_aligned"));
-			assertEquals(0, context.getTreatment("exp_unaligned"));
+			assertEquals(0, context.treatment("exp_aligned"));
+			assertEquals(0, context.treatment("exp_unaligned"));
 		}
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.pendingEventCount());
 		for (int i = 1; i < 4; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(EXPECTED_2_ARMS[i - 1], context.getTreatment("exp_aligned"));
-			assertEquals(0, context.getTreatment("exp_unaligned"));
+			assertEquals(EXPECTED_2_ARMS[i - 1], context.treatment("exp_aligned"));
+			assertEquals(0, context.treatment("exp_unaligned"));
 			clock.now = start + i * HOUR;
-			assertEquals(0, context.getTreatment("exp_unaligned"));
+			assertEquals(0, context.treatment("exp_unaligned"));
 		}
 
-		assertArrayEquals(new Exposure[]{
+		assertArrayEquals(new ExposurePayload[]{
 				exposure(1, "exp_aligned", EXPECTED_2_ARMS[0], ANCHOR + HOUR, true, true),
 				exposure(1, "exp_aligned", EXPECTED_2_ARMS[1], ANCHOR + 2 * HOUR, true, true),
 				exposure(1, "exp_aligned", EXPECTED_2_ARMS[2], ANCHOR + 3 * HOUR, true, true),
@@ -313,10 +315,10 @@ class ContextSwitchbackTest {
 			for (final long now : new long[]{0, ANCHOR, ANCHOR + 2 * HOUR + 1, startAt, startAt + HOUR,
 					maxAnchor + DAY}) {
 				clock.now = now;
-				assertEquals(0, context.getTreatment("exp_sb"), "startAt " + startAt + " now " + now);
-				assertEquals(0, context.getVariableValue("sb.arm", -1));
+				assertEquals(0, context.treatment("exp_sb"), "startAt " + startAt + " now " + now);
+				assertEquals(0, context.variableValue("sb.arm", -1));
 			}
-			assertEquals(0, context.getPendingCount(), "startAt " + startAt);
+			assertEquals(0, context.pendingEventCount(), "startAt " + startAt);
 			context.publish();
 			verify(eventHandler, times(0)).publish(any(), any());
 		}
@@ -327,8 +329,8 @@ class ContextSwitchbackTest {
 			experiment.switchbackStartAt = startAt;
 			clock.now = startAt + HOUR;
 			final Context context = createContext(dataOf(experiment));
-			assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"), "startAt " + startAt);
-			assertEquals(1, context.getPendingCount());
+			assertEquals(EXPECTED_2_ARMS[1], context.treatment("exp_sb"), "startAt " + startAt);
+			assertEquals(1, context.pendingEventCount());
 		}
 	}
 
@@ -340,12 +342,12 @@ class ContextSwitchbackTest {
 
 		for (int i = 0; i < 4; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(0, context.getTreatment("exp_sb"));
+			assertEquals(0, context.treatment("exp_sb"));
 			// Variant 0's own config, like any ineligible assignment.
-			assertEquals(0, context.getVariableValue("sb.arm", -1));
+			assertEquals(0, context.variableValue("sb.arm", -1));
 		}
 
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.pendingEventCount());
 	}
 
 	@Test
@@ -353,24 +355,24 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 
 		clock.now = ANCHOR + 10;
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(1, context.pendingEventCount());
 		clock.now = ANCHOR + HOUR - 1;
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
 		assertEquals(EXPECTED_2_ARMS[0], context.peekTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 
 		clock.now = ANCHOR + HOUR;
 		assertEquals(EXPECTED_2_ARMS[1], context.peekTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
-		assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
+		assertEquals(EXPECTED_2_ARMS[1], context.treatment("exp_sb"));
+		assertEquals(2, context.pendingEventCount());
 		clock.now = ANCHOR + HOUR + 30 * 60_000L;
-		assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[1], context.treatment("exp_sb"));
+		assertEquals(2, context.pendingEventCount());
 
-		final Exposure[] exposures = publishExposures(context);
-		assertArrayEquals(new Exposure[]{
+		final ExposurePayload[] exposures = publishExposures(context);
+		assertArrayEquals(new ExposurePayload[]{
 				exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + 10, true, true),
 				exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR, true, true),
 		}, exposures);
@@ -380,17 +382,17 @@ class ContextSwitchbackTest {
 	void variableLookupsFollowThePeriodAndExposeOncePerPeriod() {
 		final Context context = createContext(dataOf(switchback(3, HOUR)));
 
-		assertEquals(TestUtils.mapOf("sb.arm", TestUtils.listOf("exp_sb")), context.getVariableKeys());
-		assertArrayEquals(new String[]{"exp_sb"}, context.getExperiments());
+		assertEquals(TestUtils.mapOf("sb.arm", TestUtils.listOf("exp_sb")), context.variableKeys());
+		assertEquals(java.util.Arrays.asList(new String[]{"exp_sb"}), context.experiments());
 
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
 			assertEquals(EXPECTED_3_ARMS[i], context.peekVariableValue("sb.arm", -1));
-			assertEquals(EXPECTED_3_ARMS[i], context.getVariableValue("sb.arm", -1));
-			assertEquals(EXPECTED_3_ARMS[i], context.getVariableValue("sb.arm", -1));
-			assertEquals(EXPECTED_3_ARMS[i], context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_3_ARMS[i], context.variableValue("sb.arm", -1));
+			assertEquals(EXPECTED_3_ARMS[i], context.variableValue("sb.arm", -1));
+			assertEquals(EXPECTED_3_ARMS[i], context.treatment("exp_sb"));
 		}
-		assertEquals(3, context.getPendingCount());
+		assertEquals(3, context.pendingEventCount());
 	}
 
 	// No unit of a linked type: the experiment does not apply and records nothing. unitType is
@@ -404,15 +406,16 @@ class ContextSwitchbackTest {
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
 			assertEquals(0, context.peekTreatment("exp_sb"));
-			assertEquals(0, context.getTreatment("exp_sb"));
-			assertEquals(-1, context.getVariableValue("sb.arm", -1));
+			assertEquals(0, context.treatment("exp_sb"));
+			assertEquals(-1, context.variableValue("sb.arm", -1));
 		}
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.pendingEventCount());
 
 		// Setting a linked unit later makes the experiment apply.
 		context.setUnit(UNIT_TYPE, UID);
-		assertEquals(EXPECTED_2_ARMS[2], context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[2], ANCHOR + 2 * HOUR, true, true)},
+		assertEquals(EXPECTED_2_ARMS[2], context.treatment("exp_sb"));
+		assertArrayEquals(
+				new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[2], ANCHOR + 2 * HOUR, true, true)},
 				publishExposures(context));
 	}
 
@@ -424,9 +427,9 @@ class ContextSwitchbackTest {
 
 		for (int i = 0; i < 4; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(2, context.getTreatment("exp_sb"));
+			assertEquals(2, context.treatment("exp_sb"));
 		}
-		for (final Exposure exposure : publishExposures(context)) {
+		for (final ExposurePayload exposure : publishExposures(context)) {
 			assertEquals(2, exposure.variant);
 			assertTrue(exposure.fullOn);
 		}
@@ -441,10 +444,10 @@ class ContextSwitchbackTest {
 
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(7, context.getTreatment("exp_override"));
-			assertEquals(2, context.getTreatment("exp_custom"));
+			assertEquals(7, context.treatment("exp_override"));
+			assertEquals(2, context.treatment("exp_custom"));
 		}
-		for (final Exposure exposure : publishExposures(context)) {
+		for (final ExposurePayload exposure : publishExposures(context)) {
 			if (exposure.name.equals("exp_override")) {
 				assertTrue(exposure.overridden);
 				assertEquals(7, exposure.variant);
@@ -474,13 +477,13 @@ class ContextSwitchbackTest {
 
 			clock.now = ANCHOR;
 			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, "store_" + u), dataOf(sb, twin));
-			context.getTreatment("exp_unit");
+			context.treatment("exp_unit");
 			for (int i = 0; i < 4; ++i) {
 				clock.now = ANCHOR + i * HOUR;
-				context.getTreatment("exp_sb");
+				context.treatment("exp_sb");
 			}
 
-			final Exposure[] exposures = publishExposures(context);
+			final ExposurePayload[] exposures = publishExposures(context);
 			assertEquals(5, exposures.length);
 			final boolean twinEligible = exposures[0].eligible;
 			for (int i = 1; i < exposures.length; ++i) {
@@ -508,22 +511,22 @@ class ContextSwitchbackTest {
 		absent.randomizationType = null;
 
 		final Context context = createContext(dataOf(unit, absent));
-		final int variant = context.getTreatment("exp_sb");
-		final int absentVariant = context.getTreatment("exp_absent");
+		final int variant = context.treatment("exp_sb");
+		final int absentVariant = context.treatment("exp_absent");
 		for (int i = 1; i < 6; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(variant, context.getTreatment("exp_sb"));
-			assertEquals(absentVariant, context.getTreatment("exp_absent"));
+			assertEquals(variant, context.treatment("exp_sb"));
+			assertEquals(absentVariant, context.treatment("exp_absent"));
 		}
-		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.pendingEventCount());
 	}
 
 	@Test
 	void refreshInvalidatesWhenGridFieldsChangeButNotForAnalysisOnlyFields() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 10;
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(1, context.pendingEventCount());
 
 		final Experiment burnsChanged = switchback(2, HOUR);
 		burnsChanged.switchbackBurnInDurationMs = 600_000L;
@@ -531,57 +534,57 @@ class ContextSwitchbackTest {
 		burnsChanged.switchbackCarryoverDurationMs = 900_000L;
 		burnsChanged.switchbackEstimand = "other";
 		refreshTo(context, burnsChanged);
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(1, context.pendingEventCount());
 
 		// Same period index 0 under both grids, so only the config comparison can invalidate.
 		final Experiment periodChanged = switchback(2, 2 * HOUR);
 		refreshTo(context, periodChanged);
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(2, context.pendingEventCount());
 
 		final Experiment designChanged = switchback(2, 2 * HOUR);
 		designChanged.switchbackDesignType = "other_design";
 		refreshTo(context, designChanged);
-		context.getTreatment("exp_sb");
-		assertEquals(3, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(3, context.pendingEventCount());
 
 		final Experiment toUnit = switchback(2, 2 * HOUR);
 		toUnit.randomizationType = "unit";
 		refreshTo(context, toUnit);
-		context.getTreatment("exp_sb");
-		assertEquals(4, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(4, context.pendingEventCount());
 
 		final Experiment backToSwitchback = switchback(2, 2 * HOUR);
 		refreshTo(context, backToSwitchback);
-		context.getTreatment("exp_sb");
-		assertEquals(5, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(5, context.pendingEventCount());
 
 		// The cluster map (types, paths and their order) and the allow-list are identity.
 		final Experiment pathChanged = switchback(2, 2 * HOUR);
 		pathChanged.switchbackClusters = clusters(UNIT_TYPE, "'store_key'");
 		refreshTo(context, pathChanged);
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(6, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(6, context.pendingEventCount());
 
 		final Experiment linkAdded = switchback(2, 2 * HOUR);
 		linkAdded.switchbackClusters = clusters(UNIT_TYPE, "'store_key'", "device_id", "city");
 		refreshTo(context, linkAdded);
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(7, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(7, context.pendingEventCount());
 
 		final Experiment linksReordered = switchback(2, 2 * HOUR);
 		linksReordered.switchbackClusters = clusters("device_id", "city", UNIT_TYPE, "'store_key'");
 		refreshTo(context, linksReordered);
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(8, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(8, context.pendingEventCount());
 
 		final Experiment valuesSet = switchback(2, 2 * HOUR);
 		valuesSet.switchbackClusters = linksReordered.switchbackClusters;
 		valuesSet.switchbackClusterValues = new String[]{CLUSTER_KEY};
 		refreshTo(context, valuesSet);
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(9, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(9, context.pendingEventCount());
 
 		// An unrelated unitType edit is not identity: switchbacks never read it.
 		final Experiment unitTypeChanged = switchback(2, 2 * HOUR);
@@ -589,8 +592,8 @@ class ContextSwitchbackTest {
 		unitTypeChanged.switchbackClusterValues = valuesSet.switchbackClusterValues;
 		unitTypeChanged.unitType = "anything";
 		refreshTo(context, unitTypeChanged);
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(9, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(9, context.pendingEventCount());
 	}
 
 	@Test
@@ -599,11 +602,11 @@ class ContextSwitchbackTest {
 		pending.switchbackStartAt = null;
 		final Context context = createContext(dataOf(pending));
 		clock.now = ANCHOR + 10;
-		assertEquals(0, context.getTreatment("exp_sb"));
+		assertEquals(0, context.treatment("exp_sb"));
 
 		refreshTo(context, switchback(2, HOUR));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	// Holdouts never apply to a switchback: a holdout that would hold the unit out neither
@@ -615,17 +618,17 @@ class ContextSwitchbackTest {
 
 		final Experiment covered = switchback(2, HOUR);
 		covered.holdoutIds = new int[]{11};
-		final ContextData data = dataOf(covered);
+		final ContextPayload data = dataOf(covered);
 		data.holdouts = new Experiment[]{holdout};
 
 		final Context context = createContext(data);
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(EXPECTED_2_ARMS[i], context.getTreatment("exp_sb"));
-			assertEquals(EXPECTED_2_ARMS[i], context.getVariableValue("sb.arm", -1));
+			assertEquals(EXPECTED_2_ARMS[i], context.treatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[i], context.variableValue("sb.arm", -1));
 		}
 
-		assertArrayEquals(new Exposure[]{
+		assertArrayEquals(new ExposurePayload[]{
 				exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR, true, true),
 				exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR, true, true),
 				exposure(1, "exp_sb", EXPECTED_2_ARMS[2], ANCHOR + 2 * HOUR, true, true),
@@ -636,8 +639,9 @@ class ContextSwitchbackTest {
 	static final String ASSIGN_VARIANT_2 = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":2}]}";
 
 	// A rule win is published exactly like a unit experiment's: ruleOverride set, assigned false.
-	static Exposure ruleExposure(String name, int variant, long exposedAt) {
-		return new Exposure(1, name, UNIT_TYPE, variant, exposedAt, false, true, false, false, false, false, true);
+	static ExposurePayload ruleExposure(String name, int variant, long exposedAt) {
+		return new ExposurePayload(1, name, UNIT_TYPE, variant, exposedAt, false, true, false, false, false, false,
+				true);
 	}
 
 	// Collector ContextAPISwitchbackTest.assignmentRuleOverridesTheSchedule: the Collector evaluates
@@ -652,14 +656,14 @@ class ContextSwitchbackTest {
 			when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 			clock.now = ANCHOR - 1;
 			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, "user-" + u), dataOf(experiment));
-			assertEquals(1, context.getTreatment("exp_sb"));
-			assertEquals(1, context.getVariableValue("sb.arm", -1));
+			assertEquals(1, context.treatment("exp_sb"));
+			assertEquals(1, context.variableValue("sb.arm", -1));
 			// The rule also beats every period's schedule draw.
 			for (int i = 0; i < 4; ++i) {
 				clock.now = ANCHOR + i * HOUR;
-				assertEquals(1, context.getTreatment("exp_sb"));
+				assertEquals(1, context.treatment("exp_sb"));
 			}
-			final Exposure[] exposures = publishExposures(context);
+			final ExposurePayload[] exposures = publishExposures(context);
 			assertEquals(5, exposures.length);
 			assertEquals(ruleExposure("exp_sb", 1, ANCHOR - 1), exposures[0]);
 			for (int i = 0; i < 4; ++i) {
@@ -685,17 +689,19 @@ class ContextSwitchbackTest {
 		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, "15"),
 				dataOf(fullOn, rules, unalignedRules));
 
-		assertEquals(1, context.getTreatment("sb_full_on"));
-		assertEquals(1, context.getTreatment("sb_rules"));
-		assertEquals(1, context.getTreatment("sb_unaligned_rules"));
-		final Exposure[] exposures = publishExposures(context);
+		assertEquals(1, context.treatment("sb_full_on"));
+		assertEquals(1, context.treatment("sb_rules"));
+		assertEquals(1, context.treatment("sb_unaligned_rules"));
+		final ExposurePayload[] exposures = publishExposures(context);
 		assertEquals(3, exposures.length);
-		assertEquals(new Exposure(1, "sb_full_on", UNIT_TYPE, 1, ANCHOR, true, true, false, true, false, false,
+		assertEquals(new ExposurePayload(1, "sb_full_on", UNIT_TYPE, 1, ANCHOR, true, true, false, true, false, false,
 				false), exposures[0]);
-		assertEquals(new Exposure(2, "sb_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false, false,
+		assertEquals(new ExposurePayload(2, "sb_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false, false,
 				true), exposures[1]);
-		assertEquals(new Exposure(3, "sb_unaligned_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false,
-				false, true), exposures[2]);
+		assertEquals(
+				new ExposurePayload(3, "sb_unaligned_rules", UNIT_TYPE, 1, ANCHOR, false, true, false, false, false,
+						false, true),
+				exposures[2]);
 	}
 
 	// Rules are evaluated only for an eligible cluster: an ineligible cluster stays a silent control
@@ -706,8 +712,8 @@ class ContextSwitchbackTest {
 		experiment.assignmentRules = ASSIGN_VARIANT_1;
 		experiment.switchbackClusterValues = new String[]{"other-store"};
 		final Context context = createContext(dataOf(experiment));
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(0, context.pendingEventCount());
 	}
 
 	// A split rule randomizes over the serving unit (the Collector resets its assigner to the serving
@@ -727,8 +733,9 @@ class ContextSwitchbackTest {
 					SEED_LO);
 			final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, uid, "user_id", "fixed-user"),
 					dataOf(experiment));
-			assertEquals(expected, context.getTreatment("exp_sb"), uid);
-			assertArrayEquals(new Exposure[]{ruleExposure("exp_sb", expected, ANCHOR)}, publishExposures(context),
+			assertEquals(expected, context.treatment("exp_sb"), uid);
+			assertArrayEquals(new ExposurePayload[]{ruleExposure("exp_sb", expected, ANCHOR)},
+					publishExposures(context),
 					uid);
 			ones += expected;
 		}
@@ -744,8 +751,8 @@ class ContextSwitchbackTest {
 		experiment.audienceStrict = true;
 		final Context context = createContext(dataOf(experiment));
 		clock.now = ANCHOR + HOUR;
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR + HOUR)}, publishExposures(context));
+		assertEquals(0, context.treatment("exp_sb"));
+		assertArrayEquals(new ExposurePayload[]{strictMismatchExposure(ANCHOR + HOUR)}, publishExposures(context));
 	}
 
 	// Exact wire form of a switchback strict audience mismatch: assigned=false, audienceMismatch=true,
@@ -759,11 +766,11 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(experiment));
 		assertEquals(1, EXPECTED_2_ARMS[1]);
 		clock.now = ANCHOR + HOUR + 5;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 		clock.now = ANCHOR + HOUR + 9;
 
-		final PublishEvent event = publishAndCapture(context, 1).get(0);
-		final String json = new String(new DefaultContextEventSerializer().serialize(event),
+		final PublishPayload event = publishAndCapture(context, 1).get(0);
+		final String json = new String(new TestJson.Serializer().serialize(event),
 				StandardCharsets.UTF_8);
 		assertEquals("{\"hashed\":true,\"units\":[{\"type\":\"store_id\",\"uid\":\"" + UID_HASH + "\"}],"
 				+ "\"publishedAt\":" + (ANCHOR + HOUR + 9) + ","
@@ -780,8 +787,8 @@ class ContextSwitchbackTest {
 	// An audience the default context never matches (no "tier" attribute).
 	static final String STRICT_GOLD_AUDIENCE = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
 
-	static Exposure strictMismatchExposure(long exposedAt) {
-		return new Exposure(1, "exp_sb", UNIT_TYPE, 0, exposedAt, false, true, false, false, false, true, false);
+	static ExposurePayload strictMismatchExposure(long exposedAt) {
+		return new ExposurePayload(1, "exp_sb", UNIT_TYPE, 0, exposedAt, false, true, false, false, false, true, false);
 	}
 
 	// The audience check comes before the period check (as in the Collector, whose strict branch returns
@@ -793,8 +800,8 @@ class ContextSwitchbackTest {
 		experiment.audienceStrict = true;
 		clock.now = ANCHOR - 1;
 		final Context context = createContext(dataOf(experiment));
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR - 1)}, publishExposures(context));
+		assertEquals(0, context.treatment("exp_sb"));
+		assertArrayEquals(new ExposurePayload[]{strictMismatchExposure(ANCHOR - 1)}, publishExposures(context));
 	}
 
 	// Likewise with an unservable schedule (no anchor): the strict mismatch is recorded.
@@ -806,8 +813,8 @@ class ContextSwitchbackTest {
 		experiment.switchbackStartAt = null;
 		clock.now = ANCHOR + HOUR + 3;
 		final Context context = createContext(dataOf(experiment));
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{strictMismatchExposure(ANCHOR + HOUR + 3)}, publishExposures(context));
+		assertEquals(0, context.treatment("exp_sb"));
+		assertArrayEquals(new ExposurePayload[]{strictMismatchExposure(ANCHOR + HOUR + 3)}, publishExposures(context));
 	}
 
 	// A missing or unreadable cluster map takes the Collector's legacy path, which returns an
@@ -821,8 +828,8 @@ class ContextSwitchbackTest {
 			experiment.switchbackClusters = clusters;
 			clock.now = ANCHOR + HOUR + 3;
 			final Context context = createContext(dataOf(experiment));
-			assertEquals(0, context.getTreatment("exp_sb"), String.valueOf(clusters));
-			assertEquals(0, context.getPendingCount(), String.valueOf(clusters));
+			assertEquals(0, context.treatment("exp_sb"), String.valueOf(clusters));
+			assertEquals(0, context.pendingEventCount(), String.valueOf(clusters));
 		}
 	}
 
@@ -843,13 +850,15 @@ class ContextSwitchbackTest {
 		unit.fullOnVariant = 1;
 		clock.now = ANCHOR + HOUR + 3;
 		final Context context = createContext(dataOf(sb, unit));
-		assertEquals(TestUtils.mapOf("sb.arm", TestUtils.listOf("exp_sb", "exp_unit")), context.getVariableKeys());
+		assertEquals(TestUtils.mapOf("sb.arm", TestUtils.listOf("exp_sb", "exp_unit")), context.variableKeys());
 
 		assertEquals(11, context.peekVariableValue("sb.arm", -1));
-		assertEquals(0, context.getPendingCount());
-		assertEquals(11, context.getVariableValue("sb.arm", -1));
-		assertArrayEquals(new Exposure[]{new Exposure(2, "exp_unit", UNIT_TYPE, 1, ANCHOR + HOUR + 3, true, true,
-				false, true, false, false, false)}, publishExposures(context));
+		assertEquals(0, context.pendingEventCount());
+		assertEquals(11, context.variableValue("sb.arm", -1));
+		assertArrayEquals(
+				new ExposurePayload[]{new ExposurePayload(2, "exp_unit", UNIT_TYPE, 1, ANCHOR + HOUR + 3, true, true,
+						false, true, false, false, false)},
+				publishExposures(context));
 	}
 
 	// Alone on the key, a strict-mismatched switchback yields the default value and records nothing.
@@ -861,8 +870,8 @@ class ContextSwitchbackTest {
 		clock.now = ANCHOR + HOUR + 3;
 		final Context context = createContext(dataOf(sb));
 		assertEquals(-1, context.peekVariableValue("sb.arm", -1));
-		assertEquals(-1, context.getVariableValue("sb.arm", -1));
-		assertEquals(0, context.getPendingCount());
+		assertEquals(-1, context.variableValue("sb.arm", -1));
+		assertEquals(0, context.pendingEventCount());
 	}
 
 	// The branches of the SWITCHBACK.md "Exposure flags" table: every branch an eligible-cluster
@@ -962,19 +971,19 @@ class ContextSwitchbackTest {
 		return flags;
 	}
 
-	static boolean[] exposureFlags(Exposure exposure) {
+	static boolean[] exposureFlags(ExposurePayload exposure) {
 		return new boolean[]{exposure.assigned, exposure.eligible, exposure.overridden, exposure.fullOn,
 				exposure.custom, exposure.audienceMismatch, exposure.ruleOverride};
 	}
 
-	Exposure exposeOnce(Experiment experiment, ParityBranch branch) {
+	ExposurePayload exposeOnce(Experiment experiment, ParityBranch branch) {
 		reset(eventHandler);
 		when(eventHandler.publish(any(), any())).thenReturn(CompletableFuture.<Void> completedFuture(null));
 		branch.configure(experiment);
 		final Context context = createContext(dataOf(experiment));
 		branch.configure(context);
-		context.getTreatment("exp_parity");
-		final Exposure[] exposures = publishExposures(context);
+		context.treatment("exp_parity");
+		final ExposurePayload[] exposures = publishExposures(context);
 		assertEquals(1, exposures.length, branch.name());
 		return exposures[0];
 	}
@@ -993,9 +1002,9 @@ class ContextSwitchbackTest {
 		unit.switchbackClusters = null;
 		unit.switchbackStartAt = null;
 		unit.switchbackPeriodMs = null;
-		final Exposure unitExposure = exposeOnce(unit, branch);
+		final ExposurePayload unitExposure = exposeOnce(unit, branch);
 
-		final Exposure switchbackExposure = exposeOnce(switchback(1, "exp_parity", 3, HOUR), branch);
+		final ExposurePayload switchbackExposure = exposeOnce(switchback(1, "exp_parity", 3, HOUR), branch);
 
 		final boolean[] expected = EXPOSURE_FLAGS.get(branch);
 		assertArrayEquals(expected, exposureFlags(unitExposure), "unit " + branch);
@@ -1022,18 +1031,18 @@ class ContextSwitchbackTest {
 		ineligibleCluster.switchbackClusterValues = new String[]{"other-store"};
 		final Context context = createContext(dataOf(miss, ineligibleCluster));
 		clock.now = ANCHOR + 2 * HOUR + 3;
-		assertEquals(0, context.getTreatment("exp_miss"));
-		assertEquals(0, context.getTreatment("exp_cluster_ineligible"));
-		assertArrayEquals(new Exposure[]{exposure(1, "exp_miss", 0, ANCHOR + 2 * HOUR + 3, true, false)},
+		assertEquals(0, context.treatment("exp_miss"));
+		assertEquals(0, context.treatment("exp_cluster_ineligible"));
+		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_miss", 0, ANCHOR + 2 * HOUR + 3, true, false)},
 				publishExposures(context));
 	}
 
 	@Test
 	void customFieldValuesAndUnitLookupsWork() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
-		assertEquals(UID, context.getUnit(UNIT_TYPE));
-		assertEquals(0, context.getCustomFieldKeys().length);
-		assertEquals(null, context.getCustomFieldValue("exp_sb", "missing"));
+		assertEquals(UID, context.unit(UNIT_TYPE));
+		assertEquals(0, context.customFieldKeys().size());
+		assertEquals(null, context.customFieldValue("exp_sb", "missing"));
 	}
 
 	// Each experiment keeps entries for at most its two most recent periods.
@@ -1042,10 +1051,10 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		for (int i = 0; i < 50; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			context.getTreatment("exp_sb");
+			context.treatment("exp_sb");
 		}
 		assertEquals(2, context.assignmentCacheSizeForTest());
-		assertEquals(50, context.getPendingCount());
+		assertEquals(50, context.pendingEventCount());
 	}
 
 	// unitType on a switchback payload is never used for assignment: the cluster map decides.
@@ -1057,11 +1066,11 @@ class ContextSwitchbackTest {
 				TestUtils.mapOf(UNIT_TYPE, UID, "user_id", "u1"), dataOf(experiment));
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			assertEquals(EXPECTED_2_ARMS[i], context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[i], context.treatment("exp_sb"));
 		}
-		final Exposure[] exposures = publishExposures(context);
+		final ExposurePayload[] exposures = publishExposures(context);
 		assertEquals(3, exposures.length);
-		for (final Exposure exposure : exposures) {
+		for (final ExposurePayload exposure : exposures) {
 			assertEquals(UNIT_TYPE, exposure.unit);
 		}
 	}
@@ -1071,13 +1080,13 @@ class ContextSwitchbackTest {
 	void publishPayloadHasNoNewFields() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 5;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 		clock.now = ANCHOR + HOUR + 7;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 		clock.now = ANCHOR + HOUR + 9;
 
-		final PublishEvent event = publishAndCapture(context, 1).get(0);
-		final String json = new String(new DefaultContextEventSerializer().serialize(event),
+		final PublishPayload event = publishAndCapture(context, 1).get(0);
+		final String json = new String(new TestJson.Serializer().serialize(event),
 				StandardCharsets.UTF_8);
 
 		assertEquals("{\"hashed\":true,\"units\":[{\"type\":\"store_id\",\"uid\":\"" + UID_HASH + "\"}],"
@@ -1104,17 +1113,17 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		final List<Integer> variants = new ArrayList<Integer>();
 		clock.now = ANCHOR;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 		context.publish();
 		clock.now = ANCHOR + 1;
-		context.getTreatment("exp_sb");
-		assertEquals(0, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(0, context.pendingEventCount());
 		clock.now = ANCHOR + HOUR;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 		context.publish();
 
-		for (final PublishEvent event : publishAndCapture(context, 2)) {
-			for (final Exposure exposure : event.exposures) {
+		for (final PublishPayload event : publishAndCapture(context, 2)) {
+			for (final ExposurePayload exposure : event.exposures) {
 				variants.add(exposure.variant);
 			}
 		}
@@ -1130,8 +1139,9 @@ class ContextSwitchbackTest {
 		clock.now = ANCHOR + HOUR;
 		clock.nextRead = ANCHOR + HOUR - 1;
 
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertArrayEquals(
+				new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
 				publishExposures(context));
 	}
 
@@ -1142,15 +1152,16 @@ class ContextSwitchbackTest {
 
 		final Experiment covered = switchback(2, HOUR);
 		covered.holdoutIds = new int[]{11};
-		final ContextData data = dataOf(covered);
+		final ContextPayload data = dataOf(covered);
 		data.holdouts = new Experiment[]{holdout};
 
 		final Context context = createContext(data);
 		clock.now = ANCHOR + HOUR;
 		clock.nextRead = ANCHOR + HOUR - 1;
 
-		assertEquals(EXPECTED_2_ARMS[0], context.getVariableValue("sb.arm", -1));
-		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
+		assertEquals(EXPECTED_2_ARMS[0], context.variableValue("sb.arm", -1));
+		assertArrayEquals(
+				new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true)},
 				publishExposures(context));
 	}
 
@@ -1162,9 +1173,9 @@ class ContextSwitchbackTest {
 		clock.now = ANCHOR + 10;
 		assertEquals(EXPECTED_2_ARMS[0], context.peekTreatment("exp_sb"));
 		clock.now = ANCHOR + 20 * 60_000L;
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
 		assertArrayEquals(
-				new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + 20 * 60_000L, true, true)},
+				new ExposurePayload[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + 20 * 60_000L, true, true)},
 				publishExposures(context));
 	}
 
@@ -1177,8 +1188,8 @@ class ContextSwitchbackTest {
 		clock.now = ANCHOR + HOUR;
 		clock.nextRead = ANCHOR + HOUR - 1;
 
-		final int variant = context.getTreatment("exp_sb");
-		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR, true, true)},
+		final int variant = context.treatment("exp_sb");
+		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_sb", variant, ANCHOR + HOUR, true, true)},
 				publishExposures(context));
 	}
 
@@ -1188,32 +1199,32 @@ class ContextSwitchbackTest {
 	void gridRefreshToALowerIndexExposesOnce() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 99 * HOUR;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 		clock.now = ANCHOR + 100 * HOUR;
-		context.getTreatment("exp_sb");
-		assertEquals(2, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(2, context.pendingEventCount());
 
 		final Experiment restarted = switchback(2, HOUR);
 		restarted.switchbackStartAt = ANCHOR + 100 * HOUR;
 		refreshTo(context, restarted);
 		for (int i = 0; i < 3; ++i) {
-			assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
 		}
-		assertEquals(3, context.getPendingCount());
+		assertEquals(3, context.pendingEventCount());
 	}
 
 	@Test
 	void periodLengthRefreshToALowerIndexExposesOnce() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 100 * HOUR;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 		clock.now = ANCHOR + 101 * HOUR;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 
 		refreshTo(context, switchback(2, 200 * HOUR));
-		context.getTreatment("exp_sb");
-		context.getTreatment("exp_sb");
-		assertEquals(3, context.getPendingCount());
+		context.treatment("exp_sb");
+		context.treatment("exp_sb");
+		assertEquals(3, context.pendingEventCount());
 	}
 
 	// Rewinding the clock across retained periods re-exposes each re-entered evicted period at most
@@ -1223,27 +1234,27 @@ class ContextSwitchbackTest {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		for (int i = 0; i < 3; ++i) {
 			clock.now = ANCHOR + i * HOUR;
-			context.getTreatment("exp_sb");
+			context.treatment("exp_sb");
 		}
-		assertEquals(3, context.getPendingCount());
+		assertEquals(3, context.pendingEventCount());
 
 		clock.now = ANCHOR;
 		for (int i = 0; i < 3; ++i) {
-			assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
 		}
-		assertEquals(4, context.getPendingCount());
+		assertEquals(4, context.pendingEventCount());
 
 		// Retained {0, 2}: period 2 is still deduplicated, period 1 was evicted.
 		clock.now = ANCHOR + 2 * HOUR;
-		context.getTreatment("exp_sb");
-		assertEquals(4, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(4, context.pendingEventCount());
 		clock.now = ANCHOR + HOUR;
 		for (int i = 0; i < 3; ++i) {
-			assertEquals(EXPECTED_2_ARMS[1], context.getTreatment("exp_sb"));
+			assertEquals(EXPECTED_2_ARMS[1], context.treatment("exp_sb"));
 		}
-		assertEquals(5, context.getPendingCount());
+		assertEquals(5, context.pendingEventCount());
 
-		final Exposure[] exposures = publishExposures(context);
+		final ExposurePayload[] exposures = publishExposures(context);
 		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR, true, true), exposures[3]);
 		assertEquals(exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR, true, true), exposures[4]);
 	}
@@ -1256,33 +1267,33 @@ class ContextSwitchbackTest {
 
 		final Experiment original = switchback(3, HOUR);
 		original.holdoutIds = new int[]{11};
-		final ContextData data = dataOf(original);
+		final ContextPayload data = dataOf(original);
 		data.holdouts = new Experiment[]{holdout};
 		final Context context = createContext(data);
 		context.setOverride("exp_sb", 2);
 
 		clock.now = ANCHOR + 10;
-		assertEquals(2, context.getTreatment("exp_sb"));
-		assertEquals(2, context.getVariableValue("sb.arm", -1));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(2, context.treatment("exp_sb"));
+		assertEquals(2, context.variableValue("sb.arm", -1));
+		assertEquals(1, context.pendingEventCount());
 
 		// Same index 0 under the new period length; variant 2 now carries a different value.
 		final Experiment regridded = switchback(3, 2 * HOUR);
 		regridded.holdoutIds = new int[]{11};
 		regridded.variants[2] = new ExperimentVariant("C", "{\"sb.arm\":22}");
-		final ContextData refreshed = dataOf(regridded);
+		final ContextPayload refreshed = dataOf(regridded);
 		refreshed.holdouts = new Experiment[]{holdout};
 		when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(refreshed));
 		context.refresh();
 
-		assertEquals(2, context.getTreatment("exp_sb"));
-		assertEquals(22, context.getVariableValue("sb.arm", -1));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(2, context.treatment("exp_sb"));
+		assertEquals(22, context.variableValue("sb.arm", -1));
+		assertEquals(2, context.pendingEventCount());
 
-		final Exposure[] exposures = publishExposures(context);
+		final ExposurePayload[] exposures = publishExposures(context);
 		assertEquals(2, exposures.length);
 		for (final int i : new int[]{0, 1}) {
-			assertEquals(new Exposure(1, "exp_sb", UNIT_TYPE, 2, ANCHOR + 10, false, true, true, false, false,
+			assertEquals(new ExposurePayload(1, "exp_sb", UNIT_TYPE, 2, ANCHOR + 10, false, true, true, false, false,
 					false), exposures[i]);
 		}
 	}
@@ -1293,34 +1304,34 @@ class ContextSwitchbackTest {
 	void switchbackToUnitToIdenticalSwitchbackReresolves() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 10;
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(1, context.pendingEventCount());
 
 		final Experiment toUnit = switchback(2, HOUR);
 		toUnit.randomizationType = "unit";
 		refreshTo(context, toUnit);
-		context.getTreatment("exp_sb");
-		assertEquals(2, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(2, context.pendingEventCount());
 
 		refreshTo(context, switchback(2, HOUR));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(3, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(3, context.pendingEventCount());
 	}
 
 	@Test
 	void removedAndRestoredSwitchbackReresolves() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 10;
-		context.getTreatment("exp_sb");
+		context.treatment("exp_sb");
 
 		refreshTo(context);
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(2, context.pendingEventCount());
 
 		refreshTo(context, switchback(2, HOUR));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(3, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(3, context.pendingEventCount());
 	}
 
 	// The pre-anchor bare-name slot shares the lifecycle of the period slots.
@@ -1330,18 +1341,18 @@ class ContextSwitchbackTest {
 		gridA.switchbackStartAt = ANCHOR + 10 * HOUR;
 		final Context context = createContext(dataOf(gridA));
 		clock.now = ANCHOR + 10;
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(0, context.pendingEventCount());
 
 		refreshTo(context, switchback(2, HOUR));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(1, context.pendingEventCount());
 
 		refreshTo(context, gridA);
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(1, context.getPendingCount());
-		assertEquals(0, context.getVariableValue("sb.arm", -1));
-		assertEquals(1, context.getPendingCount());
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(1, context.pendingEventCount());
+		assertEquals(0, context.variableValue("sb.arm", -1));
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	// Epochs are reconciled lazily; an intermediate state that is never looked up must still end the
@@ -1350,33 +1361,33 @@ class ContextSwitchbackTest {
 	void transitionsWithoutAnInterveningLookupStillReresolve() {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 10;
-		context.getTreatment("exp_sb");
-		assertEquals(1, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(1, context.pendingEventCount());
 
 		final Experiment toUnit = switchback(2, HOUR);
 		toUnit.randomizationType = "unit";
 		refreshTo(context, toUnit);
 		refreshTo(context, switchback(2, HOUR));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(2, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(2, context.pendingEventCount());
 
 		refreshTo(context);
 		refreshTo(context, switchback(2, HOUR));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(3, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(3, context.pendingEventCount());
 
 		final Experiment regridded = switchback(2, HOUR);
 		regridded.switchbackDesignType = "other";
 		refreshTo(context, regridded);
 		refreshTo(context, switchback(2, HOUR));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(EXPECTED_2_ARMS[0], context.getTreatment("exp_sb"));
-		assertEquals(4, context.getPendingCount());
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(EXPECTED_2_ARMS[0], context.treatment("exp_sb"));
+		assertEquals(4, context.pendingEventCount());
 
 		// An unchanged identity keeps the epoch.
 		refreshTo(context, switchback(2, HOUR));
-		context.getTreatment("exp_sb");
-		assertEquals(4, context.getPendingCount());
+		context.treatment("exp_sb");
+		assertEquals(4, context.pendingEventCount());
 	}
 
 	// Counts assignment-rule evaluations.
@@ -1429,28 +1440,28 @@ class ContextSwitchbackTest {
 		legacy.switchbackClusters = null;
 		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID, "user_id", "u1"), dataOf(legacy));
 		clock.now = ANCHOR + 10;
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(0, context.getVariableValue("sb.arm", -1));
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(0, context.variableValue("sb.arm", -1));
 		assertEquals(UNIT_TYPE, context.switchbackResolutionForTest("exp_sb").unitType);
 
 		final Experiment other = switchback(2, HOUR);
 		other.switchbackClusters = null;
 		other.unitType = "other";
 		refreshTo(context, other);
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(-1, context.getVariableValue("sb.arm", -1));
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(-1, context.variableValue("sb.arm", -1));
 
 		final Experiment user = switchback(2, HOUR);
 		user.switchbackClusters = null;
 		user.unitType = "user_id";
 		refreshTo(context, user);
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(0, context.getVariableValue("sb.arm", -1));
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(0, context.variableValue("sb.arm", -1));
 		final Context.SwitchbackResolution resolution = context.switchbackResolutionForTest("exp_sb");
 		assertEquals("user_id", resolution.unitType);
 		assertFalse(resolution.eligible);
 		assertTrue(resolution.silent);
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.pendingEventCount());
 	}
 
 	// An ineligible or absent switchback slot never consulted its rules, so neither a set attribute
@@ -1466,8 +1477,8 @@ class ContextSwitchbackTest {
 		final CountingAudienceMatcher matcher = new CountingAudienceMatcher();
 		final Context context = createContext(TestUtils.mapOf(UNIT_TYPE, UID), dataOf(ineligible, absent), matcher);
 		clock.now = ANCHOR + 10;
-		assertEquals(0, context.getTreatment("exp_ineligible"));
-		assertEquals(0, context.getTreatment("exp_absent"));
+		assertEquals(0, context.treatment("exp_ineligible"));
+		assertEquals(0, context.treatment("exp_absent"));
 		assertEquals(0, matcher.ruleEvaluations.get());
 
 		context.setAttribute("x", 1);
@@ -1480,10 +1491,10 @@ class ContextSwitchbackTest {
 		absentRefreshed.switchbackClusters = absent.switchbackClusters;
 		refreshTo(context, ineligibleRefreshed, absentRefreshed);
 
-		assertEquals(0, context.getTreatment("exp_ineligible"));
-		assertEquals(0, context.getTreatment("exp_absent"));
+		assertEquals(0, context.treatment("exp_ineligible"));
+		assertEquals(0, context.treatment("exp_absent"));
 		assertEquals(0, matcher.ruleEvaluations.get());
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.pendingEventCount());
 	}
 
 	// A rule-won switchback re-resolved in the same period (an attribute set, a different rule with
@@ -1495,7 +1506,7 @@ class ContextSwitchbackTest {
 		experiment.assignmentRules = ASSIGN_VARIANT_1;
 		final Context context = createContext(dataOf(experiment));
 		clock.now = ANCHOR + 5;
-		assertEquals(1, context.getTreatment("exp_sb"));
+		assertEquals(1, context.treatment("exp_sb"));
 
 		context.setAttribute("tier", "x");
 		final Experiment refreshed = switchback(2, HOUR);
@@ -1503,8 +1514,8 @@ class ContextSwitchbackTest {
 				+ "\"conditions\":{\"and\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"x\"}]}]}}]}";
 		refreshTo(context, refreshed);
 		clock.now = ANCHOR + 6;
-		assertEquals(1, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{ruleExposure("exp_sb", 1, ANCHOR + 5)}, publishExposures(context));
+		assertEquals(1, context.treatment("exp_sb"));
+		assertArrayEquals(new ExposurePayload[]{ruleExposure("exp_sb", 1, ANCHOR + 5)}, publishExposures(context));
 	}
 
 	// SDK choice (see SWITCHBACK.md): before the anchor nothing is recorded, a traffic miss included,
@@ -1516,14 +1527,15 @@ class ContextSwitchbackTest {
 		// The cluster attribute is set before the call, so the cluster itself is eligible.
 		clock.now = ANCHOR - 1;
 		final Context context = createContext(dataOf(experiment));
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertEquals(0, context.getPendingCount());
+		assertEquals(0, context.treatment("exp_sb"));
+		assertEquals(0, context.pendingEventCount());
 
 		// Contrast: at the anchor the cluster is eligible and the draw can run, so the traffic miss
 		// is recorded, as eligible=false (period 0 draws 0, so the variant alone cannot show the miss).
 		clock.now = ANCHOR;
-		assertEquals(0, context.getTreatment("exp_sb"));
-		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", 0, ANCHOR, true, false)}, publishExposures(context));
+		assertEquals(0, context.treatment("exp_sb"));
+		assertArrayEquals(new ExposurePayload[]{exposure(1, "exp_sb", 0, ANCHOR, true, false)},
+				publishExposures(context));
 	}
 
 	// An override on a switchback with no serving unit is exposed under the declared unitType when the
@@ -1541,12 +1553,13 @@ class ContextSwitchbackTest {
 		context.setOverride("exp_missing_map", 1);
 		context.setOverride("exp_unreadable_map", 1);
 		clock.now = ANCHOR + 5;
-		assertEquals(1, context.getTreatment("exp_missing_map"));
-		assertEquals(1, context.getTreatment("exp_unreadable_map"));
+		assertEquals(1, context.treatment("exp_missing_map"));
+		assertEquals(1, context.treatment("exp_unreadable_map"));
 
-		assertArrayEquals(new Exposure[]{
-				new Exposure(1, "exp_missing_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false, false),
-				new Exposure(2, "exp_unreadable_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false,
+		assertArrayEquals(new ExposurePayload[]{
+				new ExposurePayload(1, "exp_missing_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false,
+						false),
+				new ExposurePayload(2, "exp_unreadable_map", "user_id", 1, ANCHOR + 5, false, true, true, false, false,
 						false),
 		}, publishExposures(context));
 	}
@@ -1560,12 +1573,12 @@ class ContextSwitchbackTest {
 		miss.trafficSplit = new double[]{1.0, 0.0};
 		final Context context = createContext(dataOf(rule, miss));
 		clock.now = ANCHOR + 5;
-		context.getTreatment("exp_rule");
-		context.getTreatment("exp_miss");
+		context.treatment("exp_rule");
+		context.treatment("exp_miss");
 		clock.now = ANCHOR + 9;
 
-		final PublishEvent event = publishAndCapture(context, 1).get(0);
-		final String json = new String(new DefaultContextEventSerializer().serialize(event),
+		final PublishPayload event = publishAndCapture(context, 1).get(0);
+		final String json = new String(new TestJson.Serializer().serialize(event),
 				StandardCharsets.UTF_8);
 		assertEquals("{\"hashed\":true,\"units\":[{\"type\":\"store_id\",\"uid\":\"" + UID_HASH + "\"}],"
 				+ "\"publishedAt\":" + (ANCHOR + 9) + ","
@@ -1602,13 +1615,13 @@ class ContextSwitchbackTest {
 		}
 	}
 
-	void stubRefreshData(boolean completeOnAnotherThread, ContextData data) {
+	void stubRefreshData(boolean completeOnAnotherThread, ContextPayload data) {
 		if (!completeOnAnotherThread) {
 			when(dataProvider.getContextData()).thenReturn(CompletableFuture.completedFuture(data));
 			return;
 		}
 		when(dataProvider.getContextData()).thenAnswer(invocation -> {
-			final CompletableFuture<ContextData> future = new CompletableFuture<ContextData>();
+			final CompletableFuture<ContextPayload> future = new CompletableFuture<ContextPayload>();
 			// Completes only once refreshAsync has attached its continuation, so setData runs on
 			// this thread rather than inline on the caller.
 			final Thread completer = new Thread(() -> {
@@ -1630,7 +1643,7 @@ class ContextSwitchbackTest {
 		final Throwable[] failure = new Throwable[1];
 		final Thread worker = new Thread(() -> {
 			try {
-				result[0] = context.getTreatment(name);
+				result[0] = context.treatment(name);
 			} catch (Throwable t) {
 				failure[0] = t;
 			}
@@ -1654,13 +1667,13 @@ class ContextSwitchbackTest {
 		matcher.context = context;
 		stubRefreshData(completeOnAnotherThread, dataOf(unit));
 
-		final int primed = context.getTreatment("exp_sb");
+		final int primed = context.treatment("exp_sb");
 		context.setAttribute("country", "PT");
 		matcher.refreshOnNextEvaluation = true;
 
 		assertEquals(primed, getTreatmentWithin(context, "exp_sb", 10_000));
 		verify(dataProvider, times(1)).getContextData();
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	@Test
@@ -1689,7 +1702,7 @@ class ContextSwitchbackTest {
 
 		getTreatmentWithin(context, "exp_sb", 10_000);
 		verify(dataProvider, times(1)).getContextData();
-		assertEquals(1, context.getPendingCount());
+		assertEquals(1, context.pendingEventCount());
 	}
 
 	// Holds both revalidating readers at a barrier, so both have rejected the cached slot under
@@ -1758,7 +1771,7 @@ class ContextSwitchbackTest {
 			final int slot = i;
 			workers[i] = new Thread(() -> {
 				try {
-					variants[slot] = context.getTreatment("exp_sb");
+					variants[slot] = context.treatment("exp_sb");
 				} catch (Throwable t) {
 					failures[slot] = t;
 				}
@@ -1795,8 +1808,10 @@ class ContextSwitchbackTest {
 
 		assertEquals(expectedVariant, variants[0]);
 		assertEquals(expectedVariant, variants[1]);
-		assertEquals(1, context.getPendingCount());
-		assertArrayEquals(new Exposure[]{new Exposure(1, "exp_sb", UNIT_TYPE, expectedVariant, ANCHOR + HOUR + 10,
-				true, true, false, false, false, true)}, publishExposures(context));
+		assertEquals(1, context.pendingEventCount());
+		assertArrayEquals(
+				new ExposurePayload[]{new ExposurePayload(1, "exp_sb", UNIT_TYPE, expectedVariant, ANCHOR + HOUR + 10,
+						true, true, false, false, false, true)},
+				publishExposures(context));
 	}
 }

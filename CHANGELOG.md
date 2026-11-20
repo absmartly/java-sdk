@@ -1,5 +1,71 @@
 # Changelog
 
+## 2.0.0 (unreleased)
+
+A new, idiomatic API. Assignment, exposure, publish and refresh behaviour and the wire format are unchanged from 1.x,
+except for custom objects in attribute and goal values, and list and map attributes in audience conditions (see
+Breaking changes).
+See [MIGRATING.md](MIGRATING.md) for every 1.x API and its 2.0 equivalent, and [SUPPORT.md](SUPPORT.md) for the 1.x
+support window.
+
+### Breaking changes
+
+- Java 11 or later. `core-api-java6` is not continued in 2.x (it stays on the 1.x line).
+- `ABsmartlyClient.builder()` replaces `ABSmartly`, `ABSmartlyConfig`, `Client`, `ClientConfig` and `DefaultHTTPClientConfig`.
+- `ContextOptions` (immutable builder) replaces `ContextConfig`.
+- `client.context(options)` blocks until ready and throws `ContextLoadException` on failure; `contextAsync`,
+  `newContext` and `context(options, data)` cover the other cases. `ContextState state()` replaces
+  `isReady/isFailed/isClosing/isClosed/isFinalizing/isFinalized`, and `failure()` replaces `readyError()`.
+- Accessors drop `get`: `treatment`, `unit`, `units`, `attribute`, `attributes`, `override`, `customAssignment`,
+  `experiments` (now a `List`), `customFieldKeys` (now a sorted `List`), `customFieldValue`, `customFieldType`,
+  `variableKeys`, `pendingEventCount`, `data`. Collections are unmodifiable snapshots.
+- `ContextEventLogger` is replaced by typed events (`ReadyEvent`, `RefreshEvent`, `ExposureEvent`, `GoalEvent`,
+  `PublishEvent`, `CloseEvent`, `ErrorEvent`) through `onEvent(listener)` on the client or a context, and
+  `events()` as a `java.util.concurrent.Flow.Publisher`.
+- Unchecked `ABsmartlyException` hierarchy (`ContextNotReadyException`, `ContextClosedException`,
+  `ContextLoadException`, `UnitAlreadySetException`, `HttpStatusException`, `TransportException`,
+  `RequestTimeoutException`, `DecodingException`). Blocking methods throw the cause, never `CompletionException`.
+- `Transport` replaces `HTTPClient`; the default `JdkHttpTransport` uses `java.net.http`. It retries like the 1.x
+  Apache client (502/503, dropped connections and connect timeouts, up to 5 times with the same back-off; a refused
+  connection is not retried) and follows redirects only within the same origin, so the API key never
+  reaches another host (1.x's Apache client followed cross-host redirects). Differences: when its connection is reset
+  the JDK client also retries a GET once on its own, a connect timeout that exhausts the retries raises
+  `RequestTimeoutException`, and the 1.x keep-alive, connection-pool and security-provider settings are gone.
+- The JSON model (`com.absmartly.sdk.json`) and `jsonexpr` packages are internal; the public `ContextData`, `Exposure`
+  and `Goal` value types replace them in the API.
+- Dependencies: Apache HttpClient 5, jsr305 and findbugs-annotations are gone; Jackson is shaded and relocated; SLF4J
+  2.0; JSpecify nullability annotations on every public type.
+- Brand spelling `ABsmartly` in type names and messages ("ABsmartly Context is not yet ready").
+- Attribute and goal-property values that are your own objects publish differently: the shaded Jackson does not see
+  your Jackson annotations (`@JsonProperty`, `@JsonIgnore`...) or `JsonNode` types, so such a value is written from
+  its bean properties, and a field you excluded with `@JsonIgnore` is published. Pass maps, lists and scalars, or
+  convert first (for example `mapper.convertValue(value, Map.class)`). Strings, numbers, booleans, maps, lists,
+  sets, arrays, `BigDecimal`, `UUID` and `Path` publish as before.
+- **This can change assignment for running experiments.** An audience or assignment-rule condition now compares a list
+  or map attribute with a list or object value by content, whatever the attribute's `List` or `Map` class, as
+  javascript-sdk does. In 1.x a list attribute matched only if the value itself was exactly an `ArrayList`, and a map
+  only if it was exactly a `LinkedHashMap` (lists and maps nested inside it already compared by content). So a
+  `List.of(...)`, `Arrays.asList(...)` or `HashMap` attribute now matches an equal list or object in an `eq` condition,
+  and `in` compares it with each candidate the same way. As in 1.x, though, an `in` search over a list or map attribute
+  stops at the first non-boolean candidate that differs from it. The whole audience filter then fails and is logged and
+  treated as a mismatch; in an assignment rule, that rule is skipped and the next one is tried. A `true` candidate
+  matches any list or map attribute whenever the search reaches it, even in a list of only booleans. So a list attribute
+  matches in `in` when, before any differing non-boolean candidate, the search reaches either `true` or a candidate
+  equal to it. Under an enforced audience, a unit that got variant 0 can now be randomized normally, and its exposures
+  change. Numbers inside lists and maps still compare by Java type, as in 1.x: `1L` does not equal `1`.
+
+### Added
+
+- Switchback serving (cluster-defined switchbacks, see [SWITCHBACK.md](SWITCHBACK.md)), and holdouts, as on the
+  unreleased 1.x main.
+- Typed variables: `variable(key, default)` typed by the default, `variable(key, Class, default)` mapping JSON objects
+  to your class, and `peekVariable` twins.
+- `clearOverride`, `clearCustomAssignment`, `overrides()`, `customAssignments()`, `track(goal)`.
+- `ContextData.toJson()`/`fromJson()`.
+- `JdkHttpTransport.Builder.requestTimeout(Duration)`.
+- R8/ProGuard consumer rules in the jar (`META-INF/proguard/absmartly-core-api.pro`); R8 applies them
+  automatically. 1.x rules for `com.fasterxml.jackson.**` and `com.absmartly.sdk.json.**` can be removed.
+
 ## 1.9.0 (unreleased)
 
 ### Changed
