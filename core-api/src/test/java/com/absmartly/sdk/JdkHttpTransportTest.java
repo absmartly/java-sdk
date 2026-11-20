@@ -775,7 +775,7 @@ class JdkHttpTransportTest {
 		server.createContext("/chunks", exchange -> {
 			exchange.sendResponseHeaders(200, 0);
 			try (OutputStream out = exchange.getResponseBody()) {
-				for (int i = 0; i < 40; ++i) {
+				for (int i = 0; i < 100; ++i) {
 					out.write(new byte[1024]);
 					out.flush();
 					written.incrementAndGet();
@@ -793,8 +793,9 @@ class JdkHttpTransportTest {
 				() -> transport.send(new Transport.Request("GET", base.resolve("/chunks"), Map.of(), null)).join());
 		assertTrue(error.getCause() instanceof RequestTimeoutException, error.getCause().toString());
 		if (Runtime.version().feature() >= 16) {
-			assertTrue(finished.await(3, java.util.concurrent.TimeUnit.SECONDS), "the server stops writing");
-			assertTrue(written.get() < 40, "the download was cut short after " + written.get() + " chunks");
+			// The download takes 10 s in full: stopping within 8 s can only come from the cancellation.
+			assertTrue(finished.await(8, java.util.concurrent.TimeUnit.SECONDS), "the server stops writing");
+			assertTrue(written.get() < 100, "the download was cut short after " + written.get() + " chunks");
 		}
 	}
 

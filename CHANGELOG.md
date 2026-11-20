@@ -49,9 +49,10 @@ support window.
   and `in` compares it with each candidate the same way. As in 1.x, though, an `in` search over a list or map attribute
   stops at the first non-boolean candidate that differs from it. The whole audience filter then fails and is logged and
   treated as a mismatch; in an assignment rule, that rule is skipped and the next one is tried. So a list attribute
-  matches in `in` only when the first non-boolean candidate equals it. Under an enforced audience, a unit that got
-  variant 0 can now be randomized normally, and its exposures change. Numbers inside lists and maps still compare by
-  Java type, as in 1.x: `1L` does not equal `1`.
+  matches in `in` only when the first non-boolean candidate equals it, or when a `true` candidate comes before that one
+  (`true` matches any list or map attribute). Under an enforced audience, a unit that got variant 0 can now be
+  randomized normally, and its exposures change. Numbers inside lists and maps still compare by Java type, as in 1.x:
+  `1L` does not equal `1`.
 
 ### Added
 
