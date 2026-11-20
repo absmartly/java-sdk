@@ -283,7 +283,6 @@ class ExprEvaluatorTest extends TestUtils {
 		assertEquals(0, evaluator.compare(listOf(1, 2), listOf(1, 2)));
 		assertNull(evaluator.compare(listOf(1, 2), listOf(3, 4)));
 
-		// Equal content compares equal whatever the List or Map implementation.
 		assertEquals(0, evaluator.compare(java.util.Collections.unmodifiableList(listOf(1, 2)), listOf(1, 2)));
 		assertEquals(0, evaluator.compare(java.util.Collections.unmodifiableMap(mapOf("a", 1)), mapOf("a", 1)));
 		assertNull(evaluator.compare(java.util.Collections.unmodifiableList(listOf(1, 2)), listOf(3, 4)));

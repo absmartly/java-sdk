@@ -45,9 +45,12 @@ support window.
   or map attribute with a list or object value by content, whatever the attribute's `List` or `Map` class, as
   javascript-sdk does. In 1.x a list attribute matched only if the value itself was exactly an `ArrayList`, and a map
   only if it was exactly a `LinkedHashMap` (lists and maps nested inside it already compared by content). So a
-  `List.of(...)`, `Arrays.asList(...)` or `HashMap` attribute now matches an equal list or object in an `eq` or `in`
-  condition. Under an enforced audience, a unit that got variant 0 can now be randomized normally, and its exposures
-  change. Numbers inside lists and maps still compare by Java type, as in 1.x: `1L` does not equal `1`.
+  `List.of(...)`, `Arrays.asList(...)` or `HashMap` attribute now matches an equal list or object in an `eq` condition,
+  and `in` compares it with each candidate the same way. As in 1.x, though, an `in` search over a list or map attribute
+  stops at the first candidate that differs from it, and the whole audience filter then fails and is logged and treated
+  as a mismatch. So a list attribute matches in `in` only when the first candidate equals it. Under an enforced
+  audience, a unit that got variant 0 can now be randomized normally, and its exposures change. Numbers inside lists and
+  maps still compare by Java type, as in 1.x: `1L` does not equal `1`.
 
 ### Added
 

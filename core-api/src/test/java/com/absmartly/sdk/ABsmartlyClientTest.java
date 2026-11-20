@@ -1060,6 +1060,19 @@ class ABsmartlyClientTest extends TestUtils {
 		assertEquals(1, context.peekTreatment("exp_map"), "a map attribute equals the same object literal");
 	}
 
+	@Test
+	void anInSearchForAListAttributeStopsAtTheFirstDifferentCandidate() {
+		final String json = "{\"experiments\":[" + strictAudience(1, "exp_first", "{\\\"in\\\":[{\\\"value\\\":"
+				+ "[[1],[2]]},{\\\"var\\\":\\\"arr\\\"}]}") + "," + strictAudience(2, "exp_second",
+						"{\\\"in\\\":[{\\\"value\\\":[[2],[1]]},{\\\"var\\\":\\\"arr\\\"}]}")
+				+ "]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		context.setAttribute("arr", List.of(1));
+		assertEquals(1, context.peekTreatment("exp_first"), "an equal first candidate matches");
+		assertEquals(0, context.peekTreatment("exp_second"), "as in 1.x, a different first candidate ends the search");
+	}
+
 	// A strict-audience experiment that serves variant 1 only when the audience filter matches.
 	private static String strictAudience(final int id, final String name, final String filter) {
 		return "{\"id\":" + id + ",\"name\":\"" + name + "\",\"unitType\":\"session_id\",\"iteration\":1,"
