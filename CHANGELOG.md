@@ -43,8 +43,8 @@ support window.
   sets, arrays, `BigDecimal`, `UUID` and `Path` publish as before.
 - **This can change assignment for running experiments.** An audience or assignment-rule condition now compares a
   list or map attribute with a list or object value by content, whatever the attribute's `List` or `Map` class, as
-  javascript-sdk does. In 1.x a list matched only if it was an `ArrayList`, and a map only if it was a
-  `LinkedHashMap`. So a `List.of(...)`, `Arrays.asList(...)` or `HashMap` attribute now matches an equal list or
+  javascript-sdk does. In 1.x a list attribute matched only if the value itself was exactly an `ArrayList`, and a map
+  only if it was exactly a `LinkedHashMap` (lists and maps nested inside it already compared by content). So a `List.of(...)`, `Arrays.asList(...)` or `HashMap` attribute now matches an equal list or
   object in an `eq` or `in` condition. Under an enforced audience, a unit that got variant 0 can now be randomized
   normally, and its exposures change. Numbers inside lists and maps still compare by Java type, as in 1.x: `1L`
   does not equal `1`.
