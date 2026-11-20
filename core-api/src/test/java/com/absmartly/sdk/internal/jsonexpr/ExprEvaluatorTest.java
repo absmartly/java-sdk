@@ -288,6 +288,12 @@ class ExprEvaluatorTest extends TestUtils {
 		assertEquals(0, evaluator.compare(java.util.Collections.unmodifiableMap(mapOf("a", 1)), mapOf("a", 1)));
 		assertNull(evaluator.compare(java.util.Collections.unmodifiableList(listOf(1, 2)), listOf(3, 4)));
 		assertNull(evaluator.compare(java.util.Collections.unmodifiableList(listOf(1, 2)), mapOf("a", 1)));
+		assertNull(evaluator.compare(java.util.Collections.emptyList(), java.util.Collections.emptyMap()));
+		assertNull(evaluator.compare(java.util.Collections.emptyMap(), java.util.Collections.emptyList()));
+		assertEquals(0, evaluator.compare(
+				java.util.Collections.unmodifiableList(listOf(java.util.Collections.unmodifiableList(listOf(1)),
+						java.util.Collections.unmodifiableMap(mapOf("a", listOf(2))))),
+				listOf(listOf(1), mapOf("a", listOf(2)))));
 	}
 
 	@Test
