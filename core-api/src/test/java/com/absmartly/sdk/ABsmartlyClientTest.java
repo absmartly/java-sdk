@@ -1228,10 +1228,16 @@ class ABsmartlyClientTest extends TestUtils {
 		final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newCachedThreadPool();
 		final java.util.concurrent.atomic.AtomicBoolean saturated = new java.util.concurrent.atomic.AtomicBoolean();
 		final java.util.concurrent.Executor refusing = command -> {
-			if (saturated.get() && command.getClass().getName().contains("SubmissionPublisher")) {
-				throw new java.util.concurrent.RejectedExecutionException("saturated");
+			if (command.getClass().getName().contains("SubmissionPublisher")) {
+				if (saturated.get()) {
+					throw new java.util.concurrent.RejectedExecutionException("saturated");
+				}
+				// Finish subscription delivery before enabling rejection; an active consumer can otherwise drain
+				// later events without scheduling another task.
+				command.run();
+			} else {
+				pool.execute(command);
 			}
-			pool.execute(command);
 		};
 		try {
 			final ABsmartlyClient client = ABsmartlyClient.builder().endpoint(URI.create("https://x")).apiKey("k")
