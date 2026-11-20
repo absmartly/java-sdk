@@ -149,6 +149,11 @@ public class ExprEvaluator implements Evaluator {
 			if (rvalue != null) {
 				return ((Boolean) lhs).compareTo(rvalue);
 			}
+		} else if (((lhs instanceof List) && (rhs instanceof List)) || ((lhs instanceof Map) && (rhs instanceof Map))) {
+			// By content, not class: an attribute list or map is an unmodifiable snapshot, a literal is an ArrayList.
+			if (lhs.equals(rhs)) {
+				return 0;
+			}
 		} else if ((lhs.getClass() == rhs.getClass()) && (lhs.equals(rhs))) {
 			return 0;
 		}

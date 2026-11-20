@@ -1047,6 +1047,29 @@ class ABsmartlyClientTest extends TestUtils {
 	}
 
 	@Test
+	void anAudienceMatchesListAndMapAttributesByContent() {
+		final String json = "{\"experiments\":[" + strictAudience(1, "exp_list", "{\\\"eq\\\":[{\\\"var\\\":"
+				+ "\\\"arr\\\"},{\\\"value\\\":[1,2,3]}]}") + "," + strictAudience(2, "exp_map",
+						"{\\\"eq\\\":[{\\\"var\\\":\\\"obj\\\"},{\\\"value\\\":{\\\"a\\\":1}}]}")
+				+ "]}";
+		final ABsmartlyClient client = client(FakeTransport.ok(json));
+		final Context context = client.context(SESSION);
+		context.setAttribute("arr", List.of(1, 2, 3));
+		context.setAttribute("obj", Map.of("a", 1));
+		assertEquals(1, context.peekTreatment("exp_list"), "a list attribute equals the same list literal");
+		assertEquals(1, context.peekTreatment("exp_map"), "a map attribute equals the same object literal");
+	}
+
+	// A strict-audience experiment that serves variant 1 only when the audience filter matches.
+	private static String strictAudience(final int id, final String name, final String filter) {
+		return "{\"id\":" + id + ",\"name\":\"" + name + "\",\"unitType\":\"session_id\",\"iteration\":1,"
+				+ "\"seedHi\":0,\"seedLo\":0,\"split\":[0,1],\"trafficSeedHi\":0,\"trafficSeedLo\":0,"
+				+ "\"trafficSplit\":[0,1],\"fullOnVariant\":0,\"applications\":[{\"name\":\"website\"}],"
+				+ "\"audienceStrict\":true,\"audience\":\"{\\\"filter\\\":[" + filter + "]}\","
+				+ "\"variants\":[{\"name\":\"A\",\"config\":null},{\"name\":\"B\",\"config\":null}]}";
+	}
+
+	@Test
 	void aNegativeOverrideServesNoVariables() {
 		final ABsmartlyClient client = client(FakeTransport.ok(CONTEXT_JSON));
 		final Context context = client.context(SESSION);
