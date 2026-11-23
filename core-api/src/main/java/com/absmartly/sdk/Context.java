@@ -1813,7 +1813,6 @@ public class Context implements Closeable {
 		}
 	}
 
-	// The clock reading a read resolves at, or CLOCK_NOT_READ when no switchback is installed.
 	private long resolutionTime() {
 		return hasSwitchback_ ? clock_.millis() : CLOCK_NOT_READ;
 	}
@@ -2619,7 +2618,6 @@ public class Context implements Closeable {
 	// Id-keyed view of the holdouts installed by the most recent setData, used to resolve a
 	// holdout's live definition independent of any stale Experiment reference a caller holds.
 	private Map<Integer, Experiment> holdoutsById_;
-	// Whether the installed data has a switchback experiment; see resolutionTime.
 	private volatile boolean hasSwitchback_;
 	// Source of ContextExperiment.switchbackGeneration; guarded by dataLock_ write.
 	private long switchbackGenerationCounter_;

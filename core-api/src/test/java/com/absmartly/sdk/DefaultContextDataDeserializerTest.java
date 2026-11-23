@@ -369,7 +369,6 @@ class DefaultContextDataDeserializerTest extends TestUtils {
 		}
 	}
 
-	// Well-formed values keep Jackson's default coercions.
 	@Test
 	void switchbackFieldsKeepJacksonCoercions() {
 		final String json = "{\"experiments\":[{\"id\":1,\"name\":\"exp\",\"randomizationType\":5,"

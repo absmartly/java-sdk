@@ -1308,7 +1308,6 @@ class ContextSwitchbackTest {
 		assertEquals(0, context.getPendingCount());
 	}
 
-	// A peek that skipped the clock still resolves a switchback installed since at a real reading.
 	@Test
 	void switchbackInstalledAfterTheClockWasSkippedPeeksTheCurrentPeriod() throws Exception {
 		final Experiment unit = switchback(2, "exp_unit", 2, HOUR);
