@@ -1284,9 +1284,11 @@ class ContextSwitchbackTest {
 		assertEquals(EXPECTED_2_ARMS[2], variant.getInt(assignment));
 		assertEquals(EXPECTED_2_ARMS[3], variant.getInt(exposed));
 		assertEquals(EXPECTED_2_ARMS[3], ((Map<?, ?>) variables.get(exposed)).get("sb.arm"));
-		assertEquals(EXPECTED_2_ARMS[3], context.getVariableValue("sb.arm", -1));
+		assertEquals(1, context.getPendingCount());
 		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[3], ANCHOR + 3 * HOUR, true, true)},
 				publishExposures(context));
+		assertEquals(EXPECTED_2_ARMS[3], context.getVariableValue("sb.arm", -1));
+		assertEquals(0, context.getPendingCount());
 	}
 
 	@Test
