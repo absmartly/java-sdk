@@ -61,7 +61,6 @@ class LocalHttpServerIntegrationTest {
 
 			final byte[] responseBody;
 			if ("GET".equals(recorded.method)) {
-				// Configurable ContextData so the context reaches "ready".
 				responseBody = contextResponse.getBytes(StandardCharsets.UTF_8);
 			} else {
 				responseBody = "{}".getBytes(StandardCharsets.UTF_8);
@@ -223,9 +222,6 @@ class LocalHttpServerIntegrationTest {
 		}
 	}
 
-	// A strict environment+application audience matches (variant 1, no mismatch) and the serialized PUT body carries
-	// no application/environment/app_version attribute, only the user's attribute (plus sdk_name/sdk_version when
-	// includeSystemAttributes is on). This pins the Serko regression and §4.7 against the real wire payload.
 	@org.junit.jupiter.params.ParameterizedTest
 	@org.junit.jupiter.params.provider.CsvSource({"false,", "true,sdk_name;sdk_version"})
 	void matchesEnvironmentAudienceWithoutPublishingSystemAttributes(boolean includeSystemAttributes,

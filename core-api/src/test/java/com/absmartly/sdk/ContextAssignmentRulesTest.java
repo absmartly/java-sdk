@@ -468,7 +468,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final String envRule = rules(assign("Production",
 				"{\"eq\":[{\"var\":\"environment\"},{\"value\":\"production\"}]}", "[]", 1));
 
-		// application and environment are always available to rule conditions, regardless of the flag.
 		final ContextConfig enabled = ContextConfig.create().setUnit("session_id", SESSION_ID)
 				.setIncludeSystemAttributes(true);
 		final ContextConfig disabled = ContextConfig.create().setUnit("session_id", SESSION_ID);
@@ -486,7 +485,6 @@ class ContextAssignmentRulesTest extends TestUtils {
 		final String versionRule = rules(assign("New app",
 				"{\"semver_gte\":[{\"var\":\"app_version\"},{\"value\":\"2.4.0\"}]}", "[]", 1));
 
-		// app_version is no longer provided to rule conditions even with an application version configured.
 		for (final boolean include : new boolean[]{false, true}) {
 			final ContextConfig config = ContextConfig.create().setUnit("session_id", SESSION_ID)
 					.setIncludeSystemAttributes(include);

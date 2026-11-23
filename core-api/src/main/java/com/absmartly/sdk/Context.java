@@ -2581,7 +2581,6 @@ public class Context implements Closeable {
 		}
 	}
 
-	// Exposes the evaluation attribute map (system attributes overlaid with user attributes) to tests in this package.
 	Map<String, Object> buildAttributesMapForTest() {
 		try {
 			contextLock_.readLock().lock();
