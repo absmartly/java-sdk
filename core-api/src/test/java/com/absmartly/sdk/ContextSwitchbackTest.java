@@ -1360,7 +1360,7 @@ class ContextSwitchbackTest {
 	}
 
 	@Test
-	void lateInstalledSwitchbackThatNoLongerResolvesIsNotExposed() throws Exception {
+	void nullReresolutionDoesNotExpose() throws Exception {
 		final Context context = createContext(dataOf(switchback(2, HOUR)));
 		clock.now = ANCHOR + 3 * HOUR;
 		final Method get = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
