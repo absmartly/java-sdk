@@ -1359,6 +1359,29 @@ class ContextSwitchbackTest {
 		assertEquals(1, context.getPendingCount());
 	}
 
+	@Test
+	void lateInstalledSwitchbackThatNoLongerResolvesIsNotExposed() throws Exception {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR + 3 * HOUR;
+		final Method get = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
+		get.setAccessible(true);
+		final Object stale = get.invoke(context, "exp_sb", Long.MIN_VALUE);
+		final Method settle = Context.class.getDeclaredMethod("settleExposure", stale.getClass(), long.class,
+				Function.class);
+		settle.setAccessible(true);
+
+		final Object settled = settle.invoke(context, stale, Long.MIN_VALUE, new Function<Long, Object>() {
+			@Override
+			public Object apply(final Long now) {
+				assertEquals(ANCHOR + 3 * HOUR, now.longValue());
+				return null;
+			}
+		});
+
+		assertEquals(null, settled);
+		assertEquals(0, context.getPendingCount());
+	}
+
 	// A refresh that installs the first switchback makes reads consult the clock again, and one that
 	// removes the last switchback stops it.
 	@Test
