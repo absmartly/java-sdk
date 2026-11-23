@@ -1259,6 +1259,53 @@ class ContextSwitchbackTest {
 				publishExposures(context));
 	}
 
+	@Test
+	void lateInstalledVariableExposesTheValueOfItsOwnPeriod() throws Exception {
+		final Experiment unit = switchback(2, "exp_unit", 2, HOUR);
+		unit.randomizationType = "unit";
+		final Context context = createContext(dataOf(unit));
+		refreshTo(context, unit, switchback(2, HOUR));
+		clock.now = ANCHOR + 3 * HOUR - 1;
+
+		final Method get = Context.class.getDeclaredMethod("getVariableAssignment", String.class, boolean.class,
+				long.class);
+		get.setAccessible(true);
+		final Object assignment = get.invoke(context, "sb.arm", false, Long.MIN_VALUE);
+		final Method expose = Context.class.getDeclaredMethod("exposeVariableAssignment", String.class,
+				assignment.getClass(), long.class);
+		expose.setAccessible(true);
+		clock.now = ANCHOR + 3 * HOUR;
+		final Object exposed = expose.invoke(context, "sb.arm", assignment, Long.MIN_VALUE);
+		final Field variant = exposed.getClass().getDeclaredField("variant");
+		variant.setAccessible(true);
+		final Field variables = exposed.getClass().getDeclaredField("variables");
+		variables.setAccessible(true);
+
+		assertEquals(EXPECTED_2_ARMS[2], variant.getInt(assignment));
+		assertEquals(EXPECTED_2_ARMS[3], variant.getInt(exposed));
+		assertEquals(EXPECTED_2_ARMS[3], ((Map<?, ?>) variables.get(exposed)).get("sb.arm"));
+		assertEquals(EXPECTED_2_ARMS[3], context.getVariableValue("sb.arm", -1));
+		assertArrayEquals(new Exposure[]{exposure(1, "exp_sb", EXPECTED_2_ARMS[3], ANCHOR + 3 * HOUR, true, true)},
+				publishExposures(context));
+	}
+
+	@Test
+	void cachedPrestartPeekDoesNotBypassTheLateInstallClock() throws Exception {
+		final Context context = createContext(dataOf(switchback(2, HOUR)));
+		clock.now = ANCHOR - 1;
+		assertEquals(0, context.peekTreatment("exp_sb"));
+		clock.now = ANCHOR + 3 * HOUR;
+
+		final Method get = Context.class.getDeclaredMethod("getAssignment", String.class, long.class);
+		get.setAccessible(true);
+		final Object assignment = get.invoke(context, "exp_sb", Long.MIN_VALUE);
+		final Field variant = assignment.getClass().getDeclaredField("variant");
+		variant.setAccessible(true);
+
+		assertEquals(EXPECTED_2_ARMS[3], variant.getInt(assignment));
+		assertEquals(0, context.getPendingCount());
+	}
+
 	// A peek that skipped the clock still resolves a switchback installed since at a real reading.
 	@Test
 	void switchbackInstalledAfterTheClockWasSkippedPeeksTheCurrentPeriod() throws Exception {
