@@ -216,12 +216,12 @@ public class Client implements Closeable {
 		return SdkVersion.NAME;
 	}
 
-	/** The SDK version, e.g. "1.9.0". */
+	/** The SDK version, e.g. "1.10.0". */
 	public String getAgentVersion() {
 		return SdkVersion.VERSION;
 	}
 
-	/** The value sent as the X-Agent header: "&lt;name&gt;/&lt;version&gt;", e.g. "absmartly-java-sdk/1.9.0". */
+	/** The value sent as the X-Agent header: "&lt;name&gt;/&lt;version&gt;", e.g. "absmartly-java-sdk/1.10.0". */
 	public String getAgent() {
 		return SdkVersion.AGENT;
 	}
